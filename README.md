@@ -57,7 +57,7 @@ save in the root directory.
 ## Installing the application
 
 * Minimum Requirements:  
-    * Android 5.x.x
+    * Android 6.0 or later (required by the FFmpeg Kit Android library)
     * 2+GB RAM is needed to create the longer/larger videos
     * an average of 500 MB storage must be available per story template one wishes to create; it is suggested to put templates on an SD card
     * an (Android) file manager
@@ -103,6 +103,14 @@ save in the root directory.
 4. Click "Run 'All Tests'" (or a more specific option if you chose a folder or file).
 5. The "Run" tool window shows the results of the tests.
 *Note:* If no tests appear in the "Run" window, you may need to toggle the visibility of passing tests. Currently, the toggle button looks like green checkmark inside of a circle.
+
+## Audio Workbench
+
+Open **Audio Workbench** from the Story List menu and import MaculaScripta's `recording-plan.json`. Record and review lemma clips by book; recordings remain in the app's private storage. Export creates MaculaScripta-compatible ZIP archives with `manifest.json` and `clips/`, split into parts as needed.
+
+## GitHub Releases
+
+Merging a pull request into `develop` whose title starts with `major:`, `minor:`, or `patch:` creates the next `vX.Y.Z` tag (starting from `v5.1.0`) and publishes the ABI-split APKs as a GitHub release. Configure the repository's `release` environment with `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, and `KEY_PASSWORD`; manual runs without a version tag use the `dry-run` environment.
 
 ## Espresso Tests (UI Tests)
 

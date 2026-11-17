@@ -1,0 +1,52 @@
+name: Auto Tag
+on:
+  pull_request:
+    types: [closed]
+    branches: [develop]
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  tag:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+      - name: Bump semantic version and start release
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prefix=$(printf '%s' "$PR_TITLE" | sed -n -E 's/^[[:space:]]*(major|minor|patch):.*/\1/Ip' | tr 'A-Z' 'a-z')
+          if [[ -z "$prefix" ]]; then
+            echo "PR title has no major:/minor:/patch: prefix; skipping release tag."
+            exit 0
+          fi
+
+          latest=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' | sed -n -E '/^v[0-9]+\.[0-9]+\.[0-9]+$/p' | sort -V | tail -n 1)
+          latest=${latest:-v5.1.0}
+          IFS=. read -r major minor patch <<< "${latest#v}"
+          case "$prefix" in
+            major) major=$((10#$major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((10#$minor + 1)); patch=0 ;;
+            patch) patch=$((10#$patch + 1)) ;;
+          esac
+
+          release_tag="v$major.$minor.$patch"
+          tag_commit=$(git rev-parse HEAD)
+          existing_tag_commit=$(git ls-remote --tags origin "refs/tags/$release_tag" | cut -f1)
+          if [[ -n "$existing_tag_commit" && "$existing_tag_commit" != "$tag_commit" ]]; then
+            echo "::error::Version tag $release_tag already points to a different commit."
+            exit 1
+          fi
+          if [[ -z "$existing_tag_commit" ]]; then
+            git tag "$release_tag" "$tag_commit"
+            git push origin "$release_tag"
+          fi
+          # Tags pushed with GITHUB_TOKEN do not trigger the tag-push workflow.
+          gh workflow run release.yml --ref "$release_tag"

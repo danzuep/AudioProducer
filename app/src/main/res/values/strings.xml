@@ -39,6 +39,27 @@
     <string name="next">Next</string>
     <string name="help">Help</string>
     <string name="search">Search</string>
+    <string name="audio_workbench_title">Audio Workbench</string>
+    <string name="audio_workbench_language_hint">Recording language</string>
+    <string name="audio_workbench_language_required">Enter a recording language before exporting.</string>
+    <string name="audio_workbench_import">Import plan</string>
+    <string name="audio_workbench_export">Export</string>
+    <string name="audio_workbench_search_hint">Search words and glosses</string>
+    <string name="audio_workbench_empty">Import a MaculaScripta recording-plan.json file to begin.</string>
+    <string name="audio_workbench_play">Play</string>
+    <string name="audio_workbench_record">Record</string>
+    <string name="audio_workbench_record_again">Record again</string>
+    <string name="audio_workbench_stop">Stop</string>
+    <string name="audio_workbench_occurrences">Occurrences: %1$d</string>
+    <string name="audio_workbench_coverage">%1$d of %2$d recorded</string>
+    <string name="audio_workbench_imported">Imported %1$d recording prompts.</string>
+    <string name="audio_workbench_import_failed">Unable to read the recording plan.</string>
+    <string name="audio_workbench_exported">Audio export complete (%1$d archive(s)).</string>
+    <string name="audio_workbench_export_failed">Unable to export the audio archive.</string>
+    <string name="audio_workbench_no_clips">Record at least one clip before exporting.</string>
+    <string name="audio_workbench_permission_denied">Microphone permission is required to record audio.</string>
+    <string name="audio_workbench_recording_failed">Recording failed. Please try again.</string>
+    <string name="audio_workbench_playback_failed">Unable to play this recording.</string>
 
 
     <string name="submit">Submit</string>

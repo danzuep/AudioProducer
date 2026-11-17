@@ -32,6 +32,11 @@
             android:name=".controller.SettingsActivity"
             android:exported="false"
             android:label="@string/title_activity_settings" />
+        <activity
+            android:name=".controller.audioworkbench.AudioWorkbenchActivity"
+            android:exported="false"
+            android:label="@string/audio_workbench_title"
+            android:windowSoftInputMode="adjustResize" />
 
         <meta-data
             android:name="firebase_analytics_collection_deactivated"
