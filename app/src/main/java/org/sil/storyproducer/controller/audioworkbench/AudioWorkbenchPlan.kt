@@ -2,6 +2,7 @@ package org.sil.storyproducer.controller.audioworkbench
 
 import com.google.gson.JsonParser
 import org.sil.storyproducer.workbench.AudioWorkbenchCard
+import org.sil.storyproducer.workbench.AudioWorkbenchCoverage
 import org.sil.storyproducer.workbench.Workbench
 
 object AudioWorkbenchPlan {
