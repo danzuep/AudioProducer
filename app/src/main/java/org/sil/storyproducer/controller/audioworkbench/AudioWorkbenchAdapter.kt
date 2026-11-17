@@ -19,17 +19,17 @@ data class AudioWorkbenchRow(
 class AudioWorkbenchAdapter(
     private val onRecord: (AudioWorkbenchCard) -> Unit,
     private val onPlay: (AudioWorkbenchCard) -> Unit
-) : ListAdapter<AudioWorkbenchRow, AudioWorkbenchAdapter.ViewHolder>(DIFF) {
+) : ListAdapter<AudioWorkbenchRow, AudioWorkbenchAdapter.AudioWorkbenchViewHolder>(DIFF) {
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder =
-        ViewHolder(
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): AudioWorkbenchViewHolder =
+        AudioWorkbenchViewHolder(
             LayoutInflater.from(parent.context).inflate(R.layout.item_audio_workbench_card, parent, false)
         )
 
-    override fun onBindViewHolder(holder: ViewHolder, position: Int) =
+    override fun onBindViewHolder(holder: AudioWorkbenchViewHolder, position: Int) =
         holder.bind(getItem(position))
 
-    inner class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+    inner class AudioWorkbenchViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         private val lemma = view.findViewById<TextView>(R.id.audio_workbench_lemma)
         private val gloss = view.findViewById<TextView>(R.id.audio_workbench_gloss)
         private val occurrences = view.findViewById<TextView>(R.id.audio_workbench_occurrences)
