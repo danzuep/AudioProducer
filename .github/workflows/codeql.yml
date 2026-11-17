@@ -18,26 +18,21 @@ jobs:
       contents: read
       security-events: write
 
-    strategy:
-      fail-fast: false
-      matrix:
-        language: [ java ]
-
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7.0.1
 
-      - uses: actions/setup-java@v6
+      - uses: actions/setup-java@v6.3.0
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: gradle/actions/setup-gradle@v6
+      - uses: gradle/actions/setup-gradle@v6.4.1
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4.39.3
         with:
-          languages: ${{ matrix.language }}
+          languages: java
           queries: +security-and-quality
 
       - name: Build debug variant
@@ -45,6 +40,6 @@ jobs:
         timeout-minutes: 15
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4.39.3
         with:
-          category: "/language:${{ matrix.language }}"
+          category: "/language:java"
