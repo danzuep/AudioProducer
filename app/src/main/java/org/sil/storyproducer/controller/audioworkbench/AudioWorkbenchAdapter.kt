@@ -9,6 +9,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import org.sil.storyproducer.R
+import org.sil.storyproducer.workbench.AudioWorkbenchCard
 
 data class AudioWorkbenchRow(
     val card: AudioWorkbenchCard,

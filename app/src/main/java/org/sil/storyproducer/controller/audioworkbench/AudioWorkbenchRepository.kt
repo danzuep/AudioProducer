@@ -2,6 +2,7 @@ package org.sil.storyproducer.controller.audioworkbench
 
 import com.google.gson.GsonBuilder
 import com.google.gson.annotations.SerializedName
+import org.sil.storyproducer.workbench.AudioWorkbenchCard
 import java.io.File
 import java.io.OutputStream
 import java.util.zip.ZipEntry
@@ -17,7 +18,10 @@ class AudioWorkbenchRepository(private val root: File) {
     fun savePlan(cards: List<AudioWorkbenchCard>) {
         require(cards.isNotEmpty()) { "A recording plan must contain at least one card." }
         check(root.mkdirs() || root.isDirectory) { "Unable to create the audio workbench folder." }
-        planFile.writeText(GsonBuilder().create().toJson(mapOf("cards" to cards)))
+        val savedCards = cards.map {
+            mapOf("book" to it.book, "greek" to it.lemma, "gloss" to it.gloss, "occurrences" to it.occurrences)
+        }
+        planFile.writeText(GsonBuilder().create().toJson(mapOf("cards" to savedCards)))
     }
 
     fun clipFile(lemma: String): File {
@@ -77,9 +81,9 @@ class AudioWorkbenchRepository(private val root: File) {
 
             cards.forEachIndexed { index, card ->
                 zip.putNextEntry(ZipEntry("clips/${firstClipNumber + index}.m4a"))
-                val clipBytes = clipFile(card.lemma).readBytes()
-                require(clipBytes.isNotEmpty()) { "Clip file is empty and cannot be exported: ${card.lemma}" }
-                zip.write(clipBytes)
+                val clip = clipFile(card.lemma)
+                require(clip.length() > 0) { "Clip file is empty and cannot be exported: ${card.lemma}" }
+                clip.inputStream().use { it.copyTo(zip) }
                 zip.closeEntry()
             }
         }

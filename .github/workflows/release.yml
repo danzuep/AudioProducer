@@ -55,10 +55,10 @@ jobs:
             patch=${BASH_REMATCH[3]}
             version="$major.$minor.$patch"
             version_code=$((10#$major * 10000 + 10#$minor * 100 + 10#$patch))
-            ./gradlew testDebugUnitTest assembleRelease \
+            ./gradlew :core:jvmTest :app:testDebugUnitTest :app:assembleRelease \
               -PappVersion="$version" -PappVersionCode="$version_code"
           else
-            ./gradlew testDebugUnitTest assembleRelease
+            ./gradlew :core:jvmTest :app:testDebugUnitTest :app:assembleRelease
           fi
       - uses: actions/upload-artifact@v7.0.2
         with:

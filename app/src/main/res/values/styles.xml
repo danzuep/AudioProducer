@@ -1,63 +1,11 @@
 <resources>
-
-    <!-- Base application theme. -->
-    <style name="AppTheme" parent="Theme.AppCompat.NoActionBar">
-        <item name="colorPrimary">@color/primary</item>
-        <item name="colorPrimaryDark">@color/primaryDark</item>
-        <item name="android:colorBackground">@color/darkGray</item>
-        <item name="android:windowBackground">@color/black_overlay</item>
-        <item name="windowNoTitle">true</item>
-        <item name="windowActionBar">false</item>
-        <item name="actionButtonStyle">@style/ActionButtonPadded</item>
-        <item name="android:actionButtonStyle">@style/ActionButtonPadded</item>
-
-        <item name="android:popupMenuStyle">@style/PopupMenuStyle</item>
-
-        <!-- Opt out of edge-to-edge enforcement -->
-        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
-
+    <style name="Theme.AudioWorkbench" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/workbench_primary</item>
+        <item name="colorPrimaryVariant">@color/workbench_primary_dark</item>
+        <item name="colorSecondary">@color/workbench_primary</item>
+        <item name="colorSurface">@color/workbench_surface</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">@color/workbench_surface</item>
+        <item name="android:navigationBarColor">@color/workbench_primary_dark</item>
     </style>
-
-    <style name="ActionButtonPadded" parent="@android:style/Widget.ActionButton">
-        <item name="android:minWidth">60dp</item>
-        <item name="android:padding">0dp</item>
-    </style>
-
-    <style name="FilterToolbarChips" parent="Theme.MaterialComponents.Light.NoActionBar.Bridge">
-        <item name="android:checkable">true</item>
-        <item name="chipIconVisible">false</item>
-        <item name="closeIconVisible">false</item>
-        <item name="checkedIcon">@drawable/ic_mtrl_chip_checked_black</item>
-    </style>
-
-    <style name="PopupAnimation" parent="@android:style/Animation">
-        <item name="android:windowEnterAnimation">@anim/fade_in</item>
-        <item name="android:windowExitAnimation">@anim/fade_out</item>
-    </style>
-
-    <style name="PopupMenuStyle" parent="Theme.AppCompat.NoActionBar">
-        <item name="android:popupBackground">@color/popup_menu_background</item>
-        <item name="android:textColor">@color/popup_menu_text_color</item>
-    </style>
-
-    <style name="PopupHelpStyle" parent="Theme.AppCompat.Light">
-        <item name="android:textAllCaps">false</item>
-    </style>
-
-    <!-- Custom AlertDialog Theme -->
-        <style name="CustomAlertDialogTheme" parent="Theme.AppCompat.Dialog.Alert">
-        <item name="buttonBarPositiveButtonStyle">@style/OutlinedButtonStyle</item>
-        <item name="buttonBarNegativeButtonStyle">@style/OutlinedButtonStyle</item>
-        <item name="buttonBarNeutralButtonStyle">@style/OutlinedButtonStyle</item>
-    </style>
-
-    <!-- Style for outlined buttons -->
-    <style name="OutlinedButtonStyle" parent="Widget.AppCompat.Button">
-        <item name="android:background">@drawable/outlined_button_inset</item>
-        <item name="android:textColor">@color/alert_affirmation_color</item>
-        <item name="strokeColor">?attr/colorOnSurface</item>
-        <item name="strokeWidth">2dp</item>
-        <item name="cornerRadius">4dp</item>
-    </style>
-
 </resources>

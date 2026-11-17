@@ -7,7 +7,6 @@ import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
-import android.view.MenuItem
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.AdapterView
@@ -19,16 +18,20 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.Toolbar
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.documentfile.provider.DocumentFile
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import org.sil.storyproducer.R
-import org.sil.storyproducer.activities.BaseActivity
+import org.sil.storyproducer.workbench.AudioWorkbenchCard
+import org.sil.storyproducer.workbench.Workbench
 import java.io.File
 import java.util.concurrent.Executors
 
-class AudioWorkbenchActivity : BaseActivity() {
+class AudioWorkbenchActivity : AppCompatActivity() {
     private val repository by lazy {
         AudioWorkbenchRepository(File(filesDir, "audio-workbench"))
     }
@@ -67,8 +70,12 @@ class AudioWorkbenchActivity : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_audio_workbench)
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.audio_workbench_root)) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            insets
+        }
         setSupportActionBar(findViewById<Toolbar>(R.id.audio_workbench_toolbar))
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.title = getString(R.string.audio_workbench_title)
 
         language = findViewById(R.id.audio_workbench_language)
@@ -107,6 +114,8 @@ class AudioWorkbenchActivity : BaseActivity() {
         })
 
         findViewById<Button>(R.id.audio_workbench_import).setOnClickListener {
+            stopRecording()
+            stopPlayback()
             importPlan.launch(arrayOf("application/json", "text/*"))
         }
         findViewById<Button>(R.id.audio_workbench_export).setOnClickListener {
@@ -132,14 +141,6 @@ class AudioWorkbenchActivity : BaseActivity() {
             emptyList()
         }
         refreshBooks(preferIncomplete = true)
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        if (item.itemId == android.R.id.home) {
-            finish()
-            return true
-        }
-        return super.onOptionsItemSelected(item)
     }
 
     override fun onStop() {
@@ -246,17 +247,17 @@ class AudioWorkbenchActivity : BaseActivity() {
 
     private fun updateRows() {
         val currentBook = selectedBook
-        val query = search.text.toString().trim().lowercase()
-        val visibleCards = cards.filter { card ->
-            card.book == currentBook &&
-                (query.isEmpty() || card.lemma.lowercase().contains(query) || card.gloss.lowercase().contains(query))
-        }
+        val visibleCards = Workbench.search(cards, currentBook, search.text.toString())
         val bookCards = cards.filter { it.book == currentBook }
         val completed = AudioWorkbenchPlan.coverage(bookCards) { repository.clipFile(it).isFile }
         coverage.text = getString(R.string.audio_workbench_coverage, completed.recorded, completed.total)
-        empty.visibility = if (cards.isEmpty()) View.VISIBLE else View.GONE
+        val noPlan = cards.isEmpty()
+        findViewById<View>(R.id.audio_workbench_controls).visibility = if (noPlan) View.GONE else View.VISIBLE
+        findViewById<Button>(R.id.audio_workbench_export).isEnabled = !noPlan
+        empty.setText(if (noPlan) R.string.audio_workbench_empty else R.string.audio_workbench_no_results)
+        empty.visibility = if (noPlan || visibleCards.isEmpty()) View.VISIBLE else View.GONE
         findViewById<RecyclerView>(R.id.audio_workbench_list).visibility =
-            if (cards.isEmpty()) View.GONE else View.VISIBLE
+            if (noPlan || visibleCards.isEmpty()) View.GONE else View.VISIBLE
         adapter.submitList(visibleCards.map { card ->
             AudioWorkbenchRow(
                 card,
@@ -287,7 +288,8 @@ class AudioWorkbenchActivity : BaseActivity() {
         val output = repository.clipFile(lemma)
         val clipsDirectory = checkNotNull(output.parentFile)
         val temporary = File(clipsDirectory, "${output.nameWithoutExtension}.tmp.m4a")
-        val newRecorder = MediaRecorder(this)
+        @Suppress("DEPRECATION")
+        val newRecorder = if (android.os.Build.VERSION.SDK_INT >= 31) MediaRecorder(this) else MediaRecorder()
         try {
             check(clipsDirectory.mkdirs() || clipsDirectory.isDirectory)
             newRecorder.setAudioSource(MediaRecorder.AudioSource.MIC)
@@ -369,10 +371,7 @@ class AudioWorkbenchActivity : BaseActivity() {
     }
 
     private fun stopPlayback() {
-        player?.run {
-            if (isPlaying) stop()
-            release()
-        }
+        player?.release()
         player = null
     }
 

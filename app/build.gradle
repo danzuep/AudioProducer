@@ -1,233 +1,83 @@
 apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
-apply plugin: 'kotlin-kapt'
-apply plugin: 'com.google.firebase.crashlytics'
-apply plugin: 'com.google.gms.google-services'
 
-def keystorePropertiesFile = new File(rootProject.projectDir, 'keystore.properties')
-def appVersionName = (project.findProperty('appVersion') ?: '5.1.0').toString()
-def appVersionCode = (project.findProperty('appVersionCode') ?: '43').toString().toInteger()
+def keystorePropertiesFile = rootProject.file('keystore.properties')
+def appVersionName = (project.findProperty('appVersion') ?: '6.0.0').toString()
+def appVersionCode = (project.findProperty('appVersionCode') ?: '60000').toString().toInteger()
 
 android {
-    compileSdk 35 // use 33 for automated testing
+    namespace 'org.sil.storyproducer'
+    compileSdk 35
+
     defaultConfig {
-        applicationId "org.sil.storyproducer"
-        minSdkVersion 23
-        targetSdkVersion 35 // use 33 for automated testing
+        applicationId 'org.sil.storyproducer'
+        minSdk 23
+        targetSdk 35
         versionCode appVersionCode
         versionName appVersionName
-        vectorDrawables.useSupportLibrary = true
-
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = '17'
-    }
+    kotlinOptions { jvmTarget = '17' }
+
     signingConfigs {
         if (keystorePropertiesFile.isFile()) {
-            logger.lifecycle("keystore.properties exists. Sign APK.")
-            def keystoreProperties = new Properties()
-            keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+            def properties = new Properties()
+            keystorePropertiesFile.withInputStream { properties.load(it) }
             release {
-                keyAlias keystoreProperties['keyAlias']
-                keyPassword keystoreProperties['keyPassword']
-                storeFile rootProject.file(keystoreProperties['storeFile'])
-                storePassword keystoreProperties['storePassword']
+                keyAlias properties['keyAlias']
+                keyPassword properties['keyPassword']
+                storeFile rootProject.file(properties['storeFile'])
+                storePassword properties['storePassword']
             }
-        }
-        else
-        {
-            logger.lifecycle("keystore.properties not found. Unable to sign APK.")
-        }
-    }
-    applicationVariants.all { variant ->
-        variant.outputs.all { output ->
-            def versionPart = variant.name;
-            if (variant.name != "debug") {
-                if (keystorePropertiesFile.isFile()) {
-                    versionPart = variant.versionName;
-                } else {
-                    versionPart = versionPart + "-not-signed";
-                }
-            }
-            // ABI-aware naming
-            def abi = null
-            if (output.getFilter(com.android.build.OutputFile.ABI)) {
-                abi = output.getFilter(com.android.build.OutputFile.ABI)
-            } else {
-                abi = "universal"
-            }
-            def baseVersionCode = defaultConfig.versionCode
-            def abiCode = 0
-            if (abi == "armeabi-v7a") abiCode = 1
-            else if (abi == "arm64-v8a") abiCode = 2
-            else if (abi == "x86") abiCode = 3
-            else if (abi == "x86_64") abiCode = 4
-            else abiCode = 0 // fallback for universal
-            output.versionCodeOverride = baseVersionCode * 10 + abiCode
-            output.outputFileName = "SP-${versionPart}-${abi}.apk"
         }
     }
     buildTypes {
+        debug {
+            applicationIdSuffix '.debug'
+            versionNameSuffix '.debug'
+        }
         release {
             if (keystorePropertiesFile.isFile()) {
                 signingConfig signingConfigs.release
             }
             minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            resValue("bool", "FIREBASE_ANALYTICS_DEACTIVATED", "false")
         }
-        // dkh - 5/3/21  - These changes came  from Chris Hubbard (pull request 568)
-        // Updated applicationIdSuffix to allow debug versions of app crashes to be captured separate from
-        // continuous build app crashes or product builds app crashes in Firebase.
-        // Also, make sure we capture analytics by
-        // setting FIREBASE_ANALYTICS_DEACTIVATED to false.
-        //"package_name" in debug\google-services.json was also changed.  Side effect of
-        // changing the package_name is that field names in the JSON registration parsing were
-        // affected.  See Issue #559 for a more detailed explanation.
-        debug {
-            versionNameSuffix ".debug"
-            applicationIdSuffix ".debug"
-            resValue("bool", "FIREBASE_ANALYTICS_DEACTIVATED", "false")
-        }
-        continuous {
-            initWith release
-            applicationIdSuffix ".ci"
-        }
-    }
-
-    productFlavors {
-    }
-    packagingOptions {
-        resources {
-            pickFirsts += ['META-INF/atomicfu.kotlin_module']
-        }
-    }
-
-    sourceSets {
-        main.java.srcDirs += 'src/main/kotlin'
-    }
-
-    defaultConfig {
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        testInstrumentationRunnerArguments.clearPackageData = "false"
-    }
-
-    testOptions {
-        execution 'ANDROIDX_TEST_ORCHESTRATOR'
-        unitTests {
-            includeAndroidResources = true
-        }
-    }
-    buildFeatures {
-        viewBinding true
     }
     splits {
         abi {
             enable true
             reset()
             include 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
-            universalApk false // If true, also builds an all-in-one APK
+            universalApk false
         }
     }
-    namespace 'org.sil.storyproducer'
-    lint {
-        abortOnError false
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            def abi = output.getFilter(com.android.build.OutputFile.ABI) ?: 'universal'
+            def abiCodes = ['armeabi-v7a': 1, 'arm64-v8a': 2, 'x86': 3, 'x86_64': 4]
+            output.versionCodeOverride = defaultConfig.versionCode * 10 + (abiCodes[abi] ?: 0)
+            def versionPart = variant.name == 'release' ?
+                (keystorePropertiesFile.isFile() ? variant.versionName : 'release-not-signed') : variant.name
+            output.outputFileName = "SP-${versionPart}-${abi}.apk"
+        }
     }
-}
-
-repositories {
-    mavenCentral()
-//    maven { url 'https://jitpack.io' }
-    google()
-    mavenCentral()
+    testOptions { unitTests.includeAndroidResources = true }
 }
 
 dependencies {
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
-    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2'
-    implementation fileTree(include: ['*.jar'], dir: 'libs')
-    implementation 'com.google.android.material:material:1.12.0'
+    implementation project(':core')
+    implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'androidx.core:core-ktx:1.15.0'
     implementation 'androidx.recyclerview:recyclerview:1.4.0'
-    implementation 'androidx.cardview:cardview:1.0.0'
-    implementation 'androidx.preference:preference:1.2.1'
-    implementation 'com.getbase:floatingactionbutton:1.10.1'
-    implementation 'androidx.legacy:legacy-support-v13:1.0.0'
-    implementation 'com.googlecode.mp4parser:isoparser:1.1.22'
-    implementation 'org.apache.commons:commons-io:1.3.2'
-
-    implementation 'commons-io:commons-io:2.18.0'
-
-    implementation 'com.android.volley:volley:1.2.1'
-    implementation 'io.github.jamaismagic.ffmpeg:ffmpeg-kit-lts-min-16kb:6.1.4'
+    implementation 'androidx.documentfile:documentfile:1.0.1'
+    implementation 'com.google.android.material:material:1.12.0'
     implementation 'com.google.code.gson:gson:2.12.1'
-    implementation 'com.google.firebase:firebase-core:21.1.1'
-    implementation 'com.google.firebase:firebase-analytics:22.4.0'
-    implementation 'com.google.firebase:firebase-crashlytics:19.4.2'
-    implementation 'com.squareup.moshi:moshi:1.15.2'
-    implementation 'com.opencsv:opencsv:5.10'
-    implementation 'org.jsoup:jsoup:1.19.1'
-    implementation 'androidx.legacy:legacy-support-v4:1.0.0'
-    implementation 'androidx.lifecycle:lifecycle-extensions:2.2.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
-    implementation 'androidx.webkit:webkit:1.13.0'
-    //implementation "androidx.window:window:1.4.0"
-    implementation 'net.lingala.zip4j:zip4j:2.11.5'
-    implementation 'io.reactivex.rxjava2:rxkotlin:2.4.0'
-    implementation 'io.reactivex.rxjava2:rxandroid:2.1.1'
-
-    implementation 'com.squareup.moshi:moshi:1.15.2'
-    implementation 'com.squareup.moshi:moshi-kotlin-codegen:1.15.2'
-    implementation 'com.squareup.retrofit2:converter-moshi:2.11.0'
-    implementation 'com.squareup.moshi:moshi-kotlin:1.15.2'
-
-
-// Kotlin 1.9.x compatible versions (as of late 2024):
-    implementation('com.squareup:kotlinpoet:2.1.0')
-    implementation("org.jetbrains.kotlinx:kotlinx-metadata-jvm:0.9.0")
-
-
-    // DKH - 08/26/2021 Added by Cedarville for Wordlinks
-    // implementation 'androidx.coordinatorlayout:coordinatorlayout:1.1.0'
-    // Issue 166, Cedarville pull #519
-    implementation 'androidx.coordinatorlayout:coordinatorlayout:1.3.0'
-
     testImplementation 'junit:junit:4.13.2'
-    testImplementation 'androidx.test:core:1.6.1'
-    testImplementation 'org.robolectric:robolectric:4.14.1'
-    testImplementation 'org.mockito:mockito-core:5.17.0'
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
-    androidTestImplementation 'androidx.test:runner:1.5.2'
-    androidTestUtil "androidx.test:orchestrator:1.4.2"
-    androidTestImplementation 'androidx.annotation:annotation:1.1.0'
-    androidTestImplementation 'androidx.test:rules:1.6.1'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
-    androidTestImplementation 'androidx.test.espresso:espresso-intents:3.6.1'
-    androidTestImplementation 'androidx.test.espresso:espresso-contrib:3.6.1'
-    androidTestImplementation 'androidx.test.uiautomator:uiautomator:2.3.0'
-    implementation 'com.jakewharton.timber:timber:5.0.1'
-
-    // Supports the WiFi module's 'server' used to receive books from Bloom desktop
-    implementation  'cz.msebera.android:httpclient:4.5.8'
-    implementation 'com.segment.analytics.android:analytics:4.11.3'
-    // Needed (at least) for making tar archives to send multiple books.
-    // We tried commons-io:commons-compress but it didn't work for unknown/forgotten reasons
-    implementation 'org.apache.commons:commons-compress:1.27.1'
-    implementation 'androidx.appcompat:appcompat:1.7.0'
-}
-
-// Added the following 'configurations' exclusions to fix issue: build.gradle: Error: commons-logging defines classes that conflict with classes now provided by Android.
-// Solutions include finding newer versions or alternative libraries that don't have the same problem (for example, for httpclient use HttpUrlConnection or okhttp instead), or repackaging the library using something like jarjar.
-// [DuplicatePlatformClasses]
-// As suggested by: https://stackoverflow.com/questions/46989310/commons-logging-defines-classes-that-conflict-with-classes-now-provided-by-andro
-configurations {
-    all {
-//        exclude module: 'httpclient'
-        exclude module: 'commons-logging'
-    }
 }

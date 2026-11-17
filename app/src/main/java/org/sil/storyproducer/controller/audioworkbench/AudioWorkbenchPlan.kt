@@ -1,19 +1,8 @@
 package org.sil.storyproducer.controller.audioworkbench
 
 import com.google.gson.JsonParser
-import com.google.gson.annotations.SerializedName
-
-data class AudioWorkbenchCard(
-    val book: String,
-    @SerializedName("greek") val lemma: String,
-    val gloss: String,
-    val occurrences: Int
-)
-
-data class AudioWorkbenchCoverage(val recorded: Int, val total: Int) {
-    val complete: Boolean
-        get() = total > 0 && recorded == total
-}
+import org.sil.storyproducer.workbench.AudioWorkbenchCard
+import org.sil.storyproducer.workbench.Workbench
 
 object AudioWorkbenchPlan {
     fun parse(json: String): List<AudioWorkbenchCard> {
@@ -49,19 +38,14 @@ object AudioWorkbenchPlan {
     }
 
     fun books(cards: List<AudioWorkbenchCard>): List<String> =
-        cards.map { it.book }.distinct()
+        Workbench.books(cards)
 
     fun coverage(cards: List<AudioWorkbenchCard>, isRecorded: (String) -> Boolean): AudioWorkbenchCoverage =
-        AudioWorkbenchCoverage(
-            recorded = cards.count { isRecorded(it.lemma) },
-            total = cards.size
-        )
+        Workbench.coverage(cards, isRecorded)
 
     fun nextIncompleteBook(
         cards: List<AudioWorkbenchCard>,
         isRecorded: (String) -> Boolean
     ): String? =
-        books(cards).firstOrNull { book ->
-            cards.any { it.book == book && !isRecorded(it.lemma) }
-        }
+        Workbench.nextIncompleteBook(cards, isRecorded)
 }
