@@ -1,10 +1,11 @@
 package org.sil.storyproducer.controller.audioworkbench
 
 import com.google.gson.JsonParser
+import com.google.gson.annotations.SerializedName
 
 data class AudioWorkbenchCard(
     val book: String,
-    val lemma: String,
+    @SerializedName("greek") val lemma: String,
     val gloss: String,
     val occurrences: Int
 )
@@ -28,7 +29,8 @@ object AudioWorkbenchPlan {
             val card = entry.takeIf { it.isJsonObject }?.asJsonObject
                 ?: throw IllegalArgumentException("Recording card ${index + 1} is invalid.")
             val book = card.get("book")?.takeIf { it.isJsonPrimitive }?.asString?.trim().orEmpty()
-            val lemma = card.get("greek")?.takeIf { it.isJsonPrimitive }?.asString?.trim().orEmpty()
+            val lemma = (card.get("greek") ?: card.get("lemma"))
+                ?.takeIf { it.isJsonPrimitive }?.asString?.trim().orEmpty()
             if (book.isEmpty() || lemma.isEmpty()) {
                 throw IllegalArgumentException("Recording card ${index + 1} is missing its book or Greek lemma.")
             }

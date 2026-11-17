@@ -59,6 +59,22 @@ class AudioWorkbenchPlanTest {
     }
 
     @Test
+    fun loadsPreviouslySavedPlansWithLemmaField() {
+        val directory = Files.createTempDirectory("audio-workbench-legacy-plan-test").toFile()
+        try {
+            File(directory, "recording-plan.json").writeText(
+                """{"cards":[{"book":"JHN","lemma":"λογος","gloss":"word","occurrences":330}]}"""
+            )
+            assertEquals(
+                listOf(AudioWorkbenchCard("JHN", "λογος", "word", 330)),
+                AudioWorkbenchRepository(directory).loadPlan()
+            )
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun exportContainsMaculaCompatibleManifestAndRecordedClips() {
         val directory = Files.createTempDirectory("audio-workbench-test").toFile()
         try {
