@@ -4,9 +4,9 @@ import android.content.Context
 import android.graphics.BitmapFactory
 import android.graphics.Rect
 import android.net.Uri
-import android.util.Log
 import androidx.documentfile.provider.DocumentFile
-import com.arthenica.mobileffmpeg.FFmpeg
+import com.arthenica.ffmpegkit.FFmpegKit
+import com.arthenica.ffmpegkit.ReturnCode
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
@@ -18,6 +18,7 @@ import org.sil.storyproducer.tools.file.copyFromFilesDir
 import org.sil.storyproducer.tools.file.copyToFilesDir
 import org.sil.storyproducer.tools.file.getDocumentText
 import org.sil.storyproducer.tools.file.getStoryParcelFileDescriptor
+import org.sil.storyproducer.tools.media.FfmpegCommands
 import java.io.File
 
 
@@ -292,25 +293,18 @@ fun parseAndConcatenatePageAudio(context: Context, storyAudioPath: DocumentFile,
             }
         }
         if (totalInputFiles > 0) {
-            val ffmpegArgs: MutableList<String> = mutableListOf()
-            ffmpegArgs.add("-f")
-            ffmpegArgs.add("concat")
-            ffmpegArgs.add("-safe")
-            ffmpegArgs.add("0")
-            ffmpegArgs.add("-i")
-            ffmpegArgs.add(concatTempFile.absolutePath)
-            ffmpegArgs.add("-c")
-            ffmpegArgs.add("copy")
             val concatTempOutputFileStr = "${concatTempFolder.path}/${outputAudioFileName}"
-            ffmpegArgs.add(concatTempOutputFileStr)
             if (App.isRoboUnitTest()) {
                 // ffmpeg is not available on roboelectric native environments
                 File(concatTempOutputFileStr).writeText("Dummy concatenated MP3 file")
             } else {
-                FFmpeg.execute(ffmpegArgs.toTypedArray())
+                val session = FFmpegKit.executeWithArguments(
+                    FfmpegCommands.concatenateAudio(concatTempFile, File(concatTempOutputFileStr))
+                )
+                check(ReturnCode.isSuccess(session.returnCode)) {
+                    "Audio concatenation failed: ${session.allLogsAsString}"
+                }
             }
-            Log.w("ParseBloom.parsePage", FFmpeg.getLastCommandOutput()
-                    ?: "No FFMPEG output")
 
             // search for the output file for all the concatenated files
             val audioStoryConcatDocFind = storyAudioMap[outputAudioFileName]

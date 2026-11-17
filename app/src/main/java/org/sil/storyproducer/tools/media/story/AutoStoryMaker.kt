@@ -7,8 +7,9 @@ import android.media.MediaMuxer
 import android.net.Uri
 import android.util.Log
 import android.widget.Toast
-import com.arthenica.mobileffmpeg.Config
-import com.arthenica.mobileffmpeg.FFmpeg
+import com.arthenica.ffmpegkit.FFmpegKitConfig
+import com.arthenica.ffmpegkit.FFmpegSession
+import com.arthenica.ffmpegkit.ReturnCode
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import org.sil.storyproducer.R
 import org.sil.storyproducer.model.MUSIC_CONTINUE
@@ -24,6 +25,7 @@ import org.sil.storyproducer.service.SlideService
 import org.sil.storyproducer.tools.file.copyToWorkspacePath
 import org.sil.storyproducer.tools.file.getStoryUri
 import org.sil.storyproducer.tools.media.MediaHelper
+import org.sil.storyproducer.tools.media.FfmpegCommands
 import org.sil.storyproducer.tools.media.graphics.KenBurnsEffect
 import org.sil.storyproducer.viewmodel.SlideViewModelBuilder
 import java.io.Closeable
@@ -57,7 +59,7 @@ class AutoStoryMaker(private val context: Context) : Thread(), Closeable {
     private var mLogProgress = false
 
     private var mStoryMaker: StoryMaker? = null
-    private var time3GPms = 0
+    @Volatile private var time3GPms = 0.0
     private var allVideosDone = false
 
     val isDone: Boolean
@@ -143,13 +145,16 @@ class AutoStoryMaker(private val context: Context) : Thread(), Closeable {
 
         try{
 
-            Config.resetStatistics()
-            Config.enableStatisticsCallback { newStatistics -> time3GPms = newStatistics.time }
-            FFmpeg.execute("-i ${videoTempFile.absolutePath} " +
-                    "-f 3gp -vcodec $VIDEO_3GP_CODEC -framerate $VIDEO_3GP_FRAMERATE -vf " +
-                    "scale=${VIDEO_3GP_WIDTH}x$VIDEO_3GP_HEIGHT -acodec $VIDEO_3GP_AUDIO" +
-                    " -b:v $VIDEO_3GP_BITRATE " + video3gpFile.absolutePath)
-            Log.w(TAG,FFmpeg.getLastCommandOutput() ?: "No FFMPEG output")
+            time3GPms = 0.0
+            val session = FFmpegSession.create(
+                FfmpegCommands.convertTo3gp(videoTempFile, video3gpFile),
+                null,
+                null
+            ) { statistics -> time3GPms = statistics.time }
+            FFmpegKitConfig.ffmpegExecute(session)
+            check(ReturnCode.isSuccess(session.returnCode)) {
+                "3GP conversion failed: ${session.allLogsAsString}"
+            }
             copyToWorkspacePath(context,Uri.fromFile(video3gpFile),"$VIDEO_DIR/$video3gpPath")
             Workspace.activeStory.addVideo(video3gpPath)
         } catch(e:Exception) {
@@ -319,12 +324,6 @@ class AutoStoryMaker(private val context: Context) : Thread(), Closeable {
         private val VIDEO_MP4_IFRAME_INTERVAL = 8           // 5 second between I-frames
 
         private val VIDEO_3GP_EXT = ".3gp"
-        private val VIDEO_3GP_CODEC = "h263"
-        private val VIDEO_3GP_WIDTH = 176
-        private val VIDEO_3GP_HEIGHT = 144
-        private val VIDEO_3GP_AUDIO = "aac"
-        private val VIDEO_3GP_BITRATE = 1000000
-        private val VIDEO_3GP_FRAMERATE = 15
 
         // parameters for the audio encoder
         private val AUDIO_MIME_TYPE = "audio/mp4a-latm" //MediaFormat.MIMETYPE_AUDIO_AAC;

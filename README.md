@@ -57,7 +57,7 @@ save in the root directory.
 ## Installing the application
 
 * Minimum Requirements:  
-    * Android 5.x.x
+    * Android 6.0 or later (required by the FFmpeg Kit Android library)
     * 2+GB RAM is needed to create the longer/larger videos
     * an average of 500 MB storage must be available per story template one wishes to create; it is suggested to put templates on an SD card
     * an (Android) file manager

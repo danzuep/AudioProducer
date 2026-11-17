@@ -12,7 +12,7 @@ android {
     compileSdk 35 // use 33 for automated testing
     defaultConfig {
         applicationId "org.sil.storyproducer"
-        minSdkVersion 21
+        minSdkVersion 23
         targetSdkVersion 35 // use 33 for automated testing
         versionCode appVersionCode
         versionName appVersionName
@@ -164,8 +164,7 @@ dependencies {
     implementation 'commons-io:commons-io:2.18.0'
 
     implementation 'com.android.volley:volley:1.2.1'
-    //implementation 'com.arthenica:mobile-ffmpeg-full:4.2.LTS'
-    implementation (files('libs/mobile-ffmpeg-full-4.2.LTS.aar'))
+    implementation 'io.github.jamaismagic.ffmpeg:ffmpeg-kit-lts-min-16kb:6.1.4'
     implementation 'com.google.code.gson:gson:2.12.1'
     implementation 'com.google.firebase:firebase-core:21.1.1'
     implementation 'com.google.firebase:firebase-analytics:22.4.0'
