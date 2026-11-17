@@ -287,7 +287,7 @@ class AudioWorkbenchActivity : BaseActivity() {
         val output = repository.clipFile(lemma)
         val clipsDirectory = checkNotNull(output.parentFile)
         val temporary = File(clipsDirectory, "${output.nameWithoutExtension}.tmp.m4a")
-        val newRecorder = MediaRecorder()
+        val newRecorder = MediaRecorder(this)
         try {
             check(clipsDirectory.mkdirs() || clipsDirectory.isDirectory)
             newRecorder.setAudioSource(MediaRecorder.AudioSource.MIC)
