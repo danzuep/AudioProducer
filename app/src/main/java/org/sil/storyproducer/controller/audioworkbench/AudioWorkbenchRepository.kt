@@ -77,7 +77,9 @@ class AudioWorkbenchRepository(private val root: File) {
 
             cards.forEachIndexed { index, card ->
                 zip.putNextEntry(ZipEntry("clips/${firstClipNumber + index}.m4a"))
-                clipFile(card.lemma).inputStream().use { it.copyTo(zip) }
+                val clipBytes = clipFile(card.lemma).readBytes()
+                require(clipBytes.isNotEmpty()) { "Clip file is empty and cannot be exported: ${card.lemma}" }
+                zip.write(clipBytes)
                 zip.closeEntry()
             }
         }
