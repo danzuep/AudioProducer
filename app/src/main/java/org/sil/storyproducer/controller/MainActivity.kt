@@ -22,6 +22,7 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import org.sil.storyproducer.R
 import org.sil.storyproducer.activities.BaseActivity
+import org.sil.storyproducer.controller.audioworkbench.AudioWorkbenchActivity
 import org.sil.storyproducer.controller.storylist.StoryPageAdapter
 import org.sil.storyproducer.controller.storylist.StoryPageTab
 import org.sil.storyproducer.model.Phase
@@ -41,6 +42,7 @@ class MainActivity : BaseActivity(), Serializable {
     companion object {
         var mainActivity : MainActivity ? = null
         const val SHOW_FIRST_HELP_VIDEO = "show_first_help_video"
+        private const val AUDIO_WORKBENCH_MENU_ITEM = 1001
     }
 
     lateinit var storyPageViewPager : ViewPager2
@@ -257,6 +259,7 @@ class MainActivity : BaseActivity(), Serializable {
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         super.onCreateOptionsMenu(menu)
         menuInflater.inflate(R.menu.menu_with_help, menu)
+        menu.add(Menu.NONE, AUDIO_WORKBENCH_MENU_ITEM, Menu.NONE, R.string.audio_workbench_title)
         return true
     }
 
@@ -313,6 +316,10 @@ class MainActivity : BaseActivity(), Serializable {
                 showHelpContextMenu()
                 true
             }
+            AUDIO_WORKBENCH_MENU_ITEM -> {
+                startActivity(Intent(this, AudioWorkbenchActivity::class.java))
+                true
+            }
 //            R.id.helpResumeButton -> {
 //                resumeShowingPopupHelp()
 //                checkDownloadStoriesMessage()
@@ -320,6 +327,7 @@ class MainActivity : BaseActivity(), Serializable {
 //            }
             else -> super.onOptionsItemSelected(item)
         }
+
     }
 
     override fun onDestroy() {
