@@ -1,56 +1,51 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginStart="12dp"
-    android:layout_marginEnd="12dp"
     android:layout_marginVertical="4dp"
-    android:foreground="?attr/selectableItemBackground"
-    android:clickable="true"
-    android:focusable="true">
-
+    app:cardCornerRadius="16dp"
+    app:cardElevation="0dp"
+    app:strokeColor="@color/workbench_outline"
+    app:strokeWidth="1dp">
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:padding="12dp">
-
+        android:orientation="vertical"
+        android:padding="16dp">
+        <TextView
+            android:id="@+id/audio_workbench_lemma"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textAppearance="?attr/textAppearanceHeadline6" />
+        <TextView
+            android:id="@+id/audio_workbench_gloss"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textAppearance="?attr/textAppearanceBody1" />
+        <TextView
+            android:id="@+id/audio_workbench_occurrences"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textAppearance="?attr/textAppearanceCaption" />
         <LinearLayout
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical">
-
-            <TextView
-                android:id="@+id/audio_workbench_lemma"
-                android:layout_width="match_parent"
+            android:gravity="end"
+            android:orientation="horizontal">
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/audio_workbench_play"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textAppearance="?attr/textAppearanceHeadline6" />
-
-            <TextView
-                android:id="@+id/audio_workbench_gloss"
-                android:layout_width="match_parent"
+                android:text="@string/audio_workbench_play" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/audio_workbench_record"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textAppearance="?attr/textAppearanceBody1" />
-
-            <TextView
-                android:id="@+id/audio_workbench_occurrences"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textAppearance="?attr/textAppearanceCaption" />
+                android:layout_marginStart="8dp"
+                android:text="@string/audio_workbench_record" />
         </LinearLayout>
-
-        <Button
-            android:id="@+id/audio_workbench_play"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/audio_workbench_play" />
-
-        <Button
-            android:id="@+id/audio_workbench_record"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/audio_workbench_record" />
     </LinearLayout>
-</androidx.cardview.widget.CardView>
+</com.google.android.material.card.MaterialCardView>
