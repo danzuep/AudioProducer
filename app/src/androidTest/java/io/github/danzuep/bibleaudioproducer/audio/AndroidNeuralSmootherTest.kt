@@ -28,7 +28,7 @@ class AndroidNeuralSmootherTest {
             source.inputStream().use { store.install(it) }
             assertTrue(store.isInstalled())
             val dry = FloatArray(16000) { (0.25 * sin(2 * PI * 440 * it / 16000)).toFloat() }
-            val output = AndroidNeuralSmoother().smooth(dry, store.modelFile)
+            val output = AndroidNeuralSmoother().smooth(dry, store.modelFile, NeuralStrength.STANDARD)
             assertEquals(dry.size, output.size)
             assertTrue(output.all { it.isFinite() })
             assertTrue(output.indices.any { kotlin.math.abs(output[it] - dry[it]) > 0.01f })

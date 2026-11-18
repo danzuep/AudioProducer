@@ -64,8 +64,9 @@ object VerseAudio {
         return bytes
     }
 
-    fun blendNeural(dry: FloatArray, wet: FloatArray): FloatArray {
+    fun blendNeural(dry: FloatArray, wet: FloatArray, wetShare: Float = 0.35f): FloatArray {
         require(dry.isNotEmpty() && wet.isNotEmpty()) { "Neural smoothing returned no audio." }
+        require(wetShare in 0f..1f) { "Invalid neural smoothing strength." }
         require(dry.all { it.isFinite() } && wet.all { it.isFinite() }) { "Neural smoothing returned invalid audio." }
         val dryPeak = dry.maxOf { abs(it) }
         val wetPeak = wet.maxOf { abs(it) }
@@ -73,7 +74,7 @@ object VerseAudio {
         val dryGain = if (dryPeak == 0f) 1f else 0.8f / dryPeak
         val wetGain = 0.8f / wetPeak
         return FloatArray(minOf(dry.size, wet.size)) { i ->
-            dry[i] * dryGain * 0.65f + wet[i] * wetGain * 0.35f
+            dry[i] * dryGain * (1f - wetShare) + wet[i] * wetGain * wetShare
         }
     }
 

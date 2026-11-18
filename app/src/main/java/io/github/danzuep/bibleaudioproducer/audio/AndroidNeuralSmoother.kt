@@ -4,12 +4,22 @@ import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import ai.onnxruntime.TensorInfo
+import android.os.Build
 import java.io.File
 import java.nio.FloatBuffer
 
 internal class AndroidNeuralSmoother {
-    fun smooth(samples: FloatArray, model: File): FloatArray {
+    fun smooth(samples: FloatArray, model: File, strength: NeuralStrength): FloatArray {
+        require(Build.VERSION.SDK_INT >= 24) { "Neural smoothing requires Android 7.0 or later." }
         require(samples.size <= VerseAudio.SAMPLE_RATE * 30) { "Neural smoothing supports verses up to 30 seconds." }
+        return try {
+            runModel(samples, model, strength)
+        } catch (error: LinkageError) {
+            throw IllegalStateException("Neural smoothing is unavailable on this device.", error)
+        }
+    }
+
+    private fun runModel(samples: FloatArray, model: File, strength: NeuralStrength): FloatArray {
         val mel = SpeechT5Mel.calculate(samples)
         val environment = OrtEnvironment.getEnvironment()
         OrtSession.SessionOptions().use { options ->
@@ -34,7 +44,7 @@ internal class AndroidNeuralSmoother {
                         }
                         val generated = FloatArray(buffer.remaining())
                         buffer.get(generated)
-                        return VerseAudio.blendNeural(samples, generated)
+                        return VerseAudio.blendNeural(samples, generated, strength.wetShare)
                     }
                 }
             }

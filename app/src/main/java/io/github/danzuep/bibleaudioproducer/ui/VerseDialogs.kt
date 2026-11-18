@@ -11,6 +11,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import io.github.danzuep.bibleaudioproducer.R
+import io.github.danzuep.bibleaudioproducer.audio.NeuralStrength
 import io.github.danzuep.bibleaudioproducer.data.AudioProjectRepository
 import io.github.danzuep.bibleaudioproducer.workbench.AudioProjectState
 import io.github.danzuep.bibleaudioproducer.workbench.AudioVerse
@@ -26,7 +27,7 @@ internal class VerseDialogs(
         val state: AudioProjectState
         val busy: Boolean
         fun playVerse(verse: AudioVerse)
-        fun downloadVerse(verse: AudioVerse, neural: Boolean)
+        fun downloadVerse(verse: AudioVerse, strength: NeuralStrength?)
         fun saveOrder(reference: String, order: List<Int>?, unspoken: Set<String>)
         fun toggleRecording(card: RecordingCard)
         fun playRecording(card: RecordingCard)
@@ -71,6 +72,7 @@ internal class VerseDialogs(
             activity.getString(R.string.audio_play_verse),
             activity.getString(R.string.audio_download_verse),
             activity.getString(R.string.audio_download_neural),
+            activity.getString(R.string.audio_download_neural_strong),
             activity.getString(R.string.audio_arrange_verse),
             activity.getString(R.string.audio_record_verse_words)
         )
@@ -79,10 +81,11 @@ internal class VerseDialogs(
             .setItems(labels) { _, index ->
                 when (index) {
                     0 -> actions.playVerse(verse)
-                    1 -> actions.downloadVerse(verse, false)
-                    2 -> actions.downloadVerse(verse, true)
-                    3 -> arrangeVerse(verse)
-                    4 -> showVerseWords(verse)
+                    1 -> actions.downloadVerse(verse, null)
+                    2 -> actions.downloadVerse(verse, NeuralStrength.STANDARD)
+                    3 -> actions.downloadVerse(verse, NeuralStrength.STRONG)
+                    4 -> arrangeVerse(verse)
+                    5 -> showVerseWords(verse)
                 }
             }
             .setNegativeButton(android.R.string.cancel, null)

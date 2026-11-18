@@ -22,7 +22,8 @@ selected order, with normalized levels and crossfaded joins. The app reports how
 missing words were skipped. Computer voice is not yet available.
 
 On Android 7.0 or later, **Save with neural smoothing** optionally blends an on-device
-SpeechT5 HiFi-GAN reconstruction into verses up to 30 seconds long. To enable it,
+SpeechT5 HiFi-GAN reconstruction into verses up to 30 seconds long. Choose the standard
+35% blend or the stronger 65% blend. To enable it,
 download the [pinned ONNX model](https://huggingface.co/Xenova/speecht5_hifigan/resolve/cf980c3610d7b7f20919960031066ef7905737bd/onnx/model.onnx)
 (55,432,026 bytes) and choose **Import neural model** in Settings. The app verifies
 its SHA-256 before use. Processing happens on the device; recordings are never uploaded.

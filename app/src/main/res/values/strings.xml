@@ -32,6 +32,7 @@
     <string name="audio_play_verse">Play recorded words</string>
     <string name="audio_download_verse">Save verse audio (WAV)</string>
     <string name="audio_download_neural">Save with neural smoothing (WAV)</string>
+    <string name="audio_download_neural_strong">Save with stronger neural smoothing (WAV)</string>
     <string name="audio_neural_model_title">Neural smoothing model</string>
     <string name="audio_neural_model_required">Import the SpeechT5 HiFi-GAN ONNX model first. The model runs on your device; recordings are not uploaded. See the README for the model download.</string>
     <string name="audio_neural_import">Import neural model</string>

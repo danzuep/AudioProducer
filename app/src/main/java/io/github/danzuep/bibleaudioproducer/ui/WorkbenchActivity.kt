@@ -32,6 +32,7 @@ import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioRecorder
 import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioDecoder
 import io.github.danzuep.bibleaudioproducer.audio.AndroidNeuralSmoother
 import io.github.danzuep.bibleaudioproducer.audio.NeuralModelStore
+import io.github.danzuep.bibleaudioproducer.audio.NeuralStrength
 import io.github.danzuep.bibleaudioproducer.audio.VerseAudio
 import io.github.danzuep.bibleaudioproducer.data.RecordingPlanJson
 import io.github.danzuep.bibleaudioproducer.data.AudioProjectRepository
@@ -62,8 +63,8 @@ class WorkbenchActivity : AppCompatActivity() {
             override val state get() = projectState
             override val busy get() = this@WorkbenchActivity.busy
             override fun playVerse(verse: AudioVerse) = this@WorkbenchActivity.playVerse(verse)
-            override fun downloadVerse(verse: AudioVerse, neural: Boolean) =
-                this@WorkbenchActivity.downloadVerse(verse, neural)
+            override fun downloadVerse(verse: AudioVerse, strength: NeuralStrength?) =
+                this@WorkbenchActivity.downloadVerse(verse, strength)
             override fun saveOrder(reference: String, order: List<Int>?, unspoken: Set<String>) =
                 saveVerseOrder(reference, order, unspoken)
             override fun toggleRecording(card: RecordingCard) = this@WorkbenchActivity.toggleRecording(card)
@@ -86,7 +87,7 @@ class WorkbenchActivity : AppCompatActivity() {
     private var activeLemma: String? = null
     private var reviewDialog: AlertDialog? = null
     private data class VerseExport(
-        val reference: String, val lemmas: List<String>, val missing: Int, val neural: Boolean
+        val reference: String, val lemmas: List<String>, val missing: Int, val strength: NeuralStrength?
     )
     private var pendingVerseExport: VerseExport? = null
 
@@ -133,7 +134,7 @@ class WorkbenchActivity : AppCompatActivity() {
         if (pendingReference != null && pendingLemmas != null) {
             pendingVerseExport = VerseExport(
                 pendingReference, pendingLemmas, savedInstanceState?.getInt("verse_export_missing") ?: 0,
-                savedInstanceState?.getBoolean("verse_export_neural") ?: false
+                savedInstanceState?.getString("verse_export_strength")?.let(NeuralStrength::valueOf)
             )
         }
         setContentView(R.layout.activity_audio_workbench)
@@ -286,7 +287,7 @@ class WorkbenchActivity : AppCompatActivity() {
             outState.putString("verse_export_reference", it.reference)
             outState.putStringArrayList("verse_export_lemmas", ArrayList(it.lemmas))
             outState.putInt("verse_export_missing", it.missing)
-            outState.putBoolean("verse_export_neural", it.neural)
+            outState.putString("verse_export_strength", it.strength?.name)
         }
         super.onSaveInstanceState(outState)
     }
@@ -417,16 +418,16 @@ class WorkbenchActivity : AppCompatActivity() {
         if (pendingTake() == null) audioPlayer.play(words.map { repository.clipFile(it.lemma) })
     }
 
-    private fun downloadVerse(verse: AudioVerse, neural: Boolean) {
+    private fun downloadVerse(verse: AudioVerse, strength: NeuralStrength?) {
         if (busy) return
         stopRecording()
         stopPlayback()
         if (pendingTake() != null) return
-        if (neural && Build.VERSION.SDK_INT < 24) {
+        if (strength != null && Build.VERSION.SDK_INT < 24) {
             Toast.makeText(this, R.string.audio_neural_version, Toast.LENGTH_LONG).show()
             return
         }
-        if (neural && !neuralModels.isInstalled()) {
+        if (strength != null && !neuralModels.isInstalled()) {
             AlertDialog.Builder(this).setTitle(R.string.audio_neural_model_title)
                 .setMessage(R.string.audio_neural_model_required)
                 .setNegativeButton(android.R.string.cancel, null)
@@ -443,7 +444,7 @@ class WorkbenchActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.audio_word_not_recorded, Toast.LENGTH_LONG).show()
             return
         }
-        pendingVerseExport = VerseExport(verse.reference, recorded.map { it.lemma }, words.size - recorded.size, neural)
+        pendingVerseExport = VerseExport(verse.reference, recorded.map { it.lemma }, words.size - recorded.size, strength)
         saveVerse.launch("${verse.reference.replace(Regex("[^A-Za-z0-9]+"), "-")}.wav")
     }
 
@@ -464,8 +465,9 @@ class WorkbenchActivity : AppCompatActivity() {
                     }
                 }
                 val assembled = VerseAudio.assemble(clips)
-                val samples = if (export.neural) AndroidNeuralSmoother().smooth(assembled, neuralModels.modelFile)
-                    else assembled
+                val samples = export.strength?.let {
+                    AndroidNeuralSmoother().smooth(assembled, neuralModels.modelFile, it)
+                } ?: assembled
                 val wav = VerseAudio.encodeWav(samples)
                 val output = contentResolver.openOutputStream(uri)
                     ?: throw IllegalStateException(getString(R.string.audio_download_failed))
