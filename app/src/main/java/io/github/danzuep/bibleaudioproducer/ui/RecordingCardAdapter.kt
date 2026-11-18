@@ -14,13 +14,39 @@ import io.github.danzuep.bibleaudioproducer.workbench.RecordingCard
 data class RecordingCardRow(
     val card: RecordingCard,
     val recorded: Boolean,
-    val recording: Boolean
+    val recording: Boolean,
+    val playing: Boolean
 )
 
 class RecordingCardAdapter(
-    private val onRecord: (RecordingCard) -> Unit,
+    private val onPress: (RecordingCard) -> Unit,
+    private val onRelease: (RecordingCard) -> Unit,
+    private val onCancel: (RecordingCard) -> Unit,
+    private val onToggle: (RecordingCard) -> Unit,
     private val onPlay: (RecordingCard) -> Unit
 ) : ListAdapter<RecordingCardRow, RecordingCardAdapter.RecordingCardViewHolder>(DIFF) {
+    private var recyclerView: RecyclerView? = null
+    private val levels = mutableListOf<Float>()
+
+    override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
+        super.onAttachedToRecyclerView(recyclerView)
+        this.recyclerView = recyclerView
+    }
+
+    override fun onDetachedFromRecyclerView(recyclerView: RecyclerView) {
+        this.recyclerView = null
+        super.onDetachedFromRecyclerView(recyclerView)
+    }
+
+    fun clearWaveform() = levels.clear()
+
+    fun addLevel(lemma: String, level: Float) {
+        levels.add(level)
+        if (levels.size > RecordingWaveform.MAX_LEVELS) levels.removeAt(0)
+        val index = currentList.indexOfFirst { it.card.lemma == lemma && it.recording }
+        val holder = recyclerView?.findViewHolderForAdapterPosition(index) as? RecordingCardViewHolder
+        holder?.showWaveform()
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecordingCardViewHolder =
         RecordingCardViewHolder(
@@ -36,6 +62,9 @@ class RecordingCardAdapter(
         private val occurrences = view.findViewById<TextView>(R.id.audio_workbench_occurrences)
         private val record = view.findViewById<Button>(R.id.audio_workbench_record)
         private val play = view.findViewById<Button>(R.id.audio_workbench_play)
+        private val waveform = view.findViewById<RecordingWaveform>(R.id.audio_workbench_waveform)
+
+        fun showWaveform() = waveform.showLevels(levels)
 
         fun bind(row: RecordingCardRow) {
             lemma.text = row.card.lemma
@@ -44,15 +73,23 @@ class RecordingCardAdapter(
                 R.string.audio_workbench_occurrences,
                 row.card.occurrences
             )
-            record.text = itemView.context.getString(
-                when {
-                    row.recording -> R.string.audio_workbench_stop
-                    row.recorded -> R.string.audio_workbench_record_again
-                    else -> R.string.audio_workbench_record
-                }
+            record.setText(if (row.recording) R.string.audio_stop_symbol else R.string.audio_record_symbol)
+            record.contentDescription = itemView.context.getString(
+                if (row.recording) R.string.audio_recording_active else R.string.audio_hold_record, row.card.lemma
             )
+            waveform.visibility = if (row.recording) View.VISIBLE else View.GONE
+            if (row.recording) showWaveform()
             play.visibility = if (row.recorded && !row.recording) View.VISIBLE else View.GONE
-            record.setOnClickListener { onRecord(row.card) }
+            play.setText(if (row.playing) R.string.audio_stop_symbol else R.string.audio_play_symbol)
+            play.contentDescription = itemView.context.getString(
+                if (row.playing) R.string.audio_stop_word else R.string.audio_play_word, row.card.lemma
+            )
+            record.setRecordingGesture(
+                onPress = { onPress(row.card) },
+                onRelease = { onRelease(row.card) },
+                onCancel = { onCancel(row.card) },
+                onAccessibleClick = { onToggle(row.card) }
+            )
             play.setOnClickListener { onPlay(row.card) }
         }
     }

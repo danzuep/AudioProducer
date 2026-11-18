@@ -61,5 +61,7 @@ internal class AndroidAudioRecorder(private val context: Context) {
         } finally {
             current.release()
         }
+
+        fun amplitude(): Float = checkNotNull(recorder).maxAmplitude / 32767f
     }
 }

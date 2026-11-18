@@ -1,6 +1,7 @@
 package io.github.danzuep.bibleaudioproducer.ui
 
 import android.view.View
+import android.content.res.ColorStateList
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.FrameLayout
@@ -10,6 +11,8 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import com.google.android.material.button.MaterialButton
 import io.github.danzuep.bibleaudioproducer.R
 import io.github.danzuep.bibleaudioproducer.audio.NeuralStrength
 import io.github.danzuep.bibleaudioproducer.data.AudioProjectRepository
@@ -30,8 +33,19 @@ internal class VerseDialogs(
         fun downloadVerse(verse: AudioVerse, strength: NeuralStrength?)
         fun saveOrder(reference: String, order: List<Int>?, unspoken: Set<String>)
         fun toggleRecording(card: RecordingCard)
+        fun pressRecording(card: RecordingCard)
+        fun releaseRecording(card: RecordingCard)
+        fun cancelRecording(card: RecordingCard)
+        fun isRecording(card: RecordingCard): Boolean
+        fun isPlaying(card: RecordingCard): Boolean
         fun playRecording(card: RecordingCard)
         fun closeRecording()
+    }
+
+    private var refreshWordControls: (() -> Unit)? = null
+
+    fun refreshControls() {
+        refreshWordControls?.invoke()
     }
 
     fun showChapters(bookVerses: List<AudioVerse>) {
@@ -96,9 +110,7 @@ internal class VerseDialogs(
         if (actions.busy) return
         val chunks = VerseWorkflow.chunks(verse.words)
         val saved = actions.state.seedOrders[verse.reference]
-        val order = (saved?.takeIf {
-            it.size == chunks.size && it.toSet() == chunks.indices.toSet()
-        } ?: chunks.indices.toList()).toMutableList()
+        val order = VerseWorkflow.order(chunks, actions.state.rules, saved).toMutableList()
         val unspoken = actions.state.unspoken.toMutableSet()
         val content = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -142,6 +154,7 @@ internal class VerseDialogs(
                         isChecked = word.unspokenKey !in unspoken
                         setOnCheckedChangeListener { _, checked ->
                             if (checked) unspoken.remove(word.unspokenKey) else unspoken.add(word.unspokenKey)
+                            draw()
                         }
                     })
                 }
@@ -171,31 +184,69 @@ internal class VerseDialogs(
             orientation = LinearLayout.VERTICAL
             setPadding(24, 8, 24, 8)
         }
+        val refreshers = mutableListOf<() -> Unit>()
         for (word in words) {
             val row = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
             val card = RecordingCard(verse.reference.substringBefore(' '), word.lemma, word.gloss, 0)
             row.addView(TextView(activity).apply {
                 text = "${word.surface}\n${word.gloss}"
             }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-            row.addView(Button(activity).apply {
-                text = activity.getString(R.string.audio_record_stop)
-                setOnClickListener { actions.toggleRecording(card) }
-            })
-            row.addView(Button(activity).apply {
-                text = activity.getString(R.string.audio_workbench_play)
+            val record = roundButton(R.color.workbench_record).apply {
+                setRecordingGesture(
+                    onPress = { actions.pressRecording(card) },
+                    onRelease = { actions.releaseRecording(card) },
+                    onCancel = { actions.cancelRecording(card) },
+                    onAccessibleClick = { actions.toggleRecording(card) }
+                )
+            }
+            val play = roundButton(R.color.workbench_primary).apply {
                 setOnClickListener {
                     if (repository.clipFile(word.lemma).isFile) actions.playRecording(card)
                     else Toast.makeText(activity, R.string.audio_word_not_recorded, Toast.LENGTH_SHORT).show()
                 }
-            })
+            }
+            refreshers.add {
+                val recording = actions.isRecording(card)
+                val playing = actions.isPlaying(card)
+                record.setText(if (recording) R.string.audio_stop_symbol else R.string.audio_record_symbol)
+                record.contentDescription = activity.getString(
+                    if (recording) R.string.audio_recording_active else R.string.audio_hold_record, card.lemma
+                )
+                play.setText(if (playing) R.string.audio_stop_symbol else R.string.audio_play_symbol)
+                play.contentDescription = activity.getString(
+                    if (playing) R.string.audio_stop_word else R.string.audio_play_word, card.lemma
+                )
+            }
+            row.addView(record)
+            row.addView(play)
             content.addView(row)
         }
+        refreshWordControls = { refreshers.forEach { it() } }
+        refreshControls()
         AlertDialog.Builder(activity)
             .setTitle(verse.reference)
             .setView(dialogScroll(content))
             .setPositiveButton(android.R.string.ok, null)
-            .setOnDismissListener { actions.closeRecording() }
+            .setOnDismissListener {
+                refreshWordControls = null
+                actions.closeRecording()
+            }
             .show()
+    }
+
+    private fun roundButton(color: Int): MaterialButton {
+        val size = (56 * activity.resources.displayMetrics.density).toInt()
+        return MaterialButton(activity).apply {
+            layoutParams = LinearLayout.LayoutParams(size, size)
+            insetTop = 0
+            insetBottom = 0
+            minWidth = 0
+            setPadding(0, 0, 0, 0)
+            cornerRadius = size / 2
+            backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(activity, color))
+            setTextColor(ContextCompat.getColor(activity, android.R.color.white))
+            textSize = 22f
+        }
     }
 
     private fun dialogScroll(content: View): View {

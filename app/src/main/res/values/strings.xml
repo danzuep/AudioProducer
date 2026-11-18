@@ -47,7 +47,7 @@
     <string name="audio_arrange_verse">Arrange and omit words</string>
     <string name="audio_record_verse_words">Record verse words</string>
     <string name="audio_arrange_title">Arrange %1$s</string>
-    <string name="audio_arrange_description">Move phrases into your language’s order. Uncheck words your language leaves out.</string>
+    <string name="audio_arrange_description">Move phrases into your language’s order. Uncheck a Greek form to skip it everywhere it occurs.</string>
     <string name="audio_move_earlier">Move earlier</string>
     <string name="audio_move_later">Move later</string>
     <string name="audio_speak_word">Speak %1$s</string>
@@ -75,6 +75,15 @@
     <string name="audio_workbench_load_failed">Unable to load the recording plan.</string>
     <string name="audio_workbench_no_results">No matching words.</string>
     <string name="audio_workbench_play">Play</string>
+    <string name="audio_play_symbol">▶</string>
+    <string name="audio_stop_symbol">■</string>
+    <string name="audio_record_symbol">●</string>
+    <string name="audio_hold_record">Hold to record %1$s, release to save. Activate to toggle recording.</string>
+    <string name="audio_recording_active">Recording %1$s. Release or activate to stop.</string>
+    <string name="audio_play_word">Play %1$s</string>
+    <string name="audio_stop_word">Stop %1$s</string>
+    <string name="audio_permission_retry">Microphone enabled. Hold the record button again.</string>
+    <string name="audio_recording_cancelled">Recording cancelled. The previous take was kept.</string>
     <string name="audio_workbench_record">Record</string>
     <string name="audio_workbench_record_again">Record again</string>
     <string name="audio_workbench_stop">Stop</string>

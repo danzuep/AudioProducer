@@ -22,6 +22,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import io.github.danzuep.bibleaudioproducer.R
+import io.github.danzuep.bibleaudioproducer.audio.VerseAudio
 import io.github.danzuep.bibleaudioproducer.data.RecordingPlanJson
 import io.github.danzuep.bibleaudioproducer.data.AudioProjectRepository
 import java.io.File
@@ -124,6 +125,41 @@ class WorkbenchLaunchTest {
             repository.recordingCandidateFile("λόγος").writeBytes(byteArrayOf(2))
             check(context.getSharedPreferences("audio-project", Context.MODE_PRIVATE).edit()
                 .putString("pending_recording_lemma", "λόγος").commit())
+        }
+
+        @Test
+        fun recordingPlaybackCanStopAndReturnsToPlayWhenComplete() {
+            check(directory.mkdirs())
+            File(directory, "recording-plan.json").writeText(
+                """{"cards":[{"book":"JHN","lemma":"λογος","gloss":"word","occurrences":1}]}"""
+            )
+            val clip = AudioProjectRepository(directory).clipFile("λογος")
+            check(clip.parentFile!!.mkdirs())
+            clip.writeBytes(VerseAudio.encodeWav(FloatArray(16000) { 0.1f }))
+            ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
+                awaitBooks(scenario, 1)
+                onView(withId(R.id.audio_step_books)).perform(click())
+                onView(withId(R.id.audio_workbench_play)).perform(click())
+                awaitPlayDescription(scenario, "Stop λογος")
+                onView(withId(R.id.audio_workbench_play)).perform(click())
+                awaitPlayDescription(scenario, "Play λογος")
+                onView(withId(R.id.audio_workbench_play)).perform(click())
+                awaitPlayDescription(scenario, "Stop λογος")
+                awaitPlayDescription(scenario, "Play λογος")
+            }
+        }
+
+        private fun awaitPlayDescription(scenario: ActivityScenario<WorkbenchActivity>, description: String) {
+            val deadline = System.currentTimeMillis() + 10_000
+            var matches = false
+            while (!matches && System.currentTimeMillis() < deadline) {
+                scenario.onActivity { activity ->
+                    matches = activity.findViewById<Button>(R.id.audio_workbench_play)
+                        ?.contentDescription?.toString() == description
+                }
+                if (!matches) Thread.sleep(25)
+            }
+            assertTrue("Playback control did not become $description", matches)
         }
 
         prepareTake()

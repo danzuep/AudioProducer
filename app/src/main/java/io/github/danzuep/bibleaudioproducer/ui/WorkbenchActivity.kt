@@ -4,6 +4,8 @@ import android.Manifest
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
@@ -55,6 +57,8 @@ class WorkbenchActivity : AppCompatActivity() {
     private val neuralModels by lazy { NeuralModelStore(File(filesDir, "audio-models")) }
     private val audioPlayer by lazy {
         AndroidAudioPlayer {
+            playingLemma = null
+            updateRows()
             Toast.makeText(this, R.string.audio_workbench_playback_failed, Toast.LENGTH_LONG).show()
         }
     }
@@ -68,9 +72,13 @@ class WorkbenchActivity : AppCompatActivity() {
             override fun saveOrder(reference: String, order: List<Int>?, unspoken: Set<String>) =
                 saveVerseOrder(reference, order, unspoken)
             override fun toggleRecording(card: RecordingCard) = this@WorkbenchActivity.toggleRecording(card)
+            override fun pressRecording(card: RecordingCard) = pressRecord(card)
+            override fun releaseRecording(card: RecordingCard) = releaseRecord(card)
+            override fun cancelRecording(card: RecordingCard) = cancelRecord(card)
+            override fun isRecording(card: RecordingCard) = activeLemma == card.lemma
+            override fun isPlaying(card: RecordingCard) = playingLemma == card.lemma
             override fun playRecording(card: RecordingCard) = this@WorkbenchActivity.playRecording(card)
             override fun closeRecording() {
-                pendingLemma = null
                 stopRecording()
                 stopPlayback()
             }
@@ -85,6 +93,20 @@ class WorkbenchActivity : AppCompatActivity() {
     private var step = Step.LANGUAGE
     private var busy = false
     private var activeLemma: String? = null
+    private var playingLemma: String? = null
+    private val waveformHandler = Handler(Looper.getMainLooper())
+    private val waveformSampler = object : Runnable {
+        override fun run() {
+            val lemma = activeLemma ?: return
+            try {
+                adapter.addLevel(lemma, audioRecorder.amplitude())
+                waveformHandler.postDelayed(this, 100)
+            } catch (exception: IllegalStateException) {
+                stopRecording()
+                Toast.makeText(this@WorkbenchActivity, R.string.audio_workbench_recording_failed, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
     private var reviewDialog: AlertDialog? = null
     private data class VerseExport(
         val reference: String, val lemmas: List<String>, val missing: Int, val strength: NeuralStrength?
@@ -121,11 +143,9 @@ class WorkbenchActivity : AppCompatActivity() {
     private val requestAudioPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) pendingLemma?.let(::startRecording)
+        if (granted) Toast.makeText(this, R.string.audio_permission_retry, Toast.LENGTH_LONG).show()
         else Toast.makeText(this, R.string.audio_workbench_permission_denied, Toast.LENGTH_LONG).show()
-        pendingLemma = null
     }
-    private var pendingLemma: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -152,7 +172,9 @@ class WorkbenchActivity : AppCompatActivity() {
         coverage = findViewById(R.id.audio_workbench_coverage)
         empty = findViewById(R.id.audio_workbench_empty)
 
-        adapter = RecordingCardAdapter(::toggleRecording, ::playRecording)
+        adapter = RecordingCardAdapter(
+            ::pressRecord, ::releaseRecord, ::cancelRecord, ::toggleRecording, ::playRecording
+        )
         findViewById<RecyclerView>(R.id.audio_workbench_list).apply {
             layoutManager = LinearLayoutManager(this@WorkbenchActivity)
             adapter = this@WorkbenchActivity.adapter
@@ -271,7 +293,6 @@ class WorkbenchActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
-        pendingLemma = null
         stopRecording(allowReview = false)
         stopPlayback()
         super.onStop()
@@ -318,7 +339,6 @@ class WorkbenchActivity : AppCompatActivity() {
     }
 
     private fun showStep(next: Step) {
-        pendingLemma = null
         stopRecording()
         stopPlayback()
         if (next != Step.LANGUAGE) {
@@ -713,9 +733,11 @@ class WorkbenchActivity : AppCompatActivity() {
             RecordingCardRow(
                 card,
                 repository.clipFile(card.lemma).isFile,
-                activeLemma == card.lemma
+                activeLemma == card.lemma,
+                playingLemma == card.lemma
             )
         })
+        verseDialogs.refreshControls()
     }
 
     private fun toggleRecording(card: RecordingCard) {
@@ -724,13 +746,36 @@ class WorkbenchActivity : AppCompatActivity() {
             stopRecording()
             return
         }
+        pressRecord(card)
+    }
+
+    private fun pressRecord(card: RecordingCard) {
+        if (busy || activeLemma == card.lemma) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
             android.content.pm.PackageManager.PERMISSION_GRANTED
         ) {
             startRecording(card.lemma)
         } else {
-            pendingLemma = card.lemma
             requestAudioPermission.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    private fun releaseRecord(card: RecordingCard) {
+        if (activeLemma == card.lemma) stopRecording()
+    }
+
+    private fun cancelRecord(card: RecordingCard) {
+        if (activeLemma != card.lemma) return
+        activeLemma = null
+        waveformHandler.removeCallbacks(waveformSampler)
+        try {
+            val candidate = audioRecorder.stop()
+            check(candidate.delete()) { getString(R.string.audio_review_failed) }
+            Toast.makeText(this, R.string.audio_recording_cancelled, Toast.LENGTH_SHORT).show()
+        } catch (exception: Exception) {
+            Toast.makeText(this, exception.message ?: getString(R.string.audio_workbench_recording_failed), Toast.LENGTH_LONG).show()
+        } finally {
+            updateRows()
         }
     }
 
@@ -753,7 +798,9 @@ class WorkbenchActivity : AppCompatActivity() {
             }
             audioRecorder.start(candidate)
             activeLemma = lemma
+            adapter.clearWaveform()
             updateRows()
+            waveformHandler.post(waveformSampler)
         } catch (exception: Exception) {
             Toast.makeText(this, R.string.audio_workbench_recording_failed, Toast.LENGTH_LONG).show()
             activeLemma = null
@@ -764,6 +811,7 @@ class WorkbenchActivity : AppCompatActivity() {
     private fun stopRecording(allowReview: Boolean = true) {
         val lemma = activeLemma ?: return
         activeLemma = null
+        waveformHandler.removeCallbacks(waveformSampler)
         try {
             audioRecorder.stop()
             check(preferences.edit().putString(PENDING_TAKE_KEY, lemma).commit()) {
@@ -856,12 +904,28 @@ class WorkbenchActivity : AppCompatActivity() {
 
     private fun playRecording(card: RecordingCard) {
         if (busy) return
+        if (playingLemma == card.lemma) {
+            stopPlayback()
+            return
+        }
         stopRecording()
-        if (pendingTake() == null) audioPlayer.play(listOf(repository.clipFile(card.lemma)))
+        if (pendingTake() == null) {
+            stopPlayback()
+            playingLemma = card.lemma
+            updateRows()
+            audioPlayer.play(listOf(repository.clipFile(card.lemma))) {
+                playingLemma = null
+                updateRows()
+            }
+        }
     }
 
     private fun stopPlayback() {
         audioPlayer.stop()
+        if (playingLemma != null) {
+            playingLemma = null
+            updateRows()
+        }
     }
 
     companion object {

@@ -16,6 +16,13 @@ Inspired by BTT Recorder's take-review workflow, replacing an existing recording
 reviewing the new take first. The current take remains intact until the replacement is
 accepted, including if the app is interrupted during review.
 
+Hold the red record button and release to save; drag far away or cancel the gesture
+to discard the take. A live waveform shows microphone activity while recording. When
+using an accessibility service or keyboard, activate the button once to start and again
+to stop. After granting microphone permission, start the recording again. The play
+button changes to stop during playback. In **Listen**, arrange phrases and uncheck
+individual Greek forms to omit those forms wherever they occur.
+
 Verse playback uses the recordings available on the device; missing words are skipped.
 Choose **Save verse audio (WAV)** from a verse to export its recorded words in the
 selected order, with normalized levels and crossfaded joins. The app reports how many

@@ -7,10 +7,10 @@ internal class AndroidAudioPlayer(private val onError: () -> Unit) {
     private var player: MediaPlayer? = null
     private var generation = 0
 
-    fun play(files: List<File>) {
+    fun play(files: List<File>, onComplete: () -> Unit = {}) {
         require(files.isNotEmpty())
         stop()
-        playNext(files, 0, generation)
+        playNext(files, 0, generation, onComplete)
     }
 
     fun stop() {
@@ -19,8 +19,12 @@ internal class AndroidAudioPlayer(private val onError: () -> Unit) {
         player = null
     }
 
-    private fun playNext(files: List<File>, index: Int, expectedGeneration: Int) {
-        if (index >= files.size || generation != expectedGeneration) return
+    private fun playNext(files: List<File>, index: Int, expectedGeneration: Int, onComplete: () -> Unit) {
+        if (generation != expectedGeneration) return
+        if (index >= files.size) {
+            onComplete()
+            return
+        }
         try {
             val instance = MediaPlayer()
             player = instance
@@ -30,7 +34,7 @@ internal class AndroidAudioPlayer(private val onError: () -> Unit) {
                 if (player === it) {
                     player = null
                     it.release()
-                    playNext(files, index + 1, expectedGeneration)
+                    playNext(files, index + 1, expectedGeneration, onComplete)
                 }
             }
             instance.setOnErrorListener { failed, _, _ ->
