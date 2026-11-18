@@ -65,7 +65,7 @@ internal object MaculaAudioArchive {
         for (element in clips) {
             val clip = element.takeIf { it.isJsonObject }?.asJsonObject
                 ?: throw IllegalArgumentException("Invalid audio clip entry.")
-            val surface = clip.string("surface").ifBlank { clip.string("lemma") }
+            val surface = clip.string("surface")
             val filename = clip.string("file")
             val mime = clip.string("mime").ifEmpty { "audio/webm" }
             val file = entries[filename]

@@ -132,7 +132,6 @@ class AudioProjectRepositoryTest {
 
             assertTrue(manifest.contains("macula-scripta-audio"))
             assertTrue(manifest.contains("\"language\": \"Example\""))
-            assertTrue(manifest.contains("\"lemma\": \"λογος\""))
             assertTrue(manifest.contains("\"surface\": \"λογος\""))
             assertEquals(listOf(1, 2, 3), entries.getValue("clips/1.m4a").map { it.toInt() })
         } finally {
@@ -141,7 +140,7 @@ class AudioProjectRepositoryTest {
     }
 
     @Test
-    fun importPrefersSurfaceFormAndStillReadsLegacyLemmaArchives() {
+    fun importUsesSurfaceForm() {
         val directory = Files.createTempDirectory("audio-surface-import-test").toFile()
         try {
             val archive = ByteArrayOutputStream().also { bytes ->
@@ -149,8 +148,8 @@ class AudioProjectRepositoryTest {
                     zip.putNextEntry(ZipEntry("manifest.json"))
                     zip.write(
                         """{"format":"macula-scripta-audio","version":1,"language":"Example",
-                            "clips":[{"surface":"λόγου","lemma":"λόγος","file":"clips/1.webm","mime":"audio/webm"},
-                                     {"lemma":"θεός","file":"clips/2.webm","mime":"audio/webm"}]}"""
+                            "clips":[{"surface":"λόγου","file":"clips/1.webm","mime":"audio/webm"},
+                                     {"surface":"θεός","file":"clips/2.webm","mime":"audio/webm"}]}"""
                             .toByteArray()
                     )
                     zip.closeEntry()

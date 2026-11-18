@@ -41,9 +41,8 @@ to discard the take. A live waveform shows microphone activity while recording. 
 using an accessibility service or keyboard, activate the button once to start and again
 to stop. After granting microphone permission, start the recording again. The play
 button changes to stop during playback. Disabled forms are skipped in playback and shown
-in grey; recordings are keyed by the Greek surface form rather than shared by the lemma.
-Legacy audio archives remain importable; their lemma-keyed clips are not reused for
-different inflected forms.
+in grey; recordings and exported archives are keyed by the Greek surface form rather than
+shared by the lemma.
 When a word-list recording is saved, the next unrecorded card is brought to the same
 position in the list.
 
@@ -75,8 +74,9 @@ the upstream [Story Producer](https://github.com/sillsdev/StoryProducer) reposit
 
 ## Development
 
-Android 6.0 (API 23) or later is required. Build and test with JDK 17, the Android SDK,
-Node.js, curl, and network access to GitHub:
+Android 6.0 (API 23) or later is required. Build and test with the Gradle-pinned JDK 17,
+the Android SDK, Node.js, curl, and network access to GitHub. Gradle uses JDK 17 for its
+build daemon even when the shell's default Java is newer:
 
 ```sh
 ./gradlew :core:jvmTest :app:testDebugUnitTest :app:assembleDebug

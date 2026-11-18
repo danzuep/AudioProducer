@@ -222,7 +222,7 @@ class AudioProjectRepository(private val root: File) {
                 "audio/mpeg" -> "mp3"
                 else -> "bin"
             }
-            ExportClip(card.lemma, card.lemma, "clips/${firstClipNumber + index}.$extension", mime)
+            ExportClip(card.lemma, "clips/${firstClipNumber + index}.$extension", mime)
         }
         val manifest = ExportManifest(
             language = language.trim(), clips = clipEntries, rules = state.rules,
@@ -274,7 +274,6 @@ private data class ExportManifest(
 
 private data class ExportClip(
     val surface: String,
-    val lemma: String,
     val file: String,
     val mime: String
 )
