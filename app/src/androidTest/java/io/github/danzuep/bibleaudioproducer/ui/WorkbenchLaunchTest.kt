@@ -48,7 +48,6 @@ import io.github.danzuep.bibleaudioproducer.data.MaculaVerseJson
 import java.io.File
 import android.widget.Button
 import org.hamcrest.Matchers.allOf
-import org.hamcrest.Matchers.startsWith
 
 @RunWith(AndroidJUnit4::class)
 class WorkbenchLaunchTest {
@@ -199,7 +198,7 @@ class WorkbenchLaunchTest {
             assertTrue(skipped.unspokenKey in saved.unspoken)
             onView(withId(R.id.audio_choose_verse)).perform(click())
             onView(withText("Chapter 1")).perform(click())
-            onView(withText(startsWith("JHN 1:1 ·"))).perform(click())
+            onView(withText("JHN 1:1")).perform(click())
             onView(withId(R.id.audio_verse_more)).perform(click())
             onView(withText(R.string.audio_download_verse)).perform(click())
             onView(withText(R.string.audio_format_wav)).check(matches(isDisplayed()))
