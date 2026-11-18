@@ -16,9 +16,29 @@ Inspired by BTT Recorder's take-review workflow, replacing an existing recording
 reviewing the new take first. The current take remains intact until the replacement is
 accepted, including if the app is interrupted during review.
 
+Hold the red record button and release to save; drag far away or cancel the gesture
+to discard the take. A live waveform shows microphone activity while recording. When
+using an accessibility service or keyboard, activate the button once to start and again
+to stop. After granting microphone permission, start the recording again. The play
+button changes to stop during playback. In **Listen**, arrange phrases and uncheck
+individual Greek forms to omit those forms wherever they occur.
+
 Verse playback uses the recordings available on the device; missing words are skipped.
-The optional computer voice, neural smoothing, and whole-verse audio
-download are not yet available in the Android app.
+Choose **Save verse audio** from a verse to export its recorded words in the selected
+order, with normalized levels and crossfaded joins. Choose lossless WAV, compatible
+AAC (M4A), or compact Opus (Ogg, Android 10 or later). All formats also support neural
+smoothing. The app reports how many missing words were skipped. Computer voice is not
+yet available.
+
+On Android 7.0 or later, **Save with neural smoothing** optionally blends an on-device
+SpeechT5 HiFi-GAN reconstruction into verses up to 30 seconds long. Choose the standard
+35% blend or the stronger 65% blend. To enable it,
+download the [pinned ONNX model](https://huggingface.co/Xenova/speecht5_hifigan/resolve/cf980c3610d7b7f20919960031066ef7905737bd/onnx/model.onnx)
+(55,432,026 bytes) and choose **Import neural model** in Settings. The app verifies
+its SHA-256 before use. Processing happens on the device; recordings are never uploaded.
+The model may alter voice quality, so compare the result with the unsmoothed export.
+The SpeechT5 model and ONNX Runtime are provided under the MIT license by Microsoft;
+the model is distributed separately and ONNX Runtime license text is in app settings.
 
 ## Acknowledgements
 

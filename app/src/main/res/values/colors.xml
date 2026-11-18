@@ -3,4 +3,5 @@
     <color name="workbench_primary_dark">#204477</color>
     <color name="workbench_surface">#FAFBFF</color>
     <color name="workbench_outline">#D9DFEA</color>
+    <color name="workbench_record">#C62632</color>
 </resources>

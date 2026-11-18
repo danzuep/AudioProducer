@@ -120,6 +120,12 @@
             android:layout_height="wrap_content"
             android:text="@string/audio_workbench_import" />
         <com.google.android.material.button.MaterialButton
+            android:id="@+id/audio_import_neural_model"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/audio_neural_import" />
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/audio_clear_data"
             style="@style/Widget.MaterialComponents.Button.OutlinedButton"
             android:layout_width="match_parent"
