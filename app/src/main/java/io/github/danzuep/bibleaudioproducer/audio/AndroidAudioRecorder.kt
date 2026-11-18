@@ -13,12 +13,7 @@ internal class AndroidAudioRecorder(private val context: Context) {
         check(recorder == null) { "A recording is already in progress." }
         val directory = checkNotNull(file.parentFile)
         check(directory.mkdirs() || directory.isDirectory) { "Unable to create the recordings folder." }
-        val instance = if (Build.VERSION.SDK_INT >= 31) {
-            MediaRecorder(context)
-        } else {
-            @Suppress("DEPRECATION")
-            MediaRecorder()
-        }
+        val instance = createMediaRecorder()
         try {
             instance.setAudioSource(MediaRecorder.AudioSource.MIC)
             instance.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
@@ -35,6 +30,15 @@ internal class AndroidAudioRecorder(private val context: Context) {
             instance.release()
             file.delete()
             throw exception
+        }
+    }
+
+    private fun createMediaRecorder(): MediaRecorder {
+        return if (Build.VERSION.SDK_INT >= 31) {
+            MediaRecorder(context)
+        } else {
+            @Suppress("DEPRECATION")
+            MediaRecorder()
         }
     }
 
