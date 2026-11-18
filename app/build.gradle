@@ -2,8 +2,17 @@ apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 
 def keystorePropertiesFile = rootProject.file('keystore.properties')
-def appVersionName = (project.findProperty('appVersion') ?: '6.0.0').toString()
-def appVersionCode = (project.findProperty('appVersionCode') ?: '60000').toString().toInteger()
+def appVersionName = (project.findProperty('appVersion') ?: '1.0.0').toString()
+def appVersionCode = (project.findProperty('appVersionCode') ?: '10000').toString().toInteger()
+def maculaAssets = layout.buildDirectory.dir('generated/maculaAudioAssets')
+
+tasks.register('generateMaculaAssets', Exec) {
+    inputs.files(rootProject.file('scripts/generate-macula-assets.sh'),
+        rootProject.file('scripts/generate-macula-verses.mjs'))
+    outputs.dir(maculaAssets)
+    commandLine 'bash', rootProject.file('scripts/generate-macula-assets.sh'),
+        maculaAssets.get().asFile.absolutePath
+}
 
 android {
     namespace 'io.github.danzuep.bibleaudioproducer'
@@ -70,7 +79,10 @@ android {
         }
     }
     testOptions { unitTests.includeAndroidResources = true }
+    sourceSets.main.assets.srcDir(maculaAssets)
 }
+
+tasks.named('preBuild').configure { dependsOn tasks.named('generateMaculaAssets') }
 
 dependencies {
     implementation project(':core')

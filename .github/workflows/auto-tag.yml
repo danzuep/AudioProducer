@@ -2,7 +2,7 @@ name: Auto Tag
 on:
   pull_request:
     types: [closed]
-    branches: [develop]
+    branches: [main]
 
 permissions:
   contents: write
@@ -28,16 +28,8 @@ jobs:
             exit 0
           fi
 
-          latest=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' | sed -n -E '/^v[0-9]+\.[0-9]+\.[0-9]+$/p' | sort -V | tail -n 1)
-          latest=${latest:-v5.1.0}
-          IFS=. read -r major minor patch <<< "${latest#v}"
-          case "$prefix" in
-            major) major=$((10#$major + 1)); minor=0; patch=0 ;;
-            minor) minor=$((10#$minor + 1)); patch=0 ;;
-            patch) patch=$((10#$patch + 1)) ;;
-          esac
-
-          release_tag="v$major.$minor.$patch"
+          latest=$(git ls-remote --tags --refs origin 'v*' | sed -n -E 's#^[^[:space:]]+[[:space:]]+refs/tags/(v[0-9]+\.[0-9]+\.[0-9]+)$#\1#p' | sort -V | tail -n 1)
+          release_tag=$(bash scripts/next-version.sh "$prefix" "$latest")
           tag_commit=$(git rev-parse HEAD)
           existing_tag_commit=$(git ls-remote --tags origin "refs/tags/$release_tag" | cut -f1)
           if [[ -n "$existing_tag_commit" && "$existing_tag_commit" != "$tag_commit" ]]; then

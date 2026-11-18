@@ -1,10 +1,10 @@
-package io.github.danzuep.bibleaudioproducer.controller.audioworkbench
+package io.github.danzuep.bibleaudioproducer.data
 
 import com.google.gson.JsonParser
-import io.github.danzuep.bibleaudioproducer.workbench.AudioWorkbenchCard
+import io.github.danzuep.bibleaudioproducer.workbench.RecordingCard
 
-object AudioWorkbenchPlan {
-    fun parse(json: String): List<AudioWorkbenchCard> {
+object RecordingPlanJson {
+    fun parse(json: String): List<RecordingCard> {
         val root = try {
             JsonParser.parseString(json).asJsonObject
         } catch (exception: Exception) {
@@ -22,7 +22,7 @@ object AudioWorkbenchPlan {
             if (book.isEmpty() || lemma.isEmpty()) {
                 throw IllegalArgumentException("Recording card ${index + 1} is missing its book or Greek lemma.")
             }
-            AudioWorkbenchCard(
+            RecordingCard(
                 book = book,
                 lemma = lemma,
                 gloss = card.get("gloss")?.takeIf { it.isJsonPrimitive }?.asString.orEmpty(),

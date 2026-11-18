@@ -1,9 +1,9 @@
 name: Android CI
 on:
   push:
-    branches: [develop]
+    branches: [main]
   pull_request:
-    branches: [develop]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -21,7 +21,9 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v6.4.1
-      - run: ./gradlew :core:jvmTest :app:testDebugUnitTest :app:assembleDebug
+      - run: |
+          bash scripts/test-next-version.sh
+          ./gradlew :core:jvmTest :app:testDebugUnitTest :app:assembleDebug
         timeout-minutes: 15
       - uses: actions/upload-artifact@v7.0.2
         if: failure()
@@ -55,3 +57,11 @@ jobs:
           arch: x86_64
           disable-animations: true
           script: ./gradlew :app:connectedDebugAndroidTest
+      - uses: actions/upload-artifact@v7.0.2
+        if: failure()
+        with:
+          name: launch-test-reports-${{ matrix.api-level }}
+          path: |
+            app/build/reports/androidTests/connected
+            app/build/outputs/androidTest-results/connected
+          if-no-files-found: ignore

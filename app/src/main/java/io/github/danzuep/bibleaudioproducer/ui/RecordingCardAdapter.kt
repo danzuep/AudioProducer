@@ -1,4 +1,4 @@
-package io.github.danzuep.bibleaudioproducer.controller.audioworkbench
+package io.github.danzuep.bibleaudioproducer.ui
 
 import android.view.LayoutInflater
 import android.view.View
@@ -9,35 +9,35 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import io.github.danzuep.bibleaudioproducer.R
-import io.github.danzuep.bibleaudioproducer.workbench.AudioWorkbenchCard
+import io.github.danzuep.bibleaudioproducer.workbench.RecordingCard
 
-data class AudioWorkbenchRow(
-    val card: AudioWorkbenchCard,
+data class RecordingCardRow(
+    val card: RecordingCard,
     val recorded: Boolean,
     val recording: Boolean
 )
 
-class AudioWorkbenchAdapter(
-    private val onRecord: (AudioWorkbenchCard) -> Unit,
-    private val onPlay: (AudioWorkbenchCard) -> Unit
-) : ListAdapter<AudioWorkbenchRow, AudioWorkbenchAdapter.AudioWorkbenchViewHolder>(DIFF) {
+class RecordingCardAdapter(
+    private val onRecord: (RecordingCard) -> Unit,
+    private val onPlay: (RecordingCard) -> Unit
+) : ListAdapter<RecordingCardRow, RecordingCardAdapter.RecordingCardViewHolder>(DIFF) {
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): AudioWorkbenchViewHolder =
-        AudioWorkbenchViewHolder(
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecordingCardViewHolder =
+        RecordingCardViewHolder(
             LayoutInflater.from(parent.context).inflate(R.layout.item_audio_workbench_card, parent, false)
         )
 
-    override fun onBindViewHolder(holder: AudioWorkbenchViewHolder, position: Int) =
+    override fun onBindViewHolder(holder: RecordingCardViewHolder, position: Int) =
         holder.bind(getItem(position))
 
-    inner class AudioWorkbenchViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+    inner class RecordingCardViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         private val lemma = view.findViewById<TextView>(R.id.audio_workbench_lemma)
         private val gloss = view.findViewById<TextView>(R.id.audio_workbench_gloss)
         private val occurrences = view.findViewById<TextView>(R.id.audio_workbench_occurrences)
         private val record = view.findViewById<Button>(R.id.audio_workbench_record)
         private val play = view.findViewById<Button>(R.id.audio_workbench_play)
 
-        fun bind(row: AudioWorkbenchRow) {
+        fun bind(row: RecordingCardRow) {
             lemma.text = row.card.lemma
             gloss.text = row.card.gloss
             occurrences.text = itemView.context.getString(
@@ -58,11 +58,11 @@ class AudioWorkbenchAdapter(
     }
 
     companion object {
-        private val DIFF = object : DiffUtil.ItemCallback<AudioWorkbenchRow>() {
-            override fun areItemsTheSame(oldItem: AudioWorkbenchRow, newItem: AudioWorkbenchRow): Boolean =
+        private val DIFF = object : DiffUtil.ItemCallback<RecordingCardRow>() {
+            override fun areItemsTheSame(oldItem: RecordingCardRow, newItem: RecordingCardRow): Boolean =
                 oldItem.card.lemma == newItem.card.lemma
 
-            override fun areContentsTheSame(oldItem: AudioWorkbenchRow, newItem: AudioWorkbenchRow): Boolean =
+            override fun areContentsTheSame(oldItem: RecordingCardRow, newItem: RecordingCardRow): Boolean =
                 oldItem == newItem
         }
     }
