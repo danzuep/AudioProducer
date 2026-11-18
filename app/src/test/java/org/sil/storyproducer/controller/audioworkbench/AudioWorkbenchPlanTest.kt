@@ -6,6 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.sil.storyproducer.workbench.AudioWorkbenchCard
 import org.sil.storyproducer.workbench.AudioWorkbenchCoverage
+import org.sil.storyproducer.workbench.Workbench
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
@@ -23,7 +24,7 @@ class AudioWorkbenchPlanTest {
         )
 
         assertEquals(listOf("λογος", "θεος"), cards.map { it.lemma })
-        assertEquals(listOf("JHN"), AudioWorkbenchPlan.books(cards))
+        assertEquals(listOf("JHN"), Workbench.books(cards))
         assertEquals(330, cards.first().occurrences)
     }
 
@@ -37,10 +38,10 @@ class AudioWorkbenchPlanTest {
         )
         val recorded = setOf("λογος")
 
-        assertEquals(AudioWorkbenchCoverage(1, 2), AudioWorkbenchPlan.coverage(cards) { it in recorded })
-        assertEquals("MRK", AudioWorkbenchPlan.nextIncompleteBook(cards) { it in recorded })
-        assertTrue(AudioWorkbenchPlan.coverage(cards) { true }.complete)
-        assertFalse(AudioWorkbenchPlan.coverage(cards) { false }.complete)
+        assertEquals(AudioWorkbenchCoverage(1, 2), Workbench.coverage(cards) { it in recorded })
+        assertEquals("MRK", Workbench.nextIncompleteBook(cards) { it in recorded })
+        assertTrue(Workbench.coverage(cards) { true }.complete)
+        assertFalse(Workbench.coverage(cards) { false }.complete)
     }
 
     @Test

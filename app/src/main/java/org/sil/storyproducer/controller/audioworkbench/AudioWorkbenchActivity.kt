@@ -230,10 +230,10 @@ class AudioWorkbenchActivity : AppCompatActivity() {
     }
 
     private fun refreshBooks(preferIncomplete: Boolean) {
-        val bookList = AudioWorkbenchPlan.books(cards)
+        val bookList = Workbench.books(cards)
         books.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, bookList)
         val preferred = if (preferIncomplete) {
-            AudioWorkbenchPlan.nextIncompleteBook(cards) { repository.clipFile(it).isFile }
+            Workbench.nextIncompleteBook(cards) { repository.clipFile(it).isFile }
         } else {
             selectedBook
         }
@@ -249,7 +249,7 @@ class AudioWorkbenchActivity : AppCompatActivity() {
         val currentBook = selectedBook
         val visibleCards = Workbench.search(cards, currentBook, search.text.toString())
         val bookCards = cards.filter { it.book == currentBook }
-        val completed = AudioWorkbenchPlan.coverage(bookCards) { repository.clipFile(it).isFile }
+        val completed = Workbench.coverage(bookCards) { repository.clipFile(it).isFile }
         coverage.text = getString(R.string.audio_workbench_coverage, completed.recorded, completed.total)
         val noPlan = cards.isEmpty()
         findViewById<View>(R.id.audio_workbench_controls).visibility = if (noPlan) View.GONE else View.VISIBLE
@@ -342,9 +342,9 @@ class AudioWorkbenchActivity : AppCompatActivity() {
     private fun advanceToNextBookIfComplete(lemma: String) {
         val book = cards.firstOrNull { it.lemma == lemma }?.book ?: return
         val bookCards = cards.filter { it.book == book }
-        if (!AudioWorkbenchPlan.coverage(bookCards) { repository.clipFile(it).isFile }.complete) return
-        val nextBook = AudioWorkbenchPlan.nextIncompleteBook(cards) { repository.clipFile(it).isFile } ?: return
-        val nextIndex = AudioWorkbenchPlan.books(cards).indexOf(nextBook)
+        if (!Workbench.coverage(bookCards) { repository.clipFile(it).isFile }.complete) return
+        val nextBook = Workbench.nextIncompleteBook(cards) { repository.clipFile(it).isFile } ?: return
+        val nextIndex = Workbench.books(cards).indexOf(nextBook)
         if (nextIndex >= 0 && nextBook != selectedBook) books.setSelection(nextIndex)
     }
 

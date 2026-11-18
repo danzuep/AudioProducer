@@ -63,7 +63,7 @@ android {
             output.versionCodeOverride = defaultConfig.versionCode * 10 + (abiCodes[abi] ?: 0)
             def versionPart = variant.name == 'release' ?
                 (keystorePropertiesFile.isFile() ? variant.versionName : 'release-not-signed') : variant.name
-            output.outputFileName = "SP-${versionPart}-${abi}.apk"
+            output.outputFileName = "AudioWorkbench-${versionPart}-${abi}.apk"
         }
     }
     testOptions { unitTests.includeAndroidResources = true }

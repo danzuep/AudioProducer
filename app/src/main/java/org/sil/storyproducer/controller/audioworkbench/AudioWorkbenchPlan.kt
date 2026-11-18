@@ -2,8 +2,6 @@ package org.sil.storyproducer.controller.audioworkbench
 
 import com.google.gson.JsonParser
 import org.sil.storyproducer.workbench.AudioWorkbenchCard
-import org.sil.storyproducer.workbench.AudioWorkbenchCoverage
-import org.sil.storyproducer.workbench.Workbench
 
 object AudioWorkbenchPlan {
     fun parse(json: String): List<AudioWorkbenchCard> {
@@ -37,16 +35,4 @@ object AudioWorkbenchPlan {
         }
         return cards
     }
-
-    fun books(cards: List<AudioWorkbenchCard>): List<String> =
-        Workbench.books(cards)
-
-    fun coverage(cards: List<AudioWorkbenchCard>, isRecorded: (String) -> Boolean): AudioWorkbenchCoverage =
-        Workbench.coverage(cards, isRecorded)
-
-    fun nextIncompleteBook(
-        cards: List<AudioWorkbenchCard>,
-        isRecorded: (String) -> Boolean
-    ): String? =
-        Workbench.nextIncompleteBook(cards, isRecorded)
 }
