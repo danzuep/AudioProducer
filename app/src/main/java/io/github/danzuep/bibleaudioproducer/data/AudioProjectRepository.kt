@@ -90,8 +90,11 @@ class AudioProjectRepository(private val root: File) {
         val orders = state.getAsJsonObject("seedOrders")?.entrySet()?.associate { (key, value) ->
             key to value.asJsonArray.map { it.asInt }
         }.orEmpty()
+        val wordOrders = state.getAsJsonObject("wordOrders")?.entrySet()?.associate { (key, value) ->
+            key to value.asJsonArray.map { it.asInt }
+        }.orEmpty()
         val unspoken = state.getAsJsonArray("unspoken")?.map { it.asString }?.toSet().orEmpty()
-        return AudioProjectState(rules, orders, unspoken)
+        return AudioProjectState(rules, orders, unspoken, wordOrders)
     }
 
     fun saveState(state: AudioProjectState) = writeJson(stateFile, state)
@@ -216,7 +219,8 @@ class AudioProjectRepository(private val root: File) {
         }
         val manifest = ExportManifest(
             language = language.trim(), clips = clipEntries, rules = state.rules,
-            seedOrders = state.seedOrders, unspoken = state.unspoken.toList()
+            seedOrders = state.seedOrders, wordOrders = state.wordOrders,
+            unspoken = state.unspoken.toList()
         )
         ZipOutputStream(output.buffered()).use { zip ->
             zip.putNextEntry(ZipEntry("manifest.json"))
@@ -252,6 +256,7 @@ private data class ExportManifest(
     val language: String,
     val rules: Map<String, GrammarRule> = emptyMap(),
     @SerializedName("seed_orders") val seedOrders: Map<String, List<Int>> = emptyMap(),
+    @SerializedName("word_orders") val wordOrders: Map<String, List<Int>> = emptyMap(),
     val unspoken: List<String> = emptyList(),
     val clips: List<ExportClip>
 )

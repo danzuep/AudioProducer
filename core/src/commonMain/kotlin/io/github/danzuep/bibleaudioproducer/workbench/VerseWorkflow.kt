@@ -8,7 +8,11 @@ data class VerseWord(
     val type: String,
     val grammaticalCase: String,
     val mood: String,
-    val gloss: String
+    val gloss: String,
+    val role: String = "",
+    val mandarin: String = "",
+    val morphology: String = "",
+    val reference: String = ""
 ) {
     val proper: Boolean get() = type == "proper" || pos == "proper_noun"
     val unspokenKey: String get() = surface.ifEmpty { lemma }
@@ -154,11 +158,23 @@ object VerseWorkflow {
 
     fun spokenWords(
         words: List<VerseWord>, rules: Map<String, GrammarRule>,
-        explicit: List<Int>?, unspoken: Set<String>
-    ): List<VerseWord> {
+        explicit: List<Int>?, unspoken: Set<String>, wordOrder: List<Int>? = null
+    ): List<VerseWord> = orderedWordIndices(words, rules, wordOrder, explicit).map(words::get)
+        .filter { !it.proper && it.unspokenKey !in unspoken }
+
+    fun orderedWordIndices(
+        words: List<VerseWord>, rules: Map<String, GrammarRule>,
+        wordOrder: List<Int>?, chunkOrder: List<Int>? = null
+    ): List<Int> {
+        if (wordOrder != null && validOrder(wordOrder, words.size)) return wordOrder
         val chunks = chunks(words)
-        return order(chunks, rules, explicit).flatMap { chunks[it].words }
-            .filter { !it.proper && it.unspokenKey !in unspoken }
+        val remaining = words.indices.toMutableList()
+        val chunkWordIndices = chunks.map { chunk ->
+            chunk.words.map { word ->
+                remaining.first { words[it] == word }.also { remaining.remove(it) }
+            }
+        }
+        return order(chunks, rules, chunkOrder).flatMap { chunkWordIndices[it] }
     }
 
     private fun validOrder(order: List<Int>, count: Int) =

@@ -40,4 +40,17 @@ class VerseWorkflowTest {
         )
         assertEquals(listOf("a", "b", "c"), VerseWorkflow.chapterOrder(cards, verses).map { it.lemma })
     }
+
+    @Test
+    fun explicitVerseOrderReordersIndividualWords() {
+        val words = listOf(
+            word("ἐν", "ἐν", "prep"),
+            word("ἀρχῇ", "ἀρχή", "noun", "dative"),
+            word("ἦν", "εἰμί", "verb")
+        )
+        assertEquals(
+            listOf("ἦν", "ἐν", "ἀρχῇ"),
+            VerseWorkflow.spokenWords(words, emptyMap(), null, emptySet(), listOf(2, 0, 1)).map { it.surface }
+        )
+    }
 }

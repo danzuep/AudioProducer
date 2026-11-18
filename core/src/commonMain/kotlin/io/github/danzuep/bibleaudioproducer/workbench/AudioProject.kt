@@ -3,7 +3,8 @@ package io.github.danzuep.bibleaudioproducer.workbench
 data class AudioProjectState(
     val rules: Map<String, GrammarRule> = emptyMap(),
     val seedOrders: Map<String, List<Int>> = emptyMap(),
-    val unspoken: Set<String> = emptySet()
+    val unspoken: Set<String> = emptySet(),
+    val wordOrders: Map<String, List<Int>> = emptyMap()
 )
 
 data class AudioArchiveImport(

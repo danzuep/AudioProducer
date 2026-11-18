@@ -8,6 +8,8 @@ import android.os.Handler
 import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -15,6 +17,7 @@ import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
@@ -29,6 +32,7 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
+import com.google.android.material.card.MaterialCardView
 import io.github.danzuep.bibleaudioproducer.R
 import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioPlayer
 import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioRecorder
@@ -51,9 +55,10 @@ import java.io.File
 import java.util.concurrent.Executors
 
 class WorkbenchActivity : AppCompatActivity() {
-    private val repository by lazy {
-        AudioProjectRepository(File(filesDir, "audio-project"))
-    }
+    private val projectsRoot by lazy { File(filesDir, "projects") }
+    private var activeProjectId: String? = null
+    private val repository: AudioProjectRepository
+        get() = AudioProjectRepository(projectDirectory(checkNotNull(activeProjectId)))
     private val io = Executors.newSingleThreadExecutor()
     private val preferences by lazy { getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE) }
     private val audioRecorder by lazy { AndroidAudioRecorder(this) }
@@ -61,6 +66,7 @@ class WorkbenchActivity : AppCompatActivity() {
     private val audioPlayer by lazy {
         AndroidAudioPlayer {
             playingLemma = null
+            playingVerseReference = null
             updateRows()
             Toast.makeText(this, R.string.audio_workbench_playback_failed, Toast.LENGTH_LONG).show()
         }
@@ -70,6 +76,7 @@ class WorkbenchActivity : AppCompatActivity() {
             override val state get() = projectState
             override val busy get() = this@WorkbenchActivity.busy
             override fun playVerse(verse: AudioVerse) = this@WorkbenchActivity.playVerse(verse)
+            override fun isPlayingVerse(verse: AudioVerse) = playingVerseReference == verse.reference
             override fun downloadVerse(verse: AudioVerse, strength: NeuralStrength?, format: VerseExportFormat) =
                 this@WorkbenchActivity.downloadVerse(verse, strength, format)
             override fun saveOrder(reference: String, order: List<Int>?, unspoken: Set<String>) =
@@ -93,17 +100,17 @@ class WorkbenchActivity : AppCompatActivity() {
     private var bookCards = emptyList<RecordingCard>()
     private var bookVerses = emptyList<AudioVerse>()
     private val verseCache = mutableMapOf<String, List<AudioVerse>>()
-    private var step = Step.LANGUAGE
+    private var step = Step.PROJECTS
     private var busy = false
     private var activeLemma: String? = null
     private var playingLemma: String? = null
+    private var playingVerseReference: String? = null
     private val waveformHandler = Handler(Looper.getMainLooper())
     private val waveformSampler = object : Runnable {
         override fun run() {
             val lemma = activeLemma ?: return
             try {
-                val levels = adapter.addLevel(lemma, audioRecorder.amplitude())
-                verseDialogs.showWaveform(lemma, levels)
+                adapter.addLevel(lemma, audioRecorder.amplitude())
                 waveformHandler.postDelayed(this, 100)
             } catch (exception: IllegalStateException) {
                 stopRecording()
@@ -112,6 +119,7 @@ class WorkbenchActivity : AppCompatActivity() {
         }
     }
     private var reviewDialog: AlertDialog? = null
+    private data class ProjectInfo(val id: String, val name: String)
     private data class VerseExport(
         val reference: String, val lemmas: List<String>, val missing: Int,
         val strength: NeuralStrength?, val format: VerseExportFormat
@@ -180,8 +188,9 @@ class WorkbenchActivity : AppCompatActivity() {
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
-        setSupportActionBar(findViewById<Toolbar>(R.id.audio_workbench_toolbar))
-        supportActionBar?.title = getString(R.string.audio_workbench_title)
+        val toolbar = findViewById<Toolbar>(R.id.audio_workbench_toolbar)
+        setSupportActionBar(toolbar)
+        toolbar.setNavigationOnClickListener { showProjects() }
 
         language = findViewById(R.id.audio_workbench_language)
         books = findViewById(R.id.audio_workbench_books)
@@ -198,21 +207,19 @@ class WorkbenchActivity : AppCompatActivity() {
             adapter = this@WorkbenchActivity.adapter
         }
 
-        language.setText(preferences.getString(LANGUAGE_KEY, ""))
         language.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_DONE) {
-                continueToBooks()
+                saveLanguage()
+                language.clearFocus()
                 true
             } else {
                 false
             }
         }
         language.setOnFocusChangeListener { _, hasFocus -> if (!hasFocus) saveLanguage() }
-        findViewById<Button>(R.id.audio_step_language).setOnClickListener { showStep(Step.LANGUAGE) }
-        findViewById<Button>(R.id.audio_step_books).setOnClickListener { showStep(Step.BOOKS) }
-        findViewById<Button>(R.id.audio_step_export).setOnClickListener { showStep(Step.EXPORT) }
-        findViewById<Button>(R.id.audio_step_settings).setOnClickListener { showStep(Step.SETTINGS) }
-        findViewById<Button>(R.id.audio_language_next).setOnClickListener { continueToBooks() }
+        findViewById<Button>(R.id.audio_project_new).setOnClickListener { promptNewProject() }
+        ensureDefaultProject()
+        renderProjects()
         books.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
@@ -264,8 +271,7 @@ class WorkbenchActivity : AppCompatActivity() {
                 importNeuralModel.launch(arrayOf("application/octet-stream", "*/*"))
             }
         }
-        findViewById<Button>(R.id.audio_listen).setOnClickListener { showChapters() }
-        findViewById<Button>(R.id.audio_listen_stop).setOnClickListener { stopPlayback() }
+        findViewById<Button>(R.id.audio_choose_verse).setOnClickListener { showChapters() }
         findViewById<Button>(R.id.audio_attribution).setOnClickListener {
             AlertDialog.Builder(this).setTitle(R.string.audio_attribution)
                 .setMessage(R.string.audio_data_attribution)
@@ -278,31 +284,24 @@ class WorkbenchActivity : AppCompatActivity() {
                 .setPositiveButton(android.R.string.ok, null).show()
         }
 
-        showStep(if (language.text.toString().isBlank()) Step.LANGUAGE else Step.BOOKS)
-        io.execute {
-            try {
-                val loaded = repository.loadPlan().ifEmpty {
-                    assets.open("recording-plan.json").bufferedReader().use {
-                        RecordingPlanJson.parse(it.readText())
-                    }
-                }
-                val loadedState = repository.loadState()
-                runOnUiThread {
-                    cards = loaded
-                    projectState = loadedState
-                    refreshBooks(preferIncomplete = true)
-                }
-            } catch (exception: Exception) {
-                runOnUiThread {
-                    empty.setText(R.string.audio_workbench_load_failed)
-                    Toast.makeText(
-                        this,
-                        exception.message ?: getString(R.string.audio_workbench_load_failed),
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            }
+        showProjects()
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.audio_workbench, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == R.id.audio_menu_settings) {
+            showStep(if (step == Step.SETTINGS) {
+                if (activeProjectId == null) Step.PROJECTS else Step.BOOKS
+            } else {
+                Step.SETTINGS
+            })
+            return true
         }
+        return super.onOptionsItemSelected(item)
     }
 
     override fun onResume() {
@@ -333,9 +332,8 @@ class WorkbenchActivity : AppCompatActivity() {
     }
 
     private fun saveLanguage() {
-        preferences.edit()
-            .putString(LANGUAGE_KEY, language.text.toString().trim())
-            .apply()
+        val projectId = activeProjectId ?: return
+        preferences.edit().putString(languageKey(projectId), language.text.toString().trim()).apply()
     }
 
     private fun showLicense(asset: String, title: Int) {
@@ -348,40 +346,208 @@ class WorkbenchActivity : AppCompatActivity() {
         }
     }
 
-    private fun continueToBooks() {
-        if (language.text.toString().isBlank()) {
-            Toast.makeText(this, R.string.audio_workbench_language_required, Toast.LENGTH_LONG).show()
-        } else {
-            saveLanguage()
-            showStep(Step.BOOKS)
+    private fun showProjects() {
+        if (busy) return
+        if (activeLemma != null || pendingTake() != null) stopRecording()
+        if (pendingTake() != null) {
+            showStep(Step.PROJECTS)
+            renderProjects()
+            reviewPendingTake()
+            return
+        }
+        saveLanguage()
+        stopPlayback()
+        activeProjectId = null
+        selectedBook = null
+        showStep(Step.PROJECTS)
+        renderProjects()
+    }
+
+    private fun ensureDefaultProject() {
+        if (listProjects().isEmpty()) createProject(null, open = false)
+    }
+
+    private fun listProjects(): List<ProjectInfo> =
+        projectsRoot.listFiles()?.filter { File(it, PROJECT_NAME_FILE).isFile }
+            ?.map { ProjectInfo(it.name, File(it, PROJECT_NAME_FILE).readText().trim()) }
+            ?.sortedBy { it.id } ?: emptyList()
+
+    private fun renderProjects() {
+        val container = findViewById<LinearLayout>(R.id.audio_project_cards)
+        container.removeAllViews()
+        listProjects().forEach { project ->
+            val card = MaterialCardView(this).apply {
+                radius = dp(16).toFloat()
+                cardElevation = 0f
+                strokeWidth = dp(1)
+                strokeColor = ContextCompat.getColor(this@WorkbenchActivity, R.color.workbench_outline)
+                setCardBackgroundColor(ContextCompat.getColor(this@WorkbenchActivity, R.color.workbench_surface))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(8) }
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { selectProject(project) }
+            }
+            val details = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(16), dp(14), dp(16), dp(14))
+            }
+            details.addView(TextView(this).apply {
+                text = project.name
+                textSize = 18f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            })
+            val clips = File(projectDirectory(project.id), "clips").listFiles()
+                ?.count { it.extension == "m4a" && !it.name.endsWith(".tmp.m4a") } ?: 0
+            details.addView(TextView(this).apply {
+                text = getString(R.string.audio_project_recordings, clips)
+                textSize = 14f
+                setTextColor(ContextCompat.getColor(this@WorkbenchActivity, R.color.workbench_primary_dark))
+            })
+            card.addView(details)
+            container.addView(card)
+        }
+    }
+
+    private fun promptNewProject() {
+        val name = EditText(this).apply {
+            hint = getString(R.string.audio_project_name_hint)
+            setSingleLine(true)
+            setPadding(dp(20), dp(12), dp(20), dp(12))
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.audio_project_name_title)
+            .setView(name)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.audio_project_new) { _, _ ->
+                createProject(name.text.toString().trim(), open = true)
+            }
+            .show()
+    }
+
+    private fun createProject(name: String?, open: Boolean) {
+        try {
+            check(projectsRoot.mkdirs() || projectsRoot.isDirectory)
+            val number = (listProjects().mapNotNull { it.id.substringAfterLast('-').toIntOrNull() }
+                .maxOrNull() ?: 0) + 1
+            val id = "project-${number.toString().padStart(3, '0')}"
+            val directory = projectDirectory(id)
+            check(directory.mkdirs() || directory.isDirectory)
+            File(directory, PROJECT_NAME_FILE).writeText(name?.takeIf { it.isNotBlank() } ?: "Project${
+                number.toString().padStart(3, '0')
+            }")
+            renderProjects()
+            if (open) selectProject(ProjectInfo(id, File(directory, PROJECT_NAME_FILE).readText().trim()))
+        } catch (exception: Exception) {
+            Toast.makeText(
+                this, exception.message ?: getString(R.string.audio_project_create_failed), Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    private fun selectProject(project: ProjectInfo) {
+        if (busy) return
+        if (activeLemma != null) stopRecording()
+        if (pendingTake() != null) {
+            Toast.makeText(this, R.string.audio_review_missing, Toast.LENGTH_LONG).show()
+            return
+        }
+        stopPlayback()
+        activeProjectId = project.id
+        cards = emptyList()
+        projectState = AudioProjectState()
+        selectedBook = null
+        bookCards = emptyList()
+        bookVerses = emptyList()
+        language.setText(preferences.getString(languageKey(project.id), ""))
+        showStep(Step.BOOKS)
+        val selectedId = project.id
+        val projectRepository = repositoryFor(selectedId)
+        io.execute {
+            try {
+                val loaded = projectRepository.loadPlan().ifEmpty {
+                    assets.open("recording-plan.json").bufferedReader().use {
+                        RecordingPlanJson.parse(it.readText())
+                    }
+                }
+                val loadedState = projectRepository.loadState()
+                val hasAudio = projectRepository.recordedCards(loaded).isNotEmpty()
+                val initialVerse = if (hasAudio) null else
+                    versesFor("JHN").firstOrNull { it.reference == "JHN 1:1" }
+                runOnUiThread {
+                    if (activeProjectId != selectedId) return@runOnUiThread
+                    cards = loaded
+                    projectState = loadedState
+                    refreshBooks(preferIncomplete = true)
+                    initialVerse?.let(verseDialogs::openVerse)
+                }
+            } catch (exception: Exception) {
+                runOnUiThread {
+                    if (activeProjectId == selectedId) {
+                        empty.setText(R.string.audio_workbench_load_failed)
+                        Toast.makeText(
+                            this,
+                            exception.message ?: getString(R.string.audio_project_load_failed),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
         }
     }
 
     private fun showStep(next: Step) {
         stopRecording()
         stopPlayback()
-        if (next != Step.LANGUAGE) {
-            language.clearFocus()
-            (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager)
-                .hideSoftInputFromWindow(language.windowToken, 0)
-        }
+        language.clearFocus()
+        (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager)
+            .hideSoftInputFromWindow(language.windowToken, 0)
         if (step != next) search.text.clear()
         step = next
-        findViewById<View>(R.id.audio_language_panel).visibility = if (next == Step.LANGUAGE) View.VISIBLE else View.GONE
-        findViewById<View>(R.id.audio_export_panel).visibility = if (next == Step.EXPORT) View.VISIBLE else View.GONE
-        findViewById<View>(R.id.audio_settings_panel).visibility = if (next == Step.SETTINGS) View.VISIBLE else View.GONE
-        books.visibility = if (next == Step.BOOKS) View.VISIBLE else View.GONE
-        coverage.visibility = if (next == Step.BOOKS) View.VISIBLE else View.GONE
-        findViewById<View>(R.id.audio_listen_controls).visibility = if (next == Step.BOOKS) View.VISIBLE else View.GONE
+        val projects = next == Step.PROJECTS
+        val settings = next == Step.SETTINGS
+        findViewById<View>(R.id.audio_projects_panel).visibility = if (projects) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.audio_project_panel).visibility =
+            if (next == Step.BOOKS) View.VISIBLE else View.GONE
+        val projectSettings = settings && activeProjectId != null
+        findViewById<View>(R.id.audio_language_panel).visibility =
+            if (projectSettings) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.audio_export_panel).visibility =
+            if (projectSettings) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.audio_settings_panel).visibility =
+            if (settings) View.VISIBLE else View.GONE
+        listOf(R.id.audio_workbench_import, R.id.audio_import_neural_model, R.id.audio_clear_data)
+            .forEach { id ->
+                findViewById<View>(id).visibility = if (projectSettings) View.VISIBLE else View.GONE
+            }
+        supportActionBar?.title = when {
+            projects -> getString(R.string.audio_projects_heading)
+            settings -> getString(R.string.audio_step_settings)
+            else -> listProjects().firstOrNull { it.id == activeProjectId }?.name
+                ?: getString(R.string.audio_workbench_title)
+        }
+        val toolbar = findViewById<Toolbar>(R.id.audio_workbench_toolbar)
+        toolbar.navigationIcon = if (projects) null else
+            ContextCompat.getDrawable(this, android.R.drawable.ic_menu_revert)
         updateRows()
     }
 
+    private fun projectDirectory(id: String) = File(projectsRoot, id)
+
+    private fun repositoryFor(id: String) = AudioProjectRepository(projectDirectory(id))
+
+    private fun languageKey(id: String) = "${LANGUAGE_KEY}_$id"
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
     private fun loadBook(book: String) {
+        val selectedProject = activeProjectId
         io.execute {
             try {
                 val verses = versesFor(book)
                 runOnUiThread {
-                    if (selectedBook == book) {
+                    if (selectedBook == book && activeProjectId == selectedProject) {
                         bookVerses = verses
                         bookCards = VerseWorkflow.chapterOrder(cards.filter { it.book == book }, verses)
                         updateRows()
@@ -389,7 +555,7 @@ class WorkbenchActivity : AppCompatActivity() {
                 }
             } catch (exception: Exception) {
                 runOnUiThread {
-                    if (selectedBook == book) {
+                    if (selectedBook == book && activeProjectId == selectedProject) {
                         Toast.makeText(this, R.string.audio_verses_load_failed, Toast.LENGTH_LONG).show()
                     }
                 }
@@ -410,18 +576,13 @@ class WorkbenchActivity : AppCompatActivity() {
 
     private fun saveVerseOrder(reference: String, order: List<Int>?, unspoken: Set<String>) {
         busy = true
-        val orders = if (order == null) projectState.seedOrders - reference
-            else projectState.seedOrders + (reference to order)
+        val orders = if (order == null) projectState.wordOrders - reference
+            else projectState.wordOrders + (reference to order)
+        val updated = projectState.copy(wordOrders = orders, unspoken = unspoken)
+        val targetRepository = repository
         io.execute {
             try {
-                val examples = orders.map { (verseRef, savedOrder) ->
-                    val verse = versesFor(verseRef.substringBefore(' '))
-                        .firstOrNull { it.reference == verseRef }
-                        ?: throw IllegalArgumentException(getString(R.string.audio_verses_load_failed))
-                    VerseWorkflow.chunks(verse.words) to savedOrder
-                }
-                val updated = AudioProjectState(VerseWorkflow.learnRules(examples), orders, unspoken)
-                repository.saveState(updated)
+                targetRepository.saveState(updated)
                 runOnUiThread {
                     busy = false
                     projectState = updated
@@ -441,10 +602,15 @@ class WorkbenchActivity : AppCompatActivity() {
 
     private fun playVerse(verse: AudioVerse) {
         if (busy) return
+        if (playingVerseReference == verse.reference) {
+            stopPlayback()
+            return
+        }
         stopRecording()
         stopPlayback()
         val spoken = VerseWorkflow.spokenWords(
-            verse.words, projectState.rules, projectState.seedOrders[verse.reference], projectState.unspoken
+            verse.words, projectState.rules, projectState.seedOrders[verse.reference], projectState.unspoken,
+            projectState.wordOrders[verse.reference]
         )
         val words = spoken.filter { repository.clipFile(it.lemma).isFile }
         if (words.isEmpty()) {
@@ -454,7 +620,14 @@ class WorkbenchActivity : AppCompatActivity() {
         if (words.size != spoken.size) {
             Toast.makeText(this, R.string.audio_playback_missing_words, Toast.LENGTH_SHORT).show()
         }
-        if (pendingTake() == null) audioPlayer.play(words.map { repository.clipFile(it.lemma) })
+        if (pendingTake() == null) {
+            playingVerseReference = verse.reference
+            updateRows()
+            audioPlayer.play(words.map { repository.clipFile(it.lemma) }) {
+                playingVerseReference = null
+                updateRows()
+            }
+        }
     }
 
     private fun downloadVerse(verse: AudioVerse, strength: NeuralStrength?, format: VerseExportFormat) {
@@ -476,7 +649,8 @@ class WorkbenchActivity : AppCompatActivity() {
             return
         }
         val words = VerseWorkflow.spokenWords(
-            verse.words, projectState.rules, projectState.seedOrders[verse.reference], projectState.unspoken
+            verse.words, projectState.rules, projectState.seedOrders[verse.reference], projectState.unspoken,
+            projectState.wordOrders[verse.reference]
         )
         val recorded = words.filter { repository.clipFile(it.lemma).isFile }
         if (recorded.isEmpty()) {
@@ -607,7 +781,7 @@ class WorkbenchActivity : AppCompatActivity() {
     }
 
     private fun confirmClearData() {
-        if (busy) return
+        if (busy || activeProjectId == null) return
         AlertDialog.Builder(this)
             .setTitle(R.string.audio_clear_title)
             .setMessage(R.string.audio_clear_message)
@@ -616,18 +790,21 @@ class WorkbenchActivity : AppCompatActivity() {
                 stopRecording()
                 stopPlayback()
                 busy = true
+                val projectId = checkNotNull(activeProjectId)
+                val directory = projectDirectory(projectId)
                 io.execute {
                     try {
-                        check(!File(filesDir, "audio-project").exists() ||
-                            File(filesDir, "audio-project").deleteRecursively()) {
+                        check(directory.listFiles().orEmpty()
+                            .filter { it.name != PROJECT_NAME_FILE }.all { it.deleteRecursively() }) {
                             getString(R.string.audio_clear_failed)
                         }
                         val defaultCards = assets.open("recording-plan.json").bufferedReader().use {
                             RecordingPlanJson.parse(it.readText())
                         }
-                        check(preferences.edit().remove(PENDING_TAKE_KEY).commit()) {
+                        check(preferences.edit().remove(PENDING_TAKE_KEY).remove(PENDING_PROJECT_KEY).commit()) {
                             getString(R.string.audio_clear_failed)
                         }
+                        preferences.edit().remove(languageKey(projectId)).apply()
                         runOnUiThread {
                             busy = false
                             language.setText("")
@@ -635,7 +812,8 @@ class WorkbenchActivity : AppCompatActivity() {
                             cards = defaultCards
                             projectState = AudioProjectState()
                             refreshBooks(preferIncomplete = true)
-                            showStep(Step.LANGUAGE)
+                            showStep(Step.BOOKS)
+                            renderProjects()
                         }
                     } catch (exception: Exception) {
                         runOnUiThread {
@@ -736,7 +914,13 @@ class WorkbenchActivity : AppCompatActivity() {
             selectedBook
         }
         val index = bookList.indexOf(preferred).takeIf { it >= 0 } ?: 0
-        if (bookList.isNotEmpty()) books.setSelection(index)
+        if (bookList.isNotEmpty()) {
+            selectedBook = bookList[index]
+            books.setSelection(index)
+            bookCards = cards.filter { it.book == selectedBook }
+            bookVerses = emptyList()
+            loadBook(bookList[index])
+        }
         else {
             selectedBook = null
             updateRows()
@@ -744,25 +928,22 @@ class WorkbenchActivity : AppCompatActivity() {
     }
 
     private fun updateRows() {
+        if (activeProjectId == null) {
+            adapter.submitList(emptyList())
+            return
+        }
         val currentBook = selectedBook
         val requiredCards = bookCards.filter { it.lemma !in projectState.unspoken }
-        val visibleCards = if (step == Step.SETTINGS) {
-            val term = search.text.toString().trim()
-            repository.recordedCards(cards).filter {
-                term.isEmpty() || it.lemma.contains(term, ignoreCase = true) ||
-                    it.gloss.contains(term, ignoreCase = true)
-            }
-        } else {
-            RecordingPlan.search(requiredCards, currentBook, search.text.toString())
-        }
+        val visibleCards = RecordingPlan.search(requiredCards, currentBook, search.text.toString())
         val completed = RecordingPlan.coverage(requiredCards) { repository.clipFile(it).isFile }
         coverage.text = getString(R.string.audio_workbench_coverage, completed.recorded, completed.total)
         val noPlan = cards.isEmpty()
-        val showList = step == Step.BOOKS || step == Step.SETTINGS
+        val showList = step == Step.BOOKS
         findViewById<View>(R.id.audio_workbench_controls).visibility =
             if (!noPlan && showList) View.VISIBLE else View.GONE
         findViewById<Button>(R.id.audio_workbench_export).isEnabled = !noPlan
-        findViewById<Button>(R.id.audio_listen).isEnabled = bookVerses.isNotEmpty()
+        findViewById<TextView>(R.id.audio_project_heading).text =
+            listProjects().firstOrNull { it.id == activeProjectId }?.name.orEmpty()
         empty.setText(if (noPlan) R.string.audio_workbench_empty else R.string.audio_workbench_no_results)
         empty.visibility = if (showList && (noPlan || visibleCards.isEmpty())) View.VISIBLE else View.GONE
         findViewById<RecyclerView>(R.id.audio_workbench_list).visibility =
@@ -772,7 +953,11 @@ class WorkbenchActivity : AppCompatActivity() {
                 card,
                 repository.clipFile(card.lemma).isFile,
                 activeLemma == card.lemma,
-                playingLemma == card.lemma
+                playingLemma == card.lemma,
+                bookVerses.asSequence().flatMap { it.words.asSequence() }
+                    .firstOrNull { it.lemma == card.lemma }
+                    ?.let { listOf(it.pos, it.grammaticalCase, it.mood).filter(String::isNotBlank).joinToString(" · ") }
+                    .orEmpty()
             )
         })
         verseDialogs.refreshControls()
@@ -828,7 +1013,9 @@ class WorkbenchActivity : AppCompatActivity() {
         try {
             val candidate = repository.recordingCandidateFile(lemma)
             if (candidate.isFile) {
-                check(preferences.edit().putString(PENDING_TAKE_KEY, lemma).commit()) {
+                check(preferences.edit().putString(PENDING_TAKE_KEY, lemma)
+                    .putString(PENDING_PROJECT_KEY, activeProjectId).commit()
+                ) {
                     getString(R.string.audio_review_failed)
                 }
                 reviewPendingTake()
@@ -852,14 +1039,16 @@ class WorkbenchActivity : AppCompatActivity() {
         waveformHandler.removeCallbacks(waveformSampler)
         try {
             audioRecorder.stop()
-            check(preferences.edit().putString(PENDING_TAKE_KEY, lemma).commit()) {
+            check(preferences.edit().putString(PENDING_TAKE_KEY, lemma)
+                .putString(PENDING_PROJECT_KEY, activeProjectId).commit()
+            ) {
                 getString(R.string.audio_review_failed)
             }
             if (repository.clipFile(lemma).isFile) {
                 if (allowReview) reviewPendingTake()
             } else {
                 repository.commitRecording(lemma)
-                check(preferences.edit().remove(PENDING_TAKE_KEY).commit()) {
+                check(preferences.edit().remove(PENDING_TAKE_KEY).remove(PENDING_PROJECT_KEY).commit()) {
                     getString(R.string.audio_review_failed)
                 }
                 advanceToNextBookIfComplete(lemma)
@@ -876,10 +1065,14 @@ class WorkbenchActivity : AppCompatActivity() {
 
     private fun reviewPendingTake() {
         val lemma = pendingTake() ?: return
+        if (activeProjectId == null) {
+            activeProjectId = preferences.getString(PENDING_PROJECT_KEY, null)
+                ?.takeIf { File(projectDirectory(it), PROJECT_NAME_FILE).isFile }
+        }
         if (reviewDialog?.isShowing == true) return
         val candidate = repository.recordingCandidateFile(lemma)
         if (!candidate.isFile) {
-            if (!preferences.edit().remove(PENDING_TAKE_KEY).commit()) {
+            if (!preferences.edit().remove(PENDING_TAKE_KEY).remove(PENDING_PROJECT_KEY).commit()) {
                 Toast.makeText(this, R.string.audio_review_failed, Toast.LENGTH_LONG).show()
             }
             Toast.makeText(this, R.string.audio_review_missing, Toast.LENGTH_LONG).show()
@@ -918,7 +1111,7 @@ class WorkbenchActivity : AppCompatActivity() {
                 val candidate = repository.recordingCandidateFile(lemma)
                 check(!candidate.exists() || candidate.delete()) { getString(R.string.audio_review_failed) }
             }
-            check(preferences.edit().remove(PENDING_TAKE_KEY).commit()) {
+            check(preferences.edit().remove(PENDING_TAKE_KEY).remove(PENDING_PROJECT_KEY).commit()) {
                 getString(R.string.audio_review_failed)
             }
             updateRows()
@@ -960,8 +1153,9 @@ class WorkbenchActivity : AppCompatActivity() {
 
     private fun stopPlayback() {
         audioPlayer.stop()
-        if (playingLemma != null) {
+        if (playingLemma != null || playingVerseReference != null) {
             playingLemma = null
+            playingVerseReference = null
             updateRows()
         }
     }
@@ -969,8 +1163,19 @@ class WorkbenchActivity : AppCompatActivity() {
     companion object {
         private const val LANGUAGE_KEY = "audio_workbench_language"
         private const val PENDING_TAKE_KEY = "pending_recording_lemma"
+        private const val PENDING_PROJECT_KEY = "pending_recording_project"
         private const val PREFERENCES_NAME = "audio-project"
+        private const val PROJECT_NAME_FILE = "project-name.txt"
     }
 
-    private enum class Step { LANGUAGE, BOOKS, EXPORT, SETTINGS }
+    @Deprecated("Use project navigation.")
+    override fun onBackPressed() {
+        when (step) {
+            Step.SETTINGS -> showStep(if (activeProjectId == null) Step.PROJECTS else Step.BOOKS)
+            Step.BOOKS -> showProjects()
+            Step.PROJECTS -> super.onBackPressed()
+        }
+    }
+
+    private enum class Step { PROJECTS, BOOKS, SETTINGS }
 }

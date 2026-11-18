@@ -20,9 +20,12 @@ import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
 import androidx.test.espresso.matcher.ViewMatchers.isEnabled
 import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.espresso.matcher.ViewMatchers.withText
+import androidx.test.espresso.matcher.ViewMatchers.withContentDescription
+import androidx.test.espresso.action.ViewActions.longClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.core.content.ContextCompat
+import androidx.appcompat.widget.Toolbar
 import android.widget.Spinner
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -38,6 +41,7 @@ import io.github.danzuep.bibleaudioproducer.data.AudioProjectRepository
 import io.github.danzuep.bibleaudioproducer.data.MaculaVerseJson
 import java.io.File
 import android.widget.Button
+import org.hamcrest.Matchers.allOf
 import org.hamcrest.Matchers.startsWith
 
 @RunWith(AndroidJUnit4::class)
@@ -47,15 +51,15 @@ class WorkbenchLaunchTest {
     @Before
     fun setUp() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        directory = File(context.filesDir, "audio-project")
-        directory.deleteRecursively()
+        File(context.filesDir, "projects").deleteRecursively()
+        directory = File(context.filesDir, "projects/project-001")
         check(context.getSharedPreferences("audio-project", Context.MODE_PRIVATE).edit().clear().commit())
     }
 
     @After
     fun tearDown() {
-        directory.deleteRecursively()
         val context = ApplicationProvider.getApplicationContext<Context>()
+        File(context.filesDir, "projects").deleteRecursively()
         check(context.getSharedPreferences("audio-project", Context.MODE_PRIVATE).edit().clear().commit())
     }
 
@@ -70,8 +74,10 @@ class WorkbenchLaunchTest {
         assertEquals("JHN", cards.first().book)
         ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
             awaitBooks(scenario, 27)
-            onView(withId(R.id.audio_step_books)).perform(click())
+            onView(withId(R.id.audio_verse_close)).check(matches(isDisplayed()))
+            onView(withId(R.id.audio_verse_close)).perform(click())
             onView(withId(R.id.audio_workbench_coverage)).check(matches(withText("0 of 952 recorded")))
+            openSettings(scenario)
             onView(withId(R.id.audio_workbench_export)).check(matches(isEnabled()))
         }
     }
@@ -84,9 +90,11 @@ class WorkbenchLaunchTest {
         )
         ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
             awaitBooks(scenario, 1)
-            onView(withId(R.id.audio_step_books)).perform(click())
+            onView(withId(R.id.audio_verse_close)).perform(click())
             onView(withId(R.id.audio_workbench_coverage)).check(matches(withText("0 of 1 recorded")))
+            openSettings(scenario)
             onView(withId(R.id.audio_workbench_export)).check(matches(isEnabled()))
+            openSettings(scenario)
             onView(withId(R.id.audio_workbench_search)).perform(replaceText("no match"))
             closeSoftKeyboard()
             onView(withId(R.id.audio_workbench_empty))
@@ -105,17 +113,21 @@ class WorkbenchLaunchTest {
         }
         ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
             awaitBooks(scenario, 27)
-            onView(withId(R.id.audio_step_books)).perform(click())
-            val deadline = System.currentTimeMillis() + 15_000
-            var ready = false
-            while (!ready && System.currentTimeMillis() < deadline) {
-                scenario.onActivity { ready = it.findViewById<Button>(R.id.audio_listen).isEnabled }
-                if (!ready) Thread.sleep(50)
-            }
-            assertTrue("Verse data did not load", ready)
-            onView(withId(R.id.audio_listen)).perform(click())
+            onView(withText(skipped.surface)).check(matches(isDisplayed()))
+            onView(withContentDescription(context.getString(R.string.audio_word_unspoken, skipped.surface)))
+                .perform(longClick())
+            onView(withId(R.id.audio_verse_close)).perform(click())
+            val stateFile = File(directory, "audio-state.json")
+            val saveDeadline = System.currentTimeMillis() + 15_000
+            while (!stateFile.isFile && System.currentTimeMillis() < saveDeadline) Thread.sleep(50)
+            assertTrue("Verse order was not saved", stateFile.isFile)
+            val saved = AudioProjectRepository(directory).loadState()
+            assertTrue(saved.wordOrders.containsKey("JHN 1:1"))
+            assertTrue(skipped.unspokenKey in saved.unspoken)
+            onView(withId(R.id.audio_choose_verse)).perform(click())
             onView(withText("Chapter 1")).perform(click())
             onView(withText(startsWith("JHN 1:1 ·"))).perform(click())
+            onView(withId(R.id.audio_verse_more)).perform(click())
             onView(withText(R.string.audio_download_verse)).perform(click())
             onView(withText(R.string.audio_format_wav)).check(matches(isDisplayed()))
             onView(withText(R.string.audio_format_aac)).check(matches(isDisplayed()))
@@ -123,25 +135,7 @@ class WorkbenchLaunchTest {
                 onView(withText(R.string.audio_format_opus)).check(matches(isDisplayed()))
             }
             onView(withText(android.R.string.cancel)).perform(click())
-            onView(withId(R.id.audio_listen)).perform(click())
-            onView(withText("Chapter 1")).perform(click())
-            onView(withText(startsWith("JHN 1:1 ·"))).perform(click())
-            onView(withText(R.string.audio_arrange_verse)).perform(click())
-            onView(withText(context.getString(R.string.audio_speak_word, skipped.surface)))
-                .perform(scrollTo(), click())
-            onView(withText(R.string.audio_save_order)).perform(click())
-            val stateFile = File(directory, "audio-state.json")
-            val saveDeadline = System.currentTimeMillis() + 15_000
-            while (!stateFile.isFile && System.currentTimeMillis() < saveDeadline) Thread.sleep(50)
-            assertTrue("Verse order was not saved", stateFile.isFile)
-            val saved = AudioProjectRepository(directory).loadState()
-            assertTrue(saved.seedOrders.containsKey("JHN 1:1"))
-            assertTrue(skipped.unspokenKey in saved.unspoken)
-            onView(withId(R.id.audio_listen)).perform(click())
-            onView(withText("Chapter 1")).perform(click())
-            onView(withText(startsWith("JHN 1:1 ·"))).perform(click())
-            onView(withText(R.string.audio_record_verse_words)).perform(click())
-            onView(withText(android.R.string.ok)).perform(click())
+            onView(withId(R.id.audio_verse_close)).perform(click())
         }
     }
 
@@ -156,7 +150,8 @@ class WorkbenchLaunchTest {
         fun prepareTake() {
             repository.recordingCandidateFile("λόγος").writeBytes(byteArrayOf(2))
             check(context.getSharedPreferences("audio-project", Context.MODE_PRIVATE).edit()
-                .putString("pending_recording_lemma", "λόγος").commit())
+                .putString("pending_recording_lemma", "λόγος")
+                .putString("pending_recording_project", "project-001").commit())
         }
 
         prepareTake()
@@ -193,7 +188,6 @@ class WorkbenchLaunchTest {
         clip.writeBytes(VerseAudio.encodeWav(FloatArray(16000) { 0.1f }))
         ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
             awaitBooks(scenario, 1)
-            onView(withId(R.id.audio_step_books)).perform(click())
             onView(withId(R.id.audio_workbench_play)).perform(click())
             awaitPlayDescription(scenario, "Stop λογος")
             onView(withId(R.id.audio_workbench_play)).perform(click())
@@ -222,7 +216,7 @@ class WorkbenchLaunchTest {
         val repository = AudioProjectRepository(directory)
         ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
             awaitBooks(scenario, 1)
-            onView(withId(R.id.audio_step_books)).perform(click())
+            onView(withId(R.id.audio_verse_close)).perform(click())
             onView(withId(R.id.audio_workbench_record)).check(matches(isDisplayed()))
             fun touch(action: Int) = scenario.onActivity { activity ->
                 val button = activity.findViewById<Button>(R.id.audio_workbench_record)
@@ -270,8 +264,36 @@ class WorkbenchLaunchTest {
         assertTrue("Playback control did not become $description", matches)
     }
 
+    private fun openSettings(scenario: ActivityScenario<WorkbenchActivity>) {
+        var opened = false
+        scenario.onActivity { activity ->
+            opened = activity.findViewById<Toolbar>(R.id.audio_workbench_toolbar).menu
+                .performIdentifierAction(R.id.audio_menu_settings, 0)
+        }
+        assertTrue("Settings menu action was not available", opened)
+    }
+
     private fun awaitBooks(scenario: ActivityScenario<WorkbenchActivity>, count: Int) {
-        val deadline = System.currentTimeMillis() + 15_000
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        if (!awaitBookCount(scenario, count, 500)) {
+            var verseOpen = false
+            scenario.onActivity { activity ->
+                verseOpen = activity.findViewById<View>(R.id.audio_verse_close)?.isShown == true
+            }
+            if (verseOpen) onView(withId(R.id.audio_verse_close)).perform(click())
+            if (!awaitBookCount(scenario, count, 500)) {
+                onView(allOf(withText("Project001"), isDisplayed())).perform(click())
+            }
+        }
+        assertTrue("Recording plan did not load", awaitBookCount(scenario, count, 15_000))
+    }
+
+    private fun awaitBookCount(
+        scenario: ActivityScenario<WorkbenchActivity>,
+        count: Int,
+        timeoutMillis: Long
+    ): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMillis
         var loaded = false
         while (!loaded && System.currentTimeMillis() < deadline) {
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
@@ -280,6 +302,6 @@ class WorkbenchLaunchTest {
             }
             if (!loaded) Thread.sleep(50)
         }
-        assertTrue("Recording plan did not load", loaded)
+        return loaded
     }
 }

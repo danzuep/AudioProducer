@@ -11,51 +11,114 @@
         android:id="@+id/audio_workbench_toolbar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        android:paddingHorizontal="8dp" />
+        android:background="?attr/colorSurface"
+        android:paddingHorizontal="8dp"
+        app:navigationIconTint="@color/workbench_primary_dark"
+        app:titleTextColor="@color/workbench_primary_dark" />
 
-    <HorizontalScrollView
+    <LinearLayout
+        android:id="@+id/audio_projects_panel"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:fillViewport="true"
-        android:scrollbars="none">
-        <LinearLayout
-            android:layout_width="wrap_content"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:visibility="gone">
+        <TextView
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:paddingHorizontal="8dp">
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/audio_step_language"
-                style="@style/Widget.MaterialComponents.Button.TextButton"
-                android:layout_width="wrap_content"
+            android:paddingBottom="12dp"
+            android:text="@string/audio_projects_heading"
+            android:textAppearance="?attr/textAppearanceHeadline6" />
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:fillViewport="true">
+            <LinearLayout
+                android:id="@+id/audio_project_cards"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/audio_step_language" />
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/audio_step_books"
-                style="@style/Widget.MaterialComponents.Button.TextButton"
-                android:layout_width="wrap_content"
+                android:orientation="vertical" />
+        </ScrollView>
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/audio_project_new"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/audio_project_new" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/audio_project_panel"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:visibility="gone">
+        <TextView
+            android:id="@+id/audio_project_heading"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="16dp"
+            android:paddingTop="12dp"
+            android:textAppearance="?attr/textAppearanceHeadline6" />
+        <LinearLayout
+            android:id="@+id/audio_workbench_controls"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="16dp">
+            <Spinner
+                android:id="@+id/audio_workbench_books"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:contentDescription="@string/audio_workbench_choose_book" />
+            <EditText
+                android:id="@+id/audio_workbench_search"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/audio_step_books" />
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/audio_step_export"
-                style="@style/Widget.MaterialComponents.Button.TextButton"
-                android:layout_width="wrap_content"
+                android:hint="@string/audio_workbench_search_hint"
+                android:inputType="text"
+                android:singleLine="true" />
+            <TextView
+                android:id="@+id/audio_workbench_coverage"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/audio_step_export" />
+                android:paddingVertical="8dp"
+                android:textAppearance="?attr/textAppearanceSubtitle1" />
             <com.google.android.material.button.MaterialButton
-                android:id="@+id/audio_step_settings"
-                style="@style/Widget.MaterialComponents.Button.TextButton"
-                android:layout_width="wrap_content"
+                android:id="@+id/audio_choose_verse"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/audio_step_settings" />
+                android:text="@string/audio_choose_verse" />
         </LinearLayout>
-    </HorizontalScrollView>
+        <TextView
+            android:id="@+id/audio_workbench_empty"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:padding="32dp"
+            android:text="@string/audio_workbench_empty"
+            android:textAppearance="?attr/textAppearanceBody1" />
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/audio_workbench_list"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:clipToPadding="false"
+            android:paddingHorizontal="12dp"
+            android:paddingBottom="16dp" />
+    </LinearLayout>
 
     <LinearLayout
         android:id="@+id/audio_language_panel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp">
+        android:padding="16dp"
+        android:visibility="gone">
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -69,11 +132,6 @@
             android:imeOptions="actionDone"
             android:inputType="textCapWords"
             android:singleLine="true" />
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/audio_language_next"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/audio_next_books" />
     </LinearLayout>
 
     <LinearLayout
@@ -139,67 +197,4 @@
             android:text="@string/audio_attribution" />
     </LinearLayout>
 
-    <LinearLayout
-        android:id="@+id/audio_workbench_controls"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:paddingHorizontal="16dp">
-        <Spinner
-            android:id="@+id/audio_workbench_books"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:contentDescription="@string/audio_workbench_choose_book" />
-        <EditText
-            android:id="@+id/audio_workbench_search"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/audio_workbench_search_hint"
-            android:inputType="text"
-            android:singleLine="true" />
-        <TextView
-            android:id="@+id/audio_workbench_coverage"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingVertical="12dp"
-            android:textAppearance="?attr/textAppearanceSubtitle1" />
-        <LinearLayout
-            android:id="@+id/audio_listen_controls"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/audio_listen"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/audio_listen" />
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/audio_listen_stop"
-                style="@style/Widget.MaterialComponents.Button.TextButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/audio_workbench_stop" />
-        </LinearLayout>
-    </LinearLayout>
-
-    <TextView
-        android:id="@+id/audio_workbench_empty"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:gravity="center"
-        android:padding="32dp"
-        android:text="@string/audio_workbench_empty"
-        android:textAppearance="?attr/textAppearanceBody1" />
-
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/audio_workbench_list"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:clipToPadding="false"
-        android:paddingHorizontal="12dp"
-        android:paddingBottom="16dp" />
 </LinearLayout>

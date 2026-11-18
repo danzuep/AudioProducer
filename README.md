@@ -5,12 +5,15 @@ Record and review lemma audio using the
 [MACULA Hebrew](https://github.com/Clear-Bible/macula-hebrew/) linguistic datasets.
 Greek New Testament support is included first; Hebrew is not yet bundled.
 The complete Greek New Testament recording plan is bundled and available offline on first
-launch. Enter the recording language, choose a book, and record its prompts. Use **Listen**
-to review verses, record their words, arrange phrases for the target language, and mark
-words as unspoken. Export recordings and grammar as compatible Macula audio ZIP archives,
-or import earlier archives without replacing existing recordings. Imports in a different
-language are rejected to prevent mixing projects. Plans and recordings remain in private
-storage; export them before uninstalling.
+launch. The first screen lists projects; a new project with no name is assigned a name such
+as **Project001**. Opening a project with no recordings starts at John 1:1. Select a chapter
+and verse to open its interactive Greek text, with English glosses above each word. Tap a
+word to inspect its Macula metadata and record or play its audio. Pinch to resize the text,
+drag words to change their order, and long-press a word to omit it from the translation.
+Closing the verse returns to the project's most-used words. Open **Settings** from the gear
+icon to set the recording language, import plans or audio, export archives, or manage data.
+Imports in a different language are rejected to prevent mixing projects. Plans and
+recordings remain in private storage; export them before uninstalling.
 
 Inspired by BTT Recorder's take-review workflow, replacing an existing recording requires
 reviewing the new take first. The current take remains intact until the replacement is
@@ -20,8 +23,8 @@ Hold the red record button and release to save; drag far away or cancel the gest
 to discard the take. A live waveform shows microphone activity while recording. When
 using an accessibility service or keyboard, activate the button once to start and again
 to stop. After granting microphone permission, start the recording again. The play
-button changes to stop during playback. In **Listen**, arrange phrases and uncheck
-individual Greek forms to omit those forms wherever they occur.
+button changes to stop during playback. Long-pressing a verse word marks its Greek form
+as unspoken wherever it occurs in the translation.
 
 Verse playback uses the recordings available on the device; missing words are skipped.
 Choose **Save verse audio** from a verse to export its recorded words in the selected
@@ -44,7 +47,8 @@ the model is distributed separately and ONNX Runtime license text is in app sett
 
 Thank you to [MaculaScripta](https://github.com/danzuep/MaculaScripta) for the audio
 workbench and plan generator, and to [BTT Recorder](https://github.com/Bible-Translation-Tools/BTT-Recorder)
-for inspiration from its recording and take-review workflows.
+for inspiration from its recording and take-review workflows. This project also builds on
+the upstream [Story Producer](https://github.com/sillsdev/StoryProducer) repository.
 
 ## Development
 

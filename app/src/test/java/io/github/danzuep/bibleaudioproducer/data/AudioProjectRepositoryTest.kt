@@ -67,6 +67,26 @@ class AudioProjectRepositoryTest {
     }
 
     @Test
+    fun savesAndLoadsIndividualVerseWordOrders() {
+        val directory = Files.createTempDirectory("audio-workbench-state-test").toFile()
+        try {
+            val repository = AudioProjectRepository(directory)
+            val state = AudioProjectState(
+                rules = mapOf("V|NP.nom" to GrammarRule(keep = 2, flip = 1)),
+                seedOrders = mapOf("JHN 1:1" to listOf(1, 0)),
+                unspoken = setOf("λόγος"),
+                wordOrders = mapOf("JHN 1:1" to listOf(2, 0, 1))
+            )
+
+            repository.saveState(state)
+
+            assertEquals(state, repository.loadState())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun loadsPreviouslySavedPlansWithLemmaField() {
         val directory = Files.createTempDirectory("audio-workbench-legacy-plan-test").toFile()
         try {
