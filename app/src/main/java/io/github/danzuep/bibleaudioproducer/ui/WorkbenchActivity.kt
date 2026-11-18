@@ -28,6 +28,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.documentfile.provider.DocumentFile
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.recyclerview.widget.SimpleItemAnimator
 import io.github.danzuep.bibleaudioproducer.R
 import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioPlayer
 import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioRecorder
@@ -178,6 +179,7 @@ class WorkbenchActivity : AppCompatActivity() {
         )
         findViewById<RecyclerView>(R.id.audio_workbench_list).apply {
             layoutManager = LinearLayoutManager(this@WorkbenchActivity)
+            (itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false
             adapter = this@WorkbenchActivity.adapter
         }
 
