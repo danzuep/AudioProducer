@@ -163,6 +163,7 @@ class WorkbenchActivity : AppCompatActivity() {
             if (busy) return@setOnClickListener
             stopRecording()
             stopPlayback()
+            if (pendingTake() != null) return@setOnClickListener
             importPlan.launch(arrayOf("application/json", "text/*"))
         }
         findViewById<Button>(R.id.audio_workbench_export).setOnClickListener {
@@ -181,6 +182,7 @@ class WorkbenchActivity : AppCompatActivity() {
             if (busy) return@setOnClickListener
             stopRecording()
             stopPlayback()
+            if (pendingTake() != null) return@setOnClickListener
             importArchive.launch(arrayOf("application/zip", "application/octet-stream"))
         }
         findViewById<Button>(R.id.audio_clear_data).setOnClickListener { confirmClearData() }
@@ -589,7 +591,15 @@ class WorkbenchActivity : AppCompatActivity() {
         if (pendingTake() != null) return
         stopPlayback()
         try {
-            audioRecorder.start(repository.recordingCandidateFile(lemma))
+            val candidate = repository.recordingCandidateFile(lemma)
+            if (candidate.isFile) {
+                check(preferences.edit().putString(PENDING_TAKE_KEY, lemma).commit()) {
+                    getString(R.string.audio_review_failed)
+                }
+                reviewPendingTake()
+                return
+            }
+            audioRecorder.start(candidate)
             activeLemma = lemma
             updateRows()
         } catch (exception: Exception) {
@@ -604,17 +614,21 @@ class WorkbenchActivity : AppCompatActivity() {
         activeLemma = null
         try {
             audioRecorder.stop()
+            check(preferences.edit().putString(PENDING_TAKE_KEY, lemma).commit()) {
+                getString(R.string.audio_review_failed)
+            }
             if (repository.clipFile(lemma).isFile) {
-                check(preferences.edit().putString(PENDING_TAKE_KEY, lemma).commit()) {
-                    getString(R.string.audio_review_failed)
-                }
                 if (allowReview) reviewPendingTake()
             } else {
                 repository.commitRecording(lemma)
+                check(preferences.edit().remove(PENDING_TAKE_KEY).commit()) {
+                    getString(R.string.audio_review_failed)
+                }
                 advanceToNextBookIfComplete(lemma)
             }
         } catch (exception: Exception) {
             Toast.makeText(this, R.string.audio_workbench_recording_failed, Toast.LENGTH_LONG).show()
+            if (allowReview && pendingTake() != null) reviewPendingTake()
         } finally {
             updateRows()
         }
