@@ -37,9 +37,13 @@ internal class AndroidAudioRecorder(private val context: Context) {
         return if (Build.VERSION.SDK_INT >= 31) {
             MediaRecorder(context)
         } else {
-            @Suppress("DEPRECATION")
-            MediaRecorder()
+            createLegacyMediaRecorder()
         }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun createLegacyMediaRecorder(): MediaRecorder {
+        return MediaRecorder()
     }
 
     fun stop(): File {
