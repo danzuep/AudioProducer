@@ -79,7 +79,7 @@ internal class AndroidAudioDecoder {
                 }
                 else -> if (index >= 0) {
                     try {
-                        if (info.size > 0 && info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0) {
+                        if (info.size > 0 && (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0) {
                             check(output.size().toLong() + info.size <= MAX_PCM_BYTES) {
                                 "The recording is too long to render."
                             }
@@ -90,7 +90,7 @@ internal class AndroidAudioDecoder {
                             buffer.get(bytes)
                             output.write(bytes)
                         }
-                        outputEnded = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
+                        outputEnded = (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0
                     } finally {
                         codec.releaseOutputBuffer(index, false)
                     }

@@ -26,7 +26,7 @@ internal class VerseDialogs(
         val state: AudioProjectState
         val busy: Boolean
         fun playVerse(verse: AudioVerse)
-        fun downloadVerse(verse: AudioVerse)
+        fun downloadVerse(verse: AudioVerse, neural: Boolean)
         fun saveOrder(reference: String, order: List<Int>?, unspoken: Set<String>)
         fun toggleRecording(card: RecordingCard)
         fun playRecording(card: RecordingCard)
@@ -70,6 +70,7 @@ internal class VerseDialogs(
         val labels = arrayOf(
             activity.getString(R.string.audio_play_verse),
             activity.getString(R.string.audio_download_verse),
+            activity.getString(R.string.audio_download_neural),
             activity.getString(R.string.audio_arrange_verse),
             activity.getString(R.string.audio_record_verse_words)
         )
@@ -78,9 +79,10 @@ internal class VerseDialogs(
             .setItems(labels) { _, index ->
                 when (index) {
                     0 -> actions.playVerse(verse)
-                    1 -> actions.downloadVerse(verse)
-                    2 -> arrangeVerse(verse)
-                    3 -> showVerseWords(verse)
+                    1 -> actions.downloadVerse(verse, false)
+                    2 -> actions.downloadVerse(verse, true)
+                    3 -> arrangeVerse(verse)
+                    4 -> showVerseWords(verse)
                 }
             }
             .setNegativeButton(android.R.string.cancel, null)

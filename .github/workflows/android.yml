@@ -5,6 +5,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      test_neural:
+        description: Test on-device neural inference with the pinned model
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
@@ -51,12 +56,29 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      - name: Prepare neural test model
+        if: inputs.test_neural && matrix.api-level == 35
+        run: |
+          curl --fail --location --silent --show-error --retry 3 \
+            https://github.com/FabienCouprie/attic/releases/download/assets/tts-speecht5.zip \
+            -o "$RUNNER_TEMP/tts-speecht5.zip"
+          echo "201abdf7e3128ef6c8b11e491dc6edac024e62417aca44cc541591402c8d3f10  $RUNNER_TEMP/tts-speecht5.zip" | sha256sum --check
+          unzip -p "$RUNNER_TEMP/tts-speecht5.zip" tts-speecht5/Xenova/speecht5_hifigan/onnx/model.onnx > "$RUNNER_TEMP/neural-model.onnx"
+          echo "26408d9b8b3e83e66a3ef614a5621b84cacdcabd81b3a6a2fa984eb788566e6c  $RUNNER_TEMP/neural-model.onnx" | sha256sum --check
       - uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
           api-level: ${{ matrix.api-level }}
           arch: x86_64
           disable-animations: true
-          script: ./gradlew :app:connectedDebugAndroidTest
+          script: |
+            set -eu
+            if [ '${{ inputs.test_neural && matrix.api-level == 35 }}' = 'true' ]; then
+              ./gradlew :app:installDebug
+              adb shell -T run-as io.github.danzuep.bibleaudioproducer.debug sh -c 'cat > files/test-model.onnx' < "$RUNNER_TEMP/neural-model.onnx"
+              ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.testNeuralModel=true
+            else
+              ./gradlew :app:connectedDebugAndroidTest
+            fi
       - uses: actions/upload-artifact@v7.0.2
         if: failure()
         with:

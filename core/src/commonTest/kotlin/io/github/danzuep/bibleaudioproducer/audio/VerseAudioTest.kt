@@ -34,4 +34,12 @@ class VerseAudioTest {
         assertContentEquals(byteArrayOf(1, -128, 0, 0, -1, 127), bytes.copyOfRange(44, 50))
         assertFailsWith<IllegalArgumentException> { VerseAudio.encodeWav(floatArrayOf(Float.NaN)) }
     }
+
+    @Test
+    fun blendsTheNeuralSignalWithoutAcceptingSilentOrInvalidOutput() {
+        val samples = VerseAudio.blendNeural(floatArrayOf(1f, 0.5f), floatArrayOf(0f, -1f))
+        assertTrue(kotlin.math.abs(samples[0] - 0.52f) < 0.0001f)
+        assertTrue(kotlin.math.abs(samples[1] + 0.02f) < 0.0001f)
+        assertFailsWith<IllegalArgumentException> { VerseAudio.blendNeural(floatArrayOf(1f), floatArrayOf(0f)) }
+    }
 }

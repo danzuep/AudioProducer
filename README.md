@@ -19,7 +19,16 @@ accepted, including if the app is interrupted during review.
 Verse playback uses the recordings available on the device; missing words are skipped.
 Choose **Save verse audio (WAV)** from a verse to export its recorded words in the
 selected order, with normalized levels and crossfaded joins. The app reports how many
-missing words were skipped. Computer voice and neural smoothing are not yet available.
+missing words were skipped. Computer voice is not yet available.
+
+On Android 7.0 or later, **Save with neural smoothing** optionally blends an on-device
+SpeechT5 HiFi-GAN reconstruction into verses up to 30 seconds long. To enable it,
+download the [pinned ONNX model](https://huggingface.co/Xenova/speecht5_hifigan/resolve/cf980c3610d7b7f20919960031066ef7905737bd/onnx/model.onnx)
+(55,432,026 bytes) and choose **Import neural model** in Settings. The app verifies
+its SHA-256 before use. Processing happens on the device; recordings are never uploaded.
+The model may alter voice quality, so compare the result with the unsmoothed export.
+The SpeechT5 model and ONNX Runtime are provided under the MIT license by Microsoft;
+the model is distributed separately and ONNX Runtime license text is in app settings.
 
 ## Acknowledgements
 

@@ -2,6 +2,7 @@ package io.github.danzuep.bibleaudioproducer.ui
 
 import android.Manifest
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -29,6 +30,8 @@ import io.github.danzuep.bibleaudioproducer.R
 import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioPlayer
 import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioRecorder
 import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioDecoder
+import io.github.danzuep.bibleaudioproducer.audio.AndroidNeuralSmoother
+import io.github.danzuep.bibleaudioproducer.audio.NeuralModelStore
 import io.github.danzuep.bibleaudioproducer.audio.VerseAudio
 import io.github.danzuep.bibleaudioproducer.data.RecordingPlanJson
 import io.github.danzuep.bibleaudioproducer.data.AudioProjectRepository
@@ -48,6 +51,7 @@ class WorkbenchActivity : AppCompatActivity() {
     private val io = Executors.newSingleThreadExecutor()
     private val preferences by lazy { getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE) }
     private val audioRecorder by lazy { AndroidAudioRecorder(this) }
+    private val neuralModels by lazy { NeuralModelStore(File(filesDir, "audio-models")) }
     private val audioPlayer by lazy {
         AndroidAudioPlayer {
             Toast.makeText(this, R.string.audio_workbench_playback_failed, Toast.LENGTH_LONG).show()
@@ -58,7 +62,8 @@ class WorkbenchActivity : AppCompatActivity() {
             override val state get() = projectState
             override val busy get() = this@WorkbenchActivity.busy
             override fun playVerse(verse: AudioVerse) = this@WorkbenchActivity.playVerse(verse)
-            override fun downloadVerse(verse: AudioVerse) = this@WorkbenchActivity.downloadVerse(verse)
+            override fun downloadVerse(verse: AudioVerse, neural: Boolean) =
+                this@WorkbenchActivity.downloadVerse(verse, neural)
             override fun saveOrder(reference: String, order: List<Int>?, unspoken: Set<String>) =
                 saveVerseOrder(reference, order, unspoken)
             override fun toggleRecording(card: RecordingCard) = this@WorkbenchActivity.toggleRecording(card)
@@ -80,7 +85,9 @@ class WorkbenchActivity : AppCompatActivity() {
     private var busy = false
     private var activeLemma: String? = null
     private var reviewDialog: AlertDialog? = null
-    private data class VerseExport(val reference: String, val lemmas: List<String>, val missing: Int)
+    private data class VerseExport(
+        val reference: String, val lemmas: List<String>, val missing: Int, val neural: Boolean
+    )
     private var pendingVerseExport: VerseExport? = null
 
     private lateinit var language: EditText
@@ -95,6 +102,9 @@ class WorkbenchActivity : AppCompatActivity() {
     }
     private val importArchive = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) importArchive(uri)
+    }
+    private val importNeuralModel = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) importNeuralModel(uri)
     }
     private val chooseExportFolder = registerForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
@@ -122,7 +132,8 @@ class WorkbenchActivity : AppCompatActivity() {
         val pendingLemmas = savedInstanceState?.getStringArrayList("verse_export_lemmas")
         if (pendingReference != null && pendingLemmas != null) {
             pendingVerseExport = VerseExport(
-                pendingReference, pendingLemmas, savedInstanceState?.getInt("verse_export_missing") ?: 0
+                pendingReference, pendingLemmas, savedInstanceState?.getInt("verse_export_missing") ?: 0,
+                savedInstanceState?.getBoolean("verse_export_neural") ?: false
             )
         }
         setContentView(R.layout.activity_audio_workbench)
@@ -204,19 +215,24 @@ class WorkbenchActivity : AppCompatActivity() {
             importArchive.launch(arrayOf("application/zip", "application/octet-stream"))
         }
         findViewById<Button>(R.id.audio_clear_data).setOnClickListener { confirmClearData() }
+        findViewById<Button>(R.id.audio_import_neural_model).setOnClickListener {
+            if (busy) return@setOnClickListener
+            if (Build.VERSION.SDK_INT < 24) {
+                Toast.makeText(this, R.string.audio_neural_version, Toast.LENGTH_LONG).show()
+            } else {
+                importNeuralModel.launch(arrayOf("application/octet-stream", "*/*"))
+            }
+        }
         findViewById<Button>(R.id.audio_listen).setOnClickListener { showChapters() }
         findViewById<Button>(R.id.audio_listen_stop).setOnClickListener { stopPlayback() }
         findViewById<Button>(R.id.audio_attribution).setOnClickListener {
             AlertDialog.Builder(this).setTitle(R.string.audio_attribution)
                 .setMessage(R.string.audio_data_attribution)
                 .setNeutralButton(R.string.audio_view_license) { _, _ ->
-                    try {
-                        val license = assets.open("MaculaScripta-LICENSE.txt").bufferedReader().use { it.readText() }
-                        AlertDialog.Builder(this).setTitle(R.string.audio_view_license)
-                            .setMessage(license).setPositiveButton(android.R.string.ok, null).show()
-                    } catch (exception: Exception) {
-                        Toast.makeText(this, R.string.audio_license_failed, Toast.LENGTH_LONG).show()
-                    }
+                    showLicense("MaculaScripta-LICENSE.txt", R.string.audio_view_license)
+                }
+                .setNegativeButton(R.string.audio_runtime_license) { _, _ ->
+                    showLicense("ONNX-Runtime-LICENSE.txt", R.string.audio_runtime_license)
                 }
                 .setPositiveButton(android.R.string.ok, null).show()
         }
@@ -270,6 +286,7 @@ class WorkbenchActivity : AppCompatActivity() {
             outState.putString("verse_export_reference", it.reference)
             outState.putStringArrayList("verse_export_lemmas", ArrayList(it.lemmas))
             outState.putInt("verse_export_missing", it.missing)
+            outState.putBoolean("verse_export_neural", it.neural)
         }
         super.onSaveInstanceState(outState)
     }
@@ -278,6 +295,16 @@ class WorkbenchActivity : AppCompatActivity() {
         preferences.edit()
             .putString(LANGUAGE_KEY, language.text.toString().trim())
             .apply()
+    }
+
+    private fun showLicense(asset: String, title: Int) {
+        try {
+            val license = assets.open(asset).bufferedReader().use { it.readText() }
+            AlertDialog.Builder(this).setTitle(title).setMessage(license)
+                .setPositiveButton(android.R.string.ok, null).show()
+        } catch (exception: Exception) {
+            Toast.makeText(this, R.string.audio_license_failed, Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun continueToBooks() {
@@ -390,11 +417,24 @@ class WorkbenchActivity : AppCompatActivity() {
         if (pendingTake() == null) audioPlayer.play(words.map { repository.clipFile(it.lemma) })
     }
 
-    private fun downloadVerse(verse: AudioVerse) {
+    private fun downloadVerse(verse: AudioVerse, neural: Boolean) {
         if (busy) return
         stopRecording()
         stopPlayback()
         if (pendingTake() != null) return
+        if (neural && Build.VERSION.SDK_INT < 24) {
+            Toast.makeText(this, R.string.audio_neural_version, Toast.LENGTH_LONG).show()
+            return
+        }
+        if (neural && !neuralModels.isInstalled()) {
+            AlertDialog.Builder(this).setTitle(R.string.audio_neural_model_title)
+                .setMessage(R.string.audio_neural_model_required)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(R.string.audio_neural_import) { _, _ ->
+                    importNeuralModel.launch(arrayOf("application/octet-stream", "*/*"))
+                }.show()
+            return
+        }
         val words = VerseWorkflow.spokenWords(
             verse.words, projectState.rules, projectState.seedOrders[verse.reference], projectState.unspoken
         )
@@ -403,25 +443,30 @@ class WorkbenchActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.audio_word_not_recorded, Toast.LENGTH_LONG).show()
             return
         }
-        pendingVerseExport = VerseExport(verse.reference, recorded.map { it.lemma }, words.size - recorded.size)
+        pendingVerseExport = VerseExport(verse.reference, recorded.map { it.lemma }, words.size - recorded.size, neural)
         saveVerse.launch("${verse.reference.replace(Regex("[^A-Za-z0-9]+"), "-")}.wav")
     }
 
     private fun exportVerse(uri: Uri, export: VerseExport) {
         busy = true
+        Toast.makeText(this, R.string.audio_download_preparing, Toast.LENGTH_SHORT).show()
         io.execute {
             try {
                 val decoder = AndroidAudioDecoder()
+                val decoded = mutableMapOf<String, FloatArray>()
                 var sampleCount = 0L
                 val clips = export.lemmas.map { lemma ->
-                    decoder.decode(repository.clipFile(lemma)).also {
+                    decoded.getOrPut(lemma) { decoder.decode(repository.clipFile(lemma)) }.also {
                         sampleCount += it.size
                         require(sampleCount <= VerseAudio.SAMPLE_RATE * 180L) {
                             getString(R.string.audio_download_too_long)
                         }
                     }
                 }
-                val wav = VerseAudio.encodeWav(VerseAudio.assemble(clips))
+                val assembled = VerseAudio.assemble(clips)
+                val samples = if (export.neural) AndroidNeuralSmoother().smooth(assembled, neuralModels.modelFile)
+                    else assembled
+                val wav = VerseAudio.encodeWav(samples)
                 val output = contentResolver.openOutputStream(uri)
                     ?: throw IllegalStateException(getString(R.string.audio_download_failed))
                 output.use { it.write(wav) }
@@ -434,11 +479,34 @@ class WorkbenchActivity : AppCompatActivity() {
                         Toast.LENGTH_LONG
                     ).show()
                 }
+
             } catch (exception: Exception) {
                 runOnUiThread {
                     busy = false
                     Toast.makeText(
                         this, exception.message ?: getString(R.string.audio_download_failed), Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun importNeuralModel(uri: Uri) {
+        busy = true
+        io.execute {
+            try {
+                val input = contentResolver.openInputStream(uri)
+                    ?: throw IllegalArgumentException(getString(R.string.audio_neural_import_failed))
+                input.use { neuralModels.install(it) }
+                runOnUiThread {
+                    busy = false
+                    Toast.makeText(this, R.string.audio_neural_imported, Toast.LENGTH_LONG).show()
+                }
+            } catch (exception: Exception) {
+                runOnUiThread {
+                    busy = false
+                    Toast.makeText(
+                        this, exception.message ?: getString(R.string.audio_neural_import_failed), Toast.LENGTH_LONG
                     ).show()
                 }
             }
