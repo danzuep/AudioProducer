@@ -1,9 +1,12 @@
 package io.github.danzuep.bibleaudioproducer.controller.audioworkbench
 
 import com.google.gson.GsonBuilder
+import com.google.gson.JsonParser
 import com.google.gson.annotations.SerializedName
 import io.github.danzuep.bibleaudioproducer.workbench.AudioWorkbenchCard
+import io.github.danzuep.bibleaudioproducer.workbench.GrammarRule
 import java.io.File
+import java.io.InputStream
 import java.io.OutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -11,6 +14,8 @@ import java.util.zip.ZipOutputStream
 class AudioWorkbenchRepository(private val root: File) {
     private val planFile = File(root, "recording-plan.json")
     private val clipsDirectory = File(root, "clips")
+    private val metadataFile = File(root, "clip-metadata.json")
+    private val stateFile = File(root, "audio-state.json")
 
     fun loadPlan(): List<AudioWorkbenchCard> =
         if (planFile.isFile) AudioWorkbenchPlan.parse(planFile.readText()) else emptyList()
@@ -31,9 +36,83 @@ class AudioWorkbenchRepository(private val root: File) {
         return File(clipsDirectory, "$safeName.m4a")
     }
 
+    fun loadState(): AudioProjectState {
+        if (!stateFile.isFile) return AudioProjectState()
+        val state = JsonParser.parseString(stateFile.readText()).asJsonObject
+        val rules = state.getAsJsonObject("rules")?.entrySet()?.associate { (key, value) ->
+            val rule = value.asJsonObject
+            key to GrammarRule(rule.get("keep").asInt, rule.get("flip").asInt)
+        }.orEmpty()
+        val orders = state.getAsJsonObject("seedOrders")?.entrySet()?.associate { (key, value) ->
+            key to value.asJsonArray.map { it.asInt }
+        }.orEmpty()
+        val unspoken = state.getAsJsonArray("unspoken")?.map { it.asString }?.toSet().orEmpty()
+        return AudioProjectState(rules, orders, unspoken)
+    }
+
+    fun saveState(state: AudioProjectState) = writeJson(stateFile, state)
+
+    fun recordingSaved(lemma: String) {
+        val metadata = loadMetadata().toMutableMap()
+        if (metadata.remove(lemma) != null) writeJson(metadataFile, metadata)
+    }
+
+    fun importArchive(input: InputStream, language: String, state: AudioProjectState): AudioArchiveImport {
+        check(root.mkdirs() || root.isDirectory) { "Unable to create the audio workbench folder." }
+        val scratch = File.createTempFile("audio-import-", ".tmp", root)
+        check(scratch.delete() && scratch.mkdir()) { "Unable to prepare audio import." }
+        try {
+            return MaculaArchive.read(input, scratch, language, state) { clips ->
+                check(clipsDirectory.mkdirs() || clipsDirectory.isDirectory)
+                val metadata = loadMetadata().toMutableMap()
+                val created = mutableListOf<File>()
+                try {
+                    var skipped = 0
+                    for (clip in clips) {
+                        val destination = clipFile(clip.lemma)
+                        if (destination.exists()) {
+                            skipped++
+                        } else {
+                            check(clip.file.renameTo(destination)) { "Unable to save an imported recording." }
+                            created.add(destination)
+                            metadata[clip.lemma] = clip.mime
+                        }
+                    }
+                    writeJson(metadataFile, metadata)
+                    created.size to skipped
+                } catch (exception: Exception) {
+                    created.forEach { it.delete() }
+                    throw exception
+                }
+            }
+        } finally {
+            scratch.listFiles()?.forEach { it.delete() }
+            scratch.delete()
+        }
+    }
+
+    fun recordedCards(cards: List<AudioWorkbenchCard>): List<AudioWorkbenchCard> {
+        val known = cards.map { it.lemma }.toSet()
+        val extra = loadMetadata().keys.filter { it !in known }
+            .map { AudioWorkbenchCard("", it, "", 0) }
+        return (cards + extra).filter { clipFile(it.lemma).isFile }
+    }
+
+    private fun loadMetadata(): Map<String, String> =
+        if (!metadataFile.isFile) emptyMap() else
+            JsonParser.parseString(metadataFile.readText()).asJsonObject.entrySet()
+                .associate { it.key to it.value.asString }
+
+    private fun writeJson(file: File, value: Any) {
+        check(root.mkdirs() || root.isDirectory) { "Unable to create the audio workbench folder." }
+        val temporary = File(root, "${file.name}.tmp")
+        temporary.writeText(GsonBuilder().create().toJson(value))
+        check(temporary.renameTo(file)) { "Unable to save audio workbench data." }
+    }
+
     fun exportParts(cards: List<AudioWorkbenchCard>, language: String): List<AudioWorkbenchExportPart> {
         require(language.isNotBlank()) { "Enter a recording language before exporting." }
-        val recordedCards = cards.filter { clipFile(it.lemma).isFile }
+        val recordedCards = recordedCards(cards)
         require(recordedCards.isNotEmpty()) { "Record at least one clip before exporting." }
 
         val parts = mutableListOf<AudioWorkbenchExportPart>()
@@ -66,21 +145,35 @@ class AudioWorkbenchRepository(private val root: File) {
         cards: List<AudioWorkbenchCard>,
         language: String,
         output: OutputStream,
-        firstClipNumber: Int = 1
+        firstClipNumber: Int = 1,
+        state: AudioProjectState = AudioProjectState()
     ) {
         require(language.isNotBlank()) { "Enter a recording language before exporting." }
         require(cards.isNotEmpty()) { "Record at least one clip before exporting." }
+        val metadata = loadMetadata()
         val clipEntries = cards.mapIndexed { index, card ->
-            ExportClip(card.lemma, "clips/${firstClipNumber + index}.m4a", "audio/mp4")
+            val mime = metadata[card.lemma] ?: "audio/mp4"
+            val extension = when (mime.substringBefore(';')) {
+                "audio/webm" -> "webm"
+                "audio/ogg" -> "ogg"
+                "audio/mp4" -> "m4a"
+                "audio/wav" -> "wav"
+                "audio/mpeg" -> "mp3"
+                else -> "bin"
+            }
+            ExportClip(card.lemma, "clips/${firstClipNumber + index}.$extension", mime)
         }
-        val manifest = ExportManifest(language = language.trim(), clips = clipEntries)
+        val manifest = ExportManifest(
+            language = language.trim(), clips = clipEntries, rules = state.rules,
+            seedOrders = state.seedOrders, unspoken = state.unspoken.toList()
+        )
         ZipOutputStream(output.buffered()).use { zip ->
             zip.putNextEntry(ZipEntry("manifest.json"))
             zip.write(GsonBuilder().setPrettyPrinting().create().toJson(manifest).toByteArray(Charsets.UTF_8))
             zip.closeEntry()
 
             cards.forEachIndexed { index, card ->
-                zip.putNextEntry(ZipEntry("clips/${firstClipNumber + index}.m4a"))
+                zip.putNextEntry(ZipEntry(clipEntries[index].file))
                 val clip = clipFile(card.lemma)
                 require(clip.length() > 0) { "Clip file is empty and cannot be exported: ${card.lemma}" }
                 clip.inputStream().use { it.copyTo(zip) }
@@ -104,7 +197,7 @@ private data class ExportManifest(
     val format: String = "macula-scripta-audio",
     val version: Int = 1,
     val language: String,
-    val rules: Map<String, String> = emptyMap(),
+    val rules: Map<String, GrammarRule> = emptyMap(),
     @SerializedName("seed_orders") val seedOrders: Map<String, List<Int>> = emptyMap(),
     val unspoken: List<String> = emptyList(),
     val clips: List<ExportClip>

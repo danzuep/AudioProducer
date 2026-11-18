@@ -2,7 +2,7 @@ name: Auto Tag
 on:
   pull_request:
     types: [closed]
-    branches: [develop]
+    branches: [main]
 
 permissions:
   contents: write
