@@ -198,7 +198,7 @@ class WorkbenchLaunchTest {
             assertTrue(skipped.unspokenKey in saved.unspoken)
             onView(withId(R.id.audio_choose_verse)).perform(click())
             onView(withText("Chapter 1")).perform(click())
-            onView(withText("JHN 1:1")).perform(click())
+            onView(withText(verse.words.joinToString(" ") { it.surface })).perform(click())
             onView(withId(R.id.audio_verse_more)).perform(click())
             onView(withText(R.string.audio_download_verse)).perform(click())
             onView(withText(R.string.audio_format_wav)).check(matches(isDisplayed()))
