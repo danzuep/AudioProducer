@@ -99,7 +99,8 @@ class WorkbenchActivity : AppCompatActivity() {
         override fun run() {
             val lemma = activeLemma ?: return
             try {
-                adapter.addLevel(lemma, audioRecorder.amplitude())
+                val levels = adapter.addLevel(lemma, audioRecorder.amplitude())
+                verseDialogs.showWaveform(lemma, levels)
                 waveformHandler.postDelayed(this, 100)
             } catch (exception: IllegalStateException) {
                 stopRecording()

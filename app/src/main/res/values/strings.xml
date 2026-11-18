@@ -78,6 +78,7 @@
     <string name="audio_play_symbol">▶</string>
     <string name="audio_stop_symbol">■</string>
     <string name="audio_record_symbol">●</string>
+    <string name="audio_record_hint">Hold to record; release to save</string>
     <string name="audio_hold_record">Hold to record %1$s, release to save. Activate to toggle recording.</string>
     <string name="audio_recording_active">Recording %1$s. Release or activate to stop.</string>
     <string name="audio_play_word">Play %1$s</string>

@@ -40,12 +40,13 @@ class RecordingCardAdapter(
 
     fun clearWaveform() = levels.clear()
 
-    fun addLevel(lemma: String, level: Float) {
+    fun addLevel(lemma: String, level: Float): List<Float> {
         levels.add(level)
         if (levels.size > RecordingWaveform.MAX_LEVELS) levels.removeAt(0)
         val index = currentList.indexOfFirst { it.card.lemma == lemma && it.recording }
         val holder = recyclerView?.findViewHolderForAdapterPosition(index) as? RecordingCardViewHolder
         holder?.showWaveform()
+        return levels.toList()
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecordingCardViewHolder =

@@ -43,9 +43,14 @@ internal class VerseDialogs(
     }
 
     private var refreshWordControls: (() -> Unit)? = null
+    private var refreshWordWaveform: ((String, List<Float>) -> Unit)? = null
 
     fun refreshControls() {
         refreshWordControls?.invoke()
+    }
+
+    fun showWaveform(lemma: String, levels: List<Float>) {
+        refreshWordWaveform?.invoke(lemma, levels)
     }
 
     fun showChapters(bookVerses: List<AudioVerse>) {
@@ -184,8 +189,13 @@ internal class VerseDialogs(
             orientation = LinearLayout.VERTICAL
             setPadding(24, 8, 24, 8)
         }
+        content.addView(TextView(activity).apply {
+            setText(R.string.audio_record_hint)
+        })
         val refreshers = mutableListOf<() -> Unit>()
+        val waveforms = mutableMapOf<String, MutableList<RecordingWaveform>>()
         for (word in words) {
+            val group = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
             val row = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
             val card = RecordingCard(verse.reference.substringBefore(' '), word.lemma, word.gloss, 0)
             row.addView(TextView(activity).apply {
@@ -205,9 +215,19 @@ internal class VerseDialogs(
                     else Toast.makeText(activity, R.string.audio_word_not_recorded, Toast.LENGTH_SHORT).show()
                 }
             }
+            val waveform = RecordingWaveform(activity).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    (48 * activity.resources.displayMetrics.density).toInt()
+                )
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                visibility = View.GONE
+            }
+            waveforms.getOrPut(card.lemma) { mutableListOf() }.add(waveform)
             refreshers.add {
                 val recording = actions.isRecording(card)
                 val playing = actions.isPlaying(card)
+                waveform.visibility = if (recording) View.VISIBLE else View.GONE
                 record.setText(if (recording) R.string.audio_stop_symbol else R.string.audio_record_symbol)
                 record.contentDescription = activity.getString(
                     if (recording) R.string.audio_recording_active else R.string.audio_hold_record, card.lemma
@@ -219,9 +239,12 @@ internal class VerseDialogs(
             }
             row.addView(record)
             row.addView(play)
-            content.addView(row)
+            group.addView(row)
+            group.addView(waveform)
+            content.addView(group)
         }
         refreshWordControls = { refreshers.forEach { it() } }
+        refreshWordWaveform = { lemma, levels -> waveforms[lemma]?.forEach { it.showLevels(levels) } }
         refreshControls()
         AlertDialog.Builder(activity)
             .setTitle(verse.reference)
@@ -229,6 +252,7 @@ internal class VerseDialogs(
             .setPositiveButton(android.R.string.ok, null)
             .setOnDismissListener {
                 refreshWordControls = null
+                refreshWordWaveform = null
                 actions.closeRecording()
             }
             .show()
