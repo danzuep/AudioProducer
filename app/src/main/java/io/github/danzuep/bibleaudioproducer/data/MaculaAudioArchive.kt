@@ -80,11 +80,13 @@ internal object MaculaAudioArchive {
         }
         val incomingRules = readRules(manifest.getAsJsonObject("rules"))
         val incomingOrders = readOrders(manifest.getAsJsonObject("seed_orders"))
+        val incomingWordOrders = readOrders(manifest.getAsJsonObject("word_orders"))
         val incomingUnspoken = manifest.getAsJsonArray("unspoken")?.map { it.asString }?.toSet().orEmpty()
         val merged = AudioProjectState(
             rules = if (current.seedOrders.isEmpty()) incomingRules else current.rules,
             seedOrders = if (current.seedOrders.isEmpty()) incomingOrders else current.seedOrders,
-            unspoken = current.unspoken + incomingUnspoken
+            unspoken = current.unspoken + incomingUnspoken,
+            wordOrders = if (current.wordOrders.isEmpty()) incomingWordOrders else current.wordOrders
         )
         val (added, alreadyRecorded) = consume(imported)
         return AudioArchiveImport(

@@ -15,7 +15,8 @@ data class RecordingCardRow(
     val card: RecordingCard,
     val recorded: Boolean,
     val recording: Boolean,
-    val playing: Boolean
+    val playing: Boolean,
+    val grammar: String = ""
 )
 
 class RecordingCardAdapter(
@@ -60,6 +61,7 @@ class RecordingCardAdapter(
     inner class RecordingCardViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         private val lemma = view.findViewById<TextView>(R.id.audio_workbench_lemma)
         private val gloss = view.findViewById<TextView>(R.id.audio_workbench_gloss)
+        private val grammar = view.findViewById<TextView>(R.id.audio_workbench_grammar)
         private val occurrences = view.findViewById<TextView>(R.id.audio_workbench_occurrences)
         private val record = view.findViewById<Button>(R.id.audio_workbench_record)
         private val play = view.findViewById<Button>(R.id.audio_workbench_play)
@@ -70,6 +72,7 @@ class RecordingCardAdapter(
         fun bind(row: RecordingCardRow) {
             lemma.text = row.card.lemma
             gloss.text = row.card.gloss
+            grammar.text = row.grammar
             occurrences.text = itemView.context.getString(
                 R.string.audio_workbench_occurrences,
                 row.card.occurrences
