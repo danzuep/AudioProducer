@@ -16,7 +16,6 @@ import androidx.test.espresso.action.ViewActions.replaceText
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.action.ViewActions.scrollTo
 import androidx.test.espresso.assertion.ViewAssertions.matches
-import androidx.test.espresso.matcher.ViewMatchers.allOf
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
 import androidx.test.espresso.matcher.ViewMatchers.isEnabled
 import androidx.test.espresso.matcher.ViewMatchers.withId
@@ -42,6 +41,7 @@ import io.github.danzuep.bibleaudioproducer.data.AudioProjectRepository
 import io.github.danzuep.bibleaudioproducer.data.MaculaVerseJson
 import java.io.File
 import android.widget.Button
+import org.hamcrest.Matchers.allOf
 import org.hamcrest.Matchers.startsWith
 
 @RunWith(AndroidJUnit4::class)
