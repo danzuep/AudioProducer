@@ -2,7 +2,9 @@ package io.github.danzuep.bibleaudioproducer.ui
 
 import android.content.Context
 import android.Manifest
+import android.content.pm.PackageManager
 import android.os.SystemClock
+import android.os.ParcelFileDescriptor
 import android.view.MotionEvent
 import android.view.View
 import androidx.test.core.app.ActivityScenario
@@ -19,6 +21,7 @@ import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.core.content.ContextCompat
 import android.widget.Spinner
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -193,8 +196,13 @@ class WorkbenchLaunchTest {
     @Test
     fun holdShowsWaveformSavesOnReleaseAndPreservesTakeOnCancel() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(
-            context.packageName, Manifest.permission.RECORD_AUDIO
+        val result = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(
+            "pm grant ${context.packageName} ${Manifest.permission.RECORD_AUDIO}"
+        )
+        ParcelFileDescriptor.AutoCloseInputStream(result).bufferedReader().use { it.readText() }
+        assertEquals(
+            PackageManager.PERMISSION_GRANTED,
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
         )
         check(directory.mkdirs())
         File(directory, "recording-plan.json").writeText(
