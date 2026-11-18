@@ -172,6 +172,12 @@
             android:text="@string/audio_settings_description"
             android:textAppearance="?attr/textAppearanceBody1" />
         <com.google.android.material.button.MaterialButton
+            android:id="@+id/audio_speech_settings"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/audio_speech_configure" />
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/audio_workbench_import"
             style="@style/Widget.MaterialComponents.Button.OutlinedButton"
             android:layout_width="match_parent"

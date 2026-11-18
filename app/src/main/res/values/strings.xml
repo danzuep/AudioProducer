@@ -37,6 +37,17 @@
     <string name="audio_archive_imported">Imported %1$d recordings; %2$d skipped.</string>
     <string name="audio_archive_import_failed">Unable to import the audio archive.</string>
     <string name="audio_settings_description">Project tools and data management</string>
+    <string name="audio_speech_configure">Configure Greek neural speech</string>
+    <string name="audio_speech_title">Azure Greek neural speech</string>
+    <string name="audio_speech_region">Azure Speech region (for example eastus)</string>
+    <string name="audio_speech_key">Azure Speech subscription key (blank keeps saved key)</string>
+    <string name="audio_speech_use_device_voice">Use device voice</string>
+    <string name="audio_speech_setup_failed">Unable to read Azure Speech settings.</string>
+    <string name="audio_speech_saved">Azure Speech key saved with Android Keystore encryption.</string>
+    <string name="audio_speech_device_voice_enabled">Device speech selected.</string>
+    <string name="audio_speech_failed">Unable to synthesize Greek speech: %1$s</string>
+    <string name="audio_speak_greek">Speak Greek</string>
+    <string name="audio_speech_fallback_notice">Using the installed Italian Android voice. This fallback approximates Classical pronunciation; configure Azure for IPA-based speech.</string>
     <string name="audio_clear_data">Clear saved data</string>
     <string name="audio_clear_title">Delete all saved data?</string>
     <string name="audio_clear_message">This permanently deletes your recordings, language, grammar, and imported plan. Export first if you need a copy.</string>

@@ -7,13 +7,25 @@ Greek New Testament support is included first; Hebrew is not yet bundled.
 The complete Greek New Testament recording plan is bundled and available offline on first
 launch. The first screen lists projects; a new project with no name is assigned a name such
 as **Project001**. Opening a project with no recordings starts at John 1:1. Select a chapter
-and verse to open its interactive Greek text, with English glosses above each word. Tap a
-word to inspect its Macula metadata and record or play its audio. Pinch to resize the text,
+and verse to open its interactive original Greek text. Tap a word to inspect its Macula
+metadata and English gloss, then record or play its audio. Pinch to resize the text,
 drag words to change their order, and long-press a word to omit it from the translation.
 Closing the verse returns to the project's most-used words. Open **Settings** from the gear
 icon to set the recording language, import plans or audio, export archives, or manage data.
 Imports in a different language are rejected to prevent mixing projects. Plans and
 recordings remain in private storage; export them before uninstalling.
+
+The chapter verse list and verse text show the original Greek; recorded words are marked
+green. For natural neural speech with Classical/Erasmian pronunciation, the app can map
+polytonic Greek to IPA and embed it in Azure Speech SSML. Configure an Azure Speech
+subscription and region in Settings for IPA-based neural synthesis; the speech service
+receives the Greek text and generated IPA. The subscription key is encrypted with Android
+Keystore. Without a key, the app uses the highest-quality installed Italian Android TTS
+voice and a pronunciation respelling instead. This fallback is approximate (Android TTS
+does not standardize IPA or SSML support), depends on installed voice data, and the voice
+provider may process speech locally or over its network. The IPA transcription models
+Classical vowel quality, explicit macrons, breathing, diphthongs, and stress; it does not
+reproduce the pitch contour of ancient Greek pitch accent.
 
 Inspired by BTT Recorder's take-review workflow, replacing an existing recording requires
 reviewing the new take first. The current take remains intact until the replacement is

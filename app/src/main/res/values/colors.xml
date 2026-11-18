@@ -3,6 +3,7 @@
     <color name="workbench_primary_dark">#204477</color>
     <color name="workbench_surface">#FAFBFF</color>
     <color name="workbench_outline">#D9DFEA</color>
-    <color name="workbench_muted">#737B88</color>
+    <color name="workbench_muted">#626B78</color>
     <color name="workbench_record">#C62632</color>
+    <color name="workbench_recorded">#167D3D</color>
 </resources>
