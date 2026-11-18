@@ -28,6 +28,8 @@ import androidx.recyclerview.widget.RecyclerView
 import io.github.danzuep.bibleaudioproducer.R
 import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioPlayer
 import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioRecorder
+import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioDecoder
+import io.github.danzuep.bibleaudioproducer.audio.VerseAudio
 import io.github.danzuep.bibleaudioproducer.data.RecordingPlanJson
 import io.github.danzuep.bibleaudioproducer.data.AudioProjectRepository
 import io.github.danzuep.bibleaudioproducer.data.MaculaVerseJson
@@ -56,6 +58,7 @@ class WorkbenchActivity : AppCompatActivity() {
             override val state get() = projectState
             override val busy get() = this@WorkbenchActivity.busy
             override fun playVerse(verse: AudioVerse) = this@WorkbenchActivity.playVerse(verse)
+            override fun downloadVerse(verse: AudioVerse) = this@WorkbenchActivity.downloadVerse(verse)
             override fun saveOrder(reference: String, order: List<Int>?, unspoken: Set<String>) =
                 saveVerseOrder(reference, order, unspoken)
             override fun toggleRecording(card: RecordingCard) = this@WorkbenchActivity.toggleRecording(card)
@@ -77,6 +80,8 @@ class WorkbenchActivity : AppCompatActivity() {
     private var busy = false
     private var activeLemma: String? = null
     private var reviewDialog: AlertDialog? = null
+    private data class VerseExport(val reference: String, val lemmas: List<String>, val missing: Int)
+    private var pendingVerseExport: VerseExport? = null
 
     private lateinit var language: EditText
     private lateinit var books: Spinner
@@ -96,6 +101,12 @@ class WorkbenchActivity : AppCompatActivity() {
     ) { uri ->
         if (uri != null) exportArchives(uri)
     }
+    private val saveVerse = registerForActivityResult(ActivityResultContracts.CreateDocument("audio/wav")) { uri ->
+        val export = pendingVerseExport
+        pendingVerseExport = null
+        if (uri != null && export != null) exportVerse(uri, export)
+        else if (uri != null) Toast.makeText(this, R.string.audio_download_failed, Toast.LENGTH_LONG).show()
+    }
     private val requestAudioPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -107,6 +118,13 @@ class WorkbenchActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val pendingReference = savedInstanceState?.getString("verse_export_reference")
+        val pendingLemmas = savedInstanceState?.getStringArrayList("verse_export_lemmas")
+        if (pendingReference != null && pendingLemmas != null) {
+            pendingVerseExport = VerseExport(
+                pendingReference, pendingLemmas, savedInstanceState?.getInt("verse_export_missing") ?: 0
+            )
+        }
         setContentView(R.layout.activity_audio_workbench)
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.audio_workbench_root)) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -247,6 +265,15 @@ class WorkbenchActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        pendingVerseExport?.let {
+            outState.putString("verse_export_reference", it.reference)
+            outState.putStringArrayList("verse_export_lemmas", ArrayList(it.lemmas))
+            outState.putInt("verse_export_missing", it.missing)
+        }
+        super.onSaveInstanceState(outState)
+    }
+
     private fun saveLanguage() {
         preferences.edit()
             .putString(LANGUAGE_KEY, language.text.toString().trim())
@@ -361,6 +388,61 @@ class WorkbenchActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.audio_playback_missing_words, Toast.LENGTH_SHORT).show()
         }
         if (pendingTake() == null) audioPlayer.play(words.map { repository.clipFile(it.lemma) })
+    }
+
+    private fun downloadVerse(verse: AudioVerse) {
+        if (busy) return
+        stopRecording()
+        stopPlayback()
+        if (pendingTake() != null) return
+        val words = VerseWorkflow.spokenWords(
+            verse.words, projectState.rules, projectState.seedOrders[verse.reference], projectState.unspoken
+        )
+        val recorded = words.filter { repository.clipFile(it.lemma).isFile }
+        if (recorded.isEmpty()) {
+            Toast.makeText(this, R.string.audio_word_not_recorded, Toast.LENGTH_LONG).show()
+            return
+        }
+        pendingVerseExport = VerseExport(verse.reference, recorded.map { it.lemma }, words.size - recorded.size)
+        saveVerse.launch("${verse.reference.replace(Regex("[^A-Za-z0-9]+"), "-")}.wav")
+    }
+
+    private fun exportVerse(uri: Uri, export: VerseExport) {
+        busy = true
+        io.execute {
+            try {
+                val decoder = AndroidAudioDecoder()
+                var sampleCount = 0L
+                val clips = export.lemmas.map { lemma ->
+                    decoder.decode(repository.clipFile(lemma)).also {
+                        sampleCount += it.size
+                        require(sampleCount <= VerseAudio.SAMPLE_RATE * 180L) {
+                            getString(R.string.audio_download_too_long)
+                        }
+                    }
+                }
+                val wav = VerseAudio.encodeWav(VerseAudio.assemble(clips))
+                val output = contentResolver.openOutputStream(uri)
+                    ?: throw IllegalStateException(getString(R.string.audio_download_failed))
+                output.use { it.write(wav) }
+                runOnUiThread {
+                    busy = false
+                    Toast.makeText(
+                        this,
+                        if (export.missing == 0) getString(R.string.audio_download_complete, export.reference)
+                        else getString(R.string.audio_download_incomplete, export.reference, export.missing),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            } catch (exception: Exception) {
+                runOnUiThread {
+                    busy = false
+                    Toast.makeText(
+                        this, exception.message ?: getString(R.string.audio_download_failed), Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
     }
 
     private fun importArchive(uri: Uri) {

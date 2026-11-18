@@ -17,8 +17,9 @@ reviewing the new take first. The current take remains intact until the replacem
 accepted, including if the app is interrupted during review.
 
 Verse playback uses the recordings available on the device; missing words are skipped.
-The optional computer voice, neural smoothing, and whole-verse audio
-download are not yet available in the Android app.
+Choose **Save verse audio (WAV)** from a verse to export its recorded words in the
+selected order, with normalized levels and crossfaded joins. The app reports how many
+missing words were skipped. Computer voice and neural smoothing are not yet available.
 
 ## Acknowledgements
 

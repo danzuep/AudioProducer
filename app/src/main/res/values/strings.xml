@@ -29,6 +29,11 @@
     <string name="audio_verse_no_words">No recordable words</string>
     <string name="audio_verse_missing">%1$d words missing</string>
     <string name="audio_play_verse">Play recorded words</string>
+    <string name="audio_download_verse">Save verse audio (WAV)</string>
+    <string name="audio_download_complete">Saved %1$s.</string>
+    <string name="audio_download_incomplete">Saved %1$s; %2$d missing words were skipped.</string>
+    <string name="audio_download_failed">Unable to save verse audio.</string>
+    <string name="audio_download_too_long">The verse is too long to render.</string>
     <string name="audio_arrange_verse">Arrange and omit words</string>
     <string name="audio_record_verse_words">Record verse words</string>
     <string name="audio_arrange_title">Arrange %1$s</string>
