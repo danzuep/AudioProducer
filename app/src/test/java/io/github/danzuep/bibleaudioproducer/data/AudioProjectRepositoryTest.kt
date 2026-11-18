@@ -216,49 +216,6 @@ class AudioProjectRepositoryTest {
                     zip.write("""{"format":"macula-scripta-audio","version":1,"language":"French","clips":[]}""".toByteArray())
                     zip.closeEntry()
                 }
-
-                @Test
-                fun recordingCandidateDoesNotReplaceCurrentUntilCommitted() {
-                    val directory = Files.createTempDirectory("audio-candidate-test").toFile()
-                    try {
-                        val repository = AudioProjectRepository(directory)
-                        val current = repository.clipFile("λόγος")
-                        check(current.parentFile!!.mkdirs())
-                        current.writeBytes(byteArrayOf(1))
-                        val candidate = repository.recordingCandidateFile("λόγος")
-                        candidate.writeBytes(byteArrayOf(2))
-
-                        assertEquals(listOf(1), current.readBytes().map { it.toInt() })
-                        repository.commitRecording("λόγος")
-                        assertEquals(listOf(2), current.readBytes().map { it.toInt() })
-                        assertFalse(candidate.exists())
-                        assertEquals(listOf("λόγος"), repository.recordedCards(emptyList()).map { it.lemma })
-                        assertTrue(runCatching { repository.commitRecording("λόγος") }.isFailure)
-                        assertEquals(listOf(2), current.readBytes().map { it.toInt() })
-                    } finally {
-                        directory.deleteRecursively()
-                    }
-
-                    @Test
-                    fun failedRecordingMetadataSaveRestoresBothTakes() {
-                        val directory = Files.createTempDirectory("audio-candidate-failure-test").toFile()
-                        try {
-                            val repository = AudioProjectRepository(directory)
-                            val current = repository.clipFile("λόγος")
-                            check(current.parentFile!!.mkdirs())
-                            current.writeBytes(byteArrayOf(1))
-                            val candidate = repository.recordingCandidateFile("λόγος")
-                            candidate.writeBytes(byteArrayOf(2))
-                            check(File(directory, "clip-metadata.json").mkdir())
-
-                            assertTrue(runCatching { repository.commitRecording("λόγος") }.isFailure)
-                            assertEquals(listOf(1), current.readBytes().map { it.toInt() })
-                            assertEquals(listOf(2), candidate.readBytes().map { it.toInt() })
-                        } finally {
-                            directory.deleteRecursively()
-                        }
-                    }
-                }
             }
             val repository = AudioProjectRepository(directory)
             val error = runCatching {
@@ -266,6 +223,49 @@ class AudioProjectRepositoryTest {
             }.exceptionOrNull()
             assertTrue(error is IllegalArgumentException)
             assertTrue(repository.recordedCards(emptyList()).isEmpty())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun recordingCandidateDoesNotReplaceCurrentUntilCommitted() {
+        val directory = Files.createTempDirectory("audio-candidate-test").toFile()
+        try {
+            val repository = AudioProjectRepository(directory)
+            val current = repository.clipFile("λόγος")
+            check(current.parentFile!!.mkdirs())
+            current.writeBytes(byteArrayOf(1))
+            val candidate = repository.recordingCandidateFile("λόγος")
+            candidate.writeBytes(byteArrayOf(2))
+
+            assertEquals(listOf(1), current.readBytes().map { it.toInt() })
+            repository.commitRecording("λόγος")
+            assertEquals(listOf(2), current.readBytes().map { it.toInt() })
+            assertFalse(candidate.exists())
+            assertEquals(listOf("λόγος"), repository.recordedCards(emptyList()).map { it.lemma })
+            assertTrue(runCatching { repository.commitRecording("λόγος") }.isFailure)
+            assertEquals(listOf(2), current.readBytes().map { it.toInt() })
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun failedRecordingMetadataSaveRestoresBothTakes() {
+        val directory = Files.createTempDirectory("audio-candidate-failure-test").toFile()
+        try {
+            val repository = AudioProjectRepository(directory)
+            val current = repository.clipFile("λόγος")
+            check(current.parentFile!!.mkdirs())
+            current.writeBytes(byteArrayOf(1))
+            val candidate = repository.recordingCandidateFile("λόγος")
+            candidate.writeBytes(byteArrayOf(2))
+            check(File(directory, "clip-metadata.json").mkdir())
+
+            assertTrue(runCatching { repository.commitRecording("λόγος") }.isFailure)
+            assertEquals(listOf(1), current.readBytes().map { it.toInt() })
+            assertEquals(listOf(2), candidate.readBytes().map { it.toInt() })
         } finally {
             directory.deleteRecursively()
         }
