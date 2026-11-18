@@ -1,3 +1,4 @@
 <resources>
     <item name="audio_verse_close" type="id" />
+    <item name="audio_verse_more" type="id" />
 </resources>

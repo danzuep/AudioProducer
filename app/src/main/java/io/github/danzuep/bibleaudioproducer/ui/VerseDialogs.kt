@@ -149,6 +149,7 @@ internal class VerseDialogs(
             setOnClickListener { actions.playVerse(verse) }
         }
         val more = Button(activity).apply {
+            id = R.id.audio_verse_more
             text = "⋮"
             contentDescription = activity.getString(R.string.audio_download_verse)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f)

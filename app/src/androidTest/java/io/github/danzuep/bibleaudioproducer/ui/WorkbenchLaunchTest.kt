@@ -16,6 +16,7 @@ import androidx.test.espresso.action.ViewActions.replaceText
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.action.ViewActions.scrollTo
 import androidx.test.espresso.assertion.ViewAssertions.matches
+import androidx.test.espresso.matcher.ViewMatchers.allOf
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
 import androidx.test.espresso.matcher.ViewMatchers.isEnabled
 import androidx.test.espresso.matcher.ViewMatchers.withId
@@ -25,6 +26,7 @@ import androidx.test.espresso.action.ViewActions.longClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.core.content.ContextCompat
+import androidx.appcompat.widget.Toolbar
 import android.widget.Spinner
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -75,7 +77,7 @@ class WorkbenchLaunchTest {
             onView(withId(R.id.audio_verse_close)).check(matches(isDisplayed()))
             onView(withId(R.id.audio_verse_close)).perform(click())
             onView(withId(R.id.audio_workbench_coverage)).check(matches(withText("0 of 952 recorded")))
-            onView(withId(R.id.audio_menu_settings)).perform(click())
+            openSettings(scenario)
             onView(withId(R.id.audio_workbench_export)).check(matches(isEnabled()))
         }
     }
@@ -90,9 +92,9 @@ class WorkbenchLaunchTest {
             awaitBooks(scenario, 1)
             onView(withId(R.id.audio_verse_close)).perform(click())
             onView(withId(R.id.audio_workbench_coverage)).check(matches(withText("0 of 1 recorded")))
-            onView(withId(R.id.audio_menu_settings)).perform(click())
+            openSettings(scenario)
             onView(withId(R.id.audio_workbench_export)).check(matches(isEnabled()))
-            onView(withId(R.id.audio_menu_settings)).perform(click())
+            openSettings(scenario)
             onView(withId(R.id.audio_workbench_search)).perform(replaceText("no match"))
             closeSoftKeyboard()
             onView(withId(R.id.audio_workbench_empty))
@@ -125,6 +127,7 @@ class WorkbenchLaunchTest {
             onView(withId(R.id.audio_choose_verse)).perform(click())
             onView(withText("Chapter 1")).perform(click())
             onView(withText(startsWith("JHN 1:1 ·"))).perform(click())
+            onView(withId(R.id.audio_verse_more)).perform(click())
             onView(withText(R.string.audio_download_verse)).perform(click())
             onView(withText(R.string.audio_format_wav)).check(matches(isDisplayed()))
             onView(withText(R.string.audio_format_aac)).check(matches(isDisplayed()))
@@ -261,9 +264,18 @@ class WorkbenchLaunchTest {
         assertTrue("Playback control did not become $description", matches)
     }
 
+    private fun openSettings(scenario: ActivityScenario<WorkbenchActivity>) {
+        var opened = false
+        scenario.onActivity { activity ->
+            opened = activity.findViewById<Toolbar>(R.id.audio_workbench_toolbar).menu
+                .performIdentifierAction(R.id.audio_menu_settings, 0)
+        }
+        assertTrue("Settings menu action was not available", opened)
+    }
+
     private fun awaitBooks(scenario: ActivityScenario<WorkbenchActivity>, count: Int) {
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-        onView(withText("Project001")).perform(click())
+        onView(allOf(withText("Project001"), isDisplayed())).perform(click())
         val deadline = System.currentTimeMillis() + 15_000
         var loaded = false
         while (!loaded && System.currentTimeMillis() < deadline) {
