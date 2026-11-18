@@ -20,6 +20,12 @@ Verse playback uses the recordings available on the device; missing words are sk
 The optional computer voice, neural smoothing, and whole-verse audio
 download are not yet available in the Android app.
 
+## Acknowledgements
+
+Thank you to [MaculaScripta](https://github.com/danzuep/MaculaScripta) for the audio
+workbench and plan generator, and to [BTT Recorder](https://github.com/Bible-Translation-Tools/BTT-Recorder)
+for inspiration from its recording and take-review workflows.
+
 ## Development
 
 Android 6.0 (API 23) or later is required. Build and test with JDK 17, the Android SDK,
