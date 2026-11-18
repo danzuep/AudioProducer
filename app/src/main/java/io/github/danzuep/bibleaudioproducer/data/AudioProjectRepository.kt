@@ -1,9 +1,11 @@
-package io.github.danzuep.bibleaudioproducer.controller.audioworkbench
+package io.github.danzuep.bibleaudioproducer.data
 
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonParser
 import com.google.gson.annotations.SerializedName
-import io.github.danzuep.bibleaudioproducer.workbench.AudioWorkbenchCard
+import io.github.danzuep.bibleaudioproducer.workbench.RecordingCard
+import io.github.danzuep.bibleaudioproducer.workbench.AudioArchiveImport
+import io.github.danzuep.bibleaudioproducer.workbench.AudioProjectState
 import io.github.danzuep.bibleaudioproducer.workbench.GrammarRule
 import java.io.File
 import java.io.InputStream
@@ -11,16 +13,16 @@ import java.io.OutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
-class AudioWorkbenchRepository(private val root: File) {
+class AudioProjectRepository(private val root: File) {
     private val planFile = File(root, "recording-plan.json")
     private val clipsDirectory = File(root, "clips")
     private val metadataFile = File(root, "clip-metadata.json")
     private val stateFile = File(root, "audio-state.json")
 
-    fun loadPlan(): List<AudioWorkbenchCard> =
-        if (planFile.isFile) AudioWorkbenchPlan.parse(planFile.readText()) else emptyList()
+    fun loadPlan(): List<RecordingCard> =
+        if (planFile.isFile) RecordingPlanJson.parse(planFile.readText()) else emptyList()
 
-    fun savePlan(cards: List<AudioWorkbenchCard>) {
+    fun savePlan(cards: List<RecordingCard>) {
         require(cards.isNotEmpty()) { "A recording plan must contain at least one card." }
         check(root.mkdirs() || root.isDirectory) { "Unable to create the audio workbench folder." }
         val savedCards = cards.map {
@@ -34,6 +36,48 @@ class AudioWorkbenchRepository(private val root: File) {
             .let { java.security.MessageDigest.getInstance("SHA-256").digest(it) }
             .joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
         return File(clipsDirectory, "$safeName.m4a")
+    }
+
+    fun recordingCandidateFile(lemma: String): File {
+        val clip = clipFile(lemma)
+        return File(clipsDirectory, "${clip.nameWithoutExtension}.tmp.m4a")
+    }
+
+    fun commitRecording(lemma: String) {
+        val candidate = recordingCandidateFile(lemma)
+        require(candidate.isFile && candidate.length() > 0) { "The new recording is unavailable or empty." }
+        val current = clipFile(lemma)
+        val backup = if (current.isFile) {
+            File.createTempFile("previous-take-", ".tmp", clipsDirectory).also {
+                try {
+                    current.copyTo(it, overwrite = true)
+                } catch (exception: Exception) {
+                    it.delete()
+                    throw exception
+                }
+            }
+        } else null
+        var keepBackup = false
+        try {
+            check(candidate.renameTo(current)) { "Unable to save the new recording." }
+            try {
+                recordingSaved(lemma)
+            } catch (exception: Exception) {
+                val candidateRestored = current.renameTo(candidate)
+                val previousRestored = backup == null || (candidateRestored && backup.renameTo(current))
+                if (!candidateRestored || !previousRestored) {
+                    keepBackup = backup != null
+                    throw IllegalStateException(
+                        if (backup != null) "Unable to finish saving; a previous-take backup was retained."
+                        else "Unable to finish saving or restore the new recording.",
+                        exception
+                    )
+                }
+                throw exception
+            }
+        } finally {
+            if (!keepBackup) backup?.delete()
+        }
     }
 
     fun loadState(): AudioProjectState {
@@ -63,7 +107,7 @@ class AudioWorkbenchRepository(private val root: File) {
         val scratch = File.createTempFile("audio-import-", ".tmp", root)
         check(scratch.delete() && scratch.mkdir()) { "Unable to prepare audio import." }
         try {
-            return MaculaArchive.read(input, scratch, language, state) { clips ->
+            return MaculaAudioArchive.read(input, scratch, language, state) { clips ->
                 check(clipsDirectory.mkdirs() || clipsDirectory.isDirectory)
                 val metadata = loadMetadata().toMutableMap()
                 val created = mutableListOf<File>()
@@ -98,10 +142,10 @@ class AudioWorkbenchRepository(private val root: File) {
         }
     }
 
-    fun recordedCards(cards: List<AudioWorkbenchCard>): List<AudioWorkbenchCard> {
+    fun recordedCards(cards: List<RecordingCard>): List<RecordingCard> {
         val known = cards.map { it.lemma }.toSet()
         val extra = loadMetadata().keys.filter { it !in known }
-            .map { AudioWorkbenchCard("", it, "", 0) }
+            .map { RecordingCard("", it, "", 0) }
         return (cards + extra).filter { clipFile(it.lemma).isFile }
     }
 
@@ -117,13 +161,13 @@ class AudioWorkbenchRepository(private val root: File) {
         check(temporary.renameTo(file)) { "Unable to save audio workbench data." }
     }
 
-    fun exportParts(cards: List<AudioWorkbenchCard>, language: String): List<AudioWorkbenchExportPart> {
+    fun exportParts(cards: List<RecordingCard>, language: String): List<AudioExportPart> {
         require(language.isNotBlank()) { "Enter a recording language before exporting." }
         val recordedCards = recordedCards(cards)
         require(recordedCards.isNotEmpty()) { "Record at least one clip before exporting." }
 
-        val parts = mutableListOf<AudioWorkbenchExportPart>()
-        var current = mutableListOf<AudioWorkbenchCard>()
+        val parts = mutableListOf<AudioExportPart>()
+        var current = mutableListOf<RecordingCard>()
         var currentBytes = 0L
         var nextClipNumber = 1
         var firstClipNumber = 1
@@ -135,7 +179,7 @@ class AudioWorkbenchRepository(private val root: File) {
             if (current.isNotEmpty() &&
                 (current.size >= MAX_CLIPS_PER_PART || currentBytes + clipBytes > MAX_BYTES_PER_PART)
             ) {
-                parts.add(AudioWorkbenchExportPart(current.toList(), firstClipNumber))
+                parts.add(AudioExportPart(current.toList(), firstClipNumber))
                 current = mutableListOf()
                 currentBytes = 0L
                 firstClipNumber = nextClipNumber
@@ -144,12 +188,12 @@ class AudioWorkbenchRepository(private val root: File) {
             currentBytes += clipBytes
             nextClipNumber++
         }
-        if (current.isNotEmpty()) parts.add(AudioWorkbenchExportPart(current, firstClipNumber))
+        if (current.isNotEmpty()) parts.add(AudioExportPart(current, firstClipNumber))
         return parts
     }
 
     fun writeExport(
-        cards: List<AudioWorkbenchCard>,
+        cards: List<RecordingCard>,
         language: String,
         output: OutputStream,
         firstClipNumber: Int = 1,
@@ -195,8 +239,8 @@ class AudioWorkbenchRepository(private val root: File) {
     }
 }
 
-data class AudioWorkbenchExportPart(
-    val cards: List<AudioWorkbenchCard>,
+data class AudioExportPart(
+    val cards: List<RecordingCard>,
     val firstClipNumber: Int
 )
 

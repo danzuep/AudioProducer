@@ -1,10 +1,10 @@
-package io.github.danzuep.bibleaudioproducer.controller.audioworkbench
+package io.github.danzuep.bibleaudioproducer.data
 
 import com.google.gson.JsonParser
 import io.github.danzuep.bibleaudioproducer.workbench.AudioVerse
 import io.github.danzuep.bibleaudioproducer.workbench.VerseWord
 
-internal object MaculaVerses {
+internal object MaculaVerseJson {
     fun parse(json: String): List<AudioVerse> {
         val verses = mutableListOf<AudioVerse>()
         var reference = ""

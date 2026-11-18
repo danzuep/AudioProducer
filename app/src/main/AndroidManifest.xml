@@ -8,7 +8,7 @@
         android:label="@string/app_name"
         android:theme="@style/Theme.AudioWorkbench">
         <activity
-            android:name=".controller.audioworkbench.AudioWorkbenchActivity"
+            android:name=".ui.WorkbenchActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>

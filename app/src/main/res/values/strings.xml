@@ -41,6 +41,13 @@
     <string name="audio_order_saved">Verse order saved.</string>
     <string name="audio_order_failed">Unable to save verse order.</string>
     <string name="audio_record_stop">Record / stop</string>
+    <string name="audio_review_title">Review the new take</string>
+    <string name="audio_review_message">Listen to the new recording for %1$s before replacing the current take.</string>
+    <string name="audio_review_play">Play new</string>
+    <string name="audio_review_keep">Keep current</string>
+    <string name="audio_review_use">Use new</string>
+    <string name="audio_review_failed">Unable to finish reviewing this recording.</string>
+    <string name="audio_review_missing">The new take is unavailable. Check the recording before continuing.</string>
     <string name="audio_word_not_recorded">No recording is available.</string>
     <string name="audio_playback_missing_words">Missing words will be skipped.</string>
     <string name="audio_workbench_language_hint">Recording language</string>

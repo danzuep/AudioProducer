@@ -1,8 +1,6 @@
-package io.github.danzuep.bibleaudioproducer.controller.audioworkbench
+package io.github.danzuep.bibleaudioproducer.ui
 
 import android.Manifest
-import android.media.MediaPlayer
-import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
@@ -13,11 +11,7 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
-import android.widget.CheckBox
 import android.widget.EditText
-import android.widget.FrameLayout
-import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
@@ -32,39 +26,64 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import io.github.danzuep.bibleaudioproducer.R
-import io.github.danzuep.bibleaudioproducer.workbench.AudioWorkbenchCard
+import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioPlayer
+import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioRecorder
+import io.github.danzuep.bibleaudioproducer.data.RecordingPlanJson
+import io.github.danzuep.bibleaudioproducer.data.AudioProjectRepository
+import io.github.danzuep.bibleaudioproducer.data.MaculaVerseJson
+import io.github.danzuep.bibleaudioproducer.workbench.RecordingCard
 import io.github.danzuep.bibleaudioproducer.workbench.AudioVerse
+import io.github.danzuep.bibleaudioproducer.workbench.AudioProjectState
 import io.github.danzuep.bibleaudioproducer.workbench.VerseWorkflow
-import io.github.danzuep.bibleaudioproducer.workbench.VerseWord
-import io.github.danzuep.bibleaudioproducer.workbench.Workbench
+import io.github.danzuep.bibleaudioproducer.workbench.RecordingPlan
 import java.io.File
 import java.util.concurrent.Executors
 
-class AudioWorkbenchActivity : AppCompatActivity() {
+class WorkbenchActivity : AppCompatActivity() {
     private val repository by lazy {
-        AudioWorkbenchRepository(File(filesDir, "audio-workbench"))
+        AudioProjectRepository(File(filesDir, "audio-project"))
     }
     private val io = Executors.newSingleThreadExecutor()
-    private var cards = emptyList<AudioWorkbenchCard>()
+    private val preferences by lazy { getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE) }
+    private val audioRecorder by lazy { AndroidAudioRecorder(this) }
+    private val audioPlayer by lazy {
+        AndroidAudioPlayer {
+            Toast.makeText(this, R.string.audio_workbench_playback_failed, Toast.LENGTH_LONG).show()
+        }
+    }
+    private val verseDialogs by lazy {
+        VerseDialogs(this, repository, object : VerseDialogs.Actions {
+            override val state get() = projectState
+            override val busy get() = this@WorkbenchActivity.busy
+            override fun playVerse(verse: AudioVerse) = this@WorkbenchActivity.playVerse(verse)
+            override fun saveOrder(reference: String, order: List<Int>?, unspoken: Set<String>) =
+                saveVerseOrder(reference, order, unspoken)
+            override fun toggleRecording(card: RecordingCard) = this@WorkbenchActivity.toggleRecording(card)
+            override fun playRecording(card: RecordingCard) = this@WorkbenchActivity.playRecording(card)
+            override fun closeRecording() {
+                pendingLemma = null
+                stopRecording()
+                stopPlayback()
+            }
+        })
+    }
+    private var cards = emptyList<RecordingCard>()
     private var projectState = AudioProjectState()
     private var selectedBook: String? = null
-    private var bookCards = emptyList<AudioWorkbenchCard>()
+    private var bookCards = emptyList<RecordingCard>()
     private var bookVerses = emptyList<AudioVerse>()
     private val verseCache = mutableMapOf<String, List<AudioVerse>>()
     private var step = Step.LANGUAGE
     private var busy = false
     private var activeLemma: String? = null
-    private var recorder: MediaRecorder? = null
-    private var temporaryRecording: File? = null
-    private var player: MediaPlayer? = null
-    private var playbackGeneration = 0
+    private var reviewDialog: AlertDialog? = null
 
     private lateinit var language: EditText
     private lateinit var books: Spinner
     private lateinit var search: EditText
     private lateinit var coverage: TextView
     private lateinit var empty: TextView
-    private lateinit var adapter: AudioWorkbenchAdapter
+    private lateinit var adapter: RecordingCardAdapter
 
     private val importPlan = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) importPlan(uri)
@@ -103,13 +122,13 @@ class AudioWorkbenchActivity : AppCompatActivity() {
         coverage = findViewById(R.id.audio_workbench_coverage)
         empty = findViewById(R.id.audio_workbench_empty)
 
-        adapter = AudioWorkbenchAdapter(::toggleRecording, ::playRecording)
+        adapter = RecordingCardAdapter(::toggleRecording, ::playRecording)
         findViewById<RecyclerView>(R.id.audio_workbench_list).apply {
-            layoutManager = LinearLayoutManager(this@AudioWorkbenchActivity)
-            adapter = this@AudioWorkbenchActivity.adapter
+            layoutManager = LinearLayoutManager(this@WorkbenchActivity)
+            adapter = this@WorkbenchActivity.adapter
         }
 
-        language.setText(getPreferences(MODE_PRIVATE).getString(LANGUAGE_KEY, ""))
+        language.setText(preferences.getString(LANGUAGE_KEY, ""))
         language.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_DONE) {
                 continueToBooks()
@@ -187,7 +206,7 @@ class AudioWorkbenchActivity : AppCompatActivity() {
             try {
                 val loaded = repository.loadPlan().ifEmpty {
                     assets.open("recording-plan.json").bufferedReader().use {
-                        AudioWorkbenchPlan.parse(it.readText())
+                        RecordingPlanJson.parse(it.readText())
                     }
                 }
                 val loadedState = repository.loadState()
@@ -209,9 +228,14 @@ class AudioWorkbenchActivity : AppCompatActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        reviewPendingTake()
+    }
+
     override fun onStop() {
         pendingLemma = null
-        stopRecording()
+        stopRecording(allowReview = false)
         stopPlayback()
         super.onStop()
     }
@@ -222,7 +246,7 @@ class AudioWorkbenchActivity : AppCompatActivity() {
     }
 
     private fun saveLanguage() {
-        getPreferences(MODE_PRIVATE).edit()
+        preferences.edit()
             .putString(LANGUAGE_KEY, language.text.toString().trim())
             .apply()
     }
@@ -278,131 +302,14 @@ class AudioWorkbenchActivity : AppCompatActivity() {
     }
 
     private fun versesFor(book: String): List<AudioVerse> = verseCache.getOrPut(book) {
-        assets.open("books/$book.json").bufferedReader().use { MaculaVerses.parse(it.readText()) }
+        assets.open("books/$book.json").bufferedReader().use { MaculaVerseJson.parse(it.readText()) }
     }
 
     private fun showChapters() {
         search.clearFocus()
         (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager)
             .hideSoftInputFromWindow(search.windowToken, 0)
-        val chapters = bookVerses.map { it.chapter }.distinct()
-        AlertDialog.Builder(this)
-            .setTitle(R.string.audio_choose_chapter)
-            .setItems(chapters.map { getString(R.string.audio_chapter, it) }.toTypedArray()) { _, index ->
-                showVerses(chapters[index])
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-    }
-
-    private fun showVerses(chapter: Int) {
-        val verses = bookVerses.filter { it.chapter == chapter }
-        val labels = verses.map { verse ->
-            val words = VerseWorkflow.spokenWords(
-                verse.words, projectState.rules, projectState.seedOrders[verse.reference], projectState.unspoken
-            )
-            val missing = words.map { it.lemma }.distinct().count { !repository.clipFile(it).isFile }
-            val status = when {
-                verse.words.none { !it.proper } -> getString(R.string.audio_verse_no_words)
-                missing == 0 -> getString(R.string.audio_verse_ready)
-                else -> getString(R.string.audio_verse_missing, missing)
-            }
-            "${verse.reference} · $status\n${words.map { it.gloss }.filter { it.isNotBlank() && it != "-" }.joinToString(" ")}"
-        }
-        AlertDialog.Builder(this)
-            .setTitle(getString(R.string.audio_chapter, chapter))
-            .setItems(labels.toTypedArray()) { _, index -> showVerseMenu(verses[index]) }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-    }
-
-    private fun showVerseMenu(verse: AudioVerse) {
-        val actions = arrayOf(
-            getString(R.string.audio_play_verse),
-            getString(R.string.audio_arrange_verse),
-            getString(R.string.audio_record_verse_words)
-        )
-        AlertDialog.Builder(this)
-            .setTitle(verse.reference)
-            .setItems(actions) { _, index ->
-                when (index) {
-                    0 -> playVerse(verse)
-                    1 -> arrangeVerse(verse)
-                    2 -> showVerseWords(verse)
-                }
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-    }
-
-    private fun arrangeVerse(verse: AudioVerse) {
-        if (busy) return
-        val chunks = VerseWorkflow.chunks(verse.words)
-        val saved = projectState.seedOrders[verse.reference]
-        val order = (saved?.takeIf {
-            it.size == chunks.size && it.toSet() == chunks.indices.toSet()
-        } ?: chunks.indices.toList()).toMutableList()
-        val unspoken = projectState.unspoken.toMutableSet()
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(24, 8, 24, 8)
-        }
-        lateinit var draw: () -> Unit
-        draw = {
-            content.removeAllViews()
-            order.forEachIndexed { position, chunkIndex ->
-                val chunk = chunks[chunkIndex]
-                val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-                val earlier = Button(this).apply {
-                    text = "←"
-                    contentDescription = getString(R.string.audio_move_earlier)
-                    isEnabled = position > 0
-                    setOnClickListener {
-                        order.add(position - 1, order.removeAt(position))
-                        draw()
-                    }
-                }
-                val later = Button(this).apply {
-                    text = "→"
-                    contentDescription = getString(R.string.audio_move_later)
-                    isEnabled = position < order.lastIndex
-                    setOnClickListener {
-                        order.add(position + 1, order.removeAt(position))
-                        draw()
-                    }
-                }
-                val label = TextView(this).apply {
-                    text = "${chunk.words.joinToString(" ") { it.surface }}\n" +
-                        chunk.words.joinToString(" ") { it.gloss }
-                }
-                header.addView(earlier)
-                header.addView(label, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-                header.addView(later)
-                content.addView(header)
-                chunk.words.filterNot { it.proper }.forEach { word ->
-                    content.addView(CheckBox(this).apply {
-                        text = getString(R.string.audio_speak_word, word.surface)
-                        isChecked = word.unspokenKey !in unspoken
-                        setOnCheckedChangeListener { _, checked ->
-                            if (checked) unspoken.remove(word.unspokenKey) else unspoken.add(word.unspokenKey)
-                        }
-                    })
-                }
-            }
-        }
-        draw()
-        AlertDialog.Builder(this)
-            .setTitle(getString(R.string.audio_arrange_title, verse.reference))
-            .setMessage(R.string.audio_arrange_description)
-            .setView(dialogScroll(content))
-            .setNegativeButton(android.R.string.cancel, null)
-            .setNeutralButton(R.string.audio_reset_order) { _, _ ->
-                saveVerseOrder(verse.reference, null, unspoken)
-            }
-            .setPositiveButton(R.string.audio_save_order) { _, _ ->
-                saveVerseOrder(verse.reference, order.toList(), unspoken)
-            }
-            .show()
+        verseDialogs.showChapters(bookVerses)
     }
 
     private fun saveVerseOrder(reference: String, order: List<Int>?, unspoken: Set<String>) {
@@ -436,54 +343,6 @@ class AudioWorkbenchActivity : AppCompatActivity() {
         }
     }
 
-    private fun showVerseWords(verse: AudioVerse) {
-        val words = VerseWorkflow.spokenWords(
-            verse.words, projectState.rules, projectState.seedOrders[verse.reference], projectState.unspoken
-        )
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(24, 8, 24, 8)
-        }
-        for (word in words) {
-            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            val card = AudioWorkbenchCard(selectedBook.orEmpty(), word.lemma, word.gloss, 0)
-            row.addView(TextView(this).apply {
-                text = "${word.surface}\n${word.gloss}"
-            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-            row.addView(Button(this).apply {
-                text = getString(R.string.audio_record_stop)
-                setOnClickListener { toggleRecording(card) }
-            })
-            row.addView(Button(this).apply {
-                text = getString(R.string.audio_workbench_play)
-                setOnClickListener {
-                    if (repository.clipFile(word.lemma).isFile) playRecording(card)
-                    else Toast.makeText(this@AudioWorkbenchActivity, R.string.audio_word_not_recorded, Toast.LENGTH_SHORT).show()
-                }
-            })
-            content.addView(row)
-        }
-        AlertDialog.Builder(this)
-            .setTitle(verse.reference)
-            .setView(dialogScroll(content))
-            .setPositiveButton(android.R.string.ok, null)
-            .setOnDismissListener { pendingLemma = null; stopRecording(); stopPlayback() }
-            .show()
-    }
-
-    private fun dialogScroll(content: View): View {
-        val scroll = ScrollView(this).apply { addView(content) }
-        return FrameLayout(this).apply {
-            addView(
-                scroll,
-                FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    (resources.displayMetrics.heightPixels * 0.4f).toInt()
-                )
-            )
-        }
-    }
-
     private fun playVerse(verse: AudioVerse) {
         if (busy) return
         stopRecording()
@@ -499,33 +358,7 @@ class AudioWorkbenchActivity : AppCompatActivity() {
         if (words.size != spoken.size) {
             Toast.makeText(this, R.string.audio_playback_missing_words, Toast.LENGTH_SHORT).show()
         }
-        playVerseWord(words, 0, playbackGeneration)
-    }
-
-    private fun playVerseWord(words: List<VerseWord>, index: Int, generation: Int) {
-        if (index >= words.size || generation != playbackGeneration) return
-        try {
-            val mediaPlayer = MediaPlayer()
-            player = mediaPlayer
-            mediaPlayer.setDataSource(repository.clipFile(words[index].lemma).absolutePath)
-            mediaPlayer.setOnPreparedListener { if (player === it) it.start() }
-            mediaPlayer.setOnCompletionListener {
-                if (player === it) {
-                    player = null
-                    it.release()
-                    playVerseWord(words, index + 1, generation)
-                }
-            }
-            mediaPlayer.setOnErrorListener { _, _, _ ->
-                stopPlayback()
-                Toast.makeText(this, R.string.audio_workbench_playback_failed, Toast.LENGTH_LONG).show()
-                true
-            }
-            mediaPlayer.prepareAsync()
-        } catch (exception: Exception) {
-            stopPlayback()
-            Toast.makeText(this, R.string.audio_workbench_playback_failed, Toast.LENGTH_LONG).show()
-        }
+        if (pendingTake() == null) audioPlayer.play(words.map { repository.clipFile(it.lemma) })
     }
 
     private fun importArchive(uri: Uri) {
@@ -573,12 +406,15 @@ class AudioWorkbenchActivity : AppCompatActivity() {
                 busy = true
                 io.execute {
                     try {
-                        check(!File(filesDir, "audio-workbench").exists() ||
-                            File(filesDir, "audio-workbench").deleteRecursively()) {
+                        check(!File(filesDir, "audio-project").exists() ||
+                            File(filesDir, "audio-project").deleteRecursively()) {
                             getString(R.string.audio_clear_failed)
                         }
                         val defaultCards = assets.open("recording-plan.json").bufferedReader().use {
-                            AudioWorkbenchPlan.parse(it.readText())
+                            RecordingPlanJson.parse(it.readText())
+                        }
+                        check(preferences.edit().remove(PENDING_TAKE_KEY).commit()) {
+                            getString(R.string.audio_clear_failed)
                         }
                         runOnUiThread {
                             busy = false
@@ -609,7 +445,7 @@ class AudioWorkbenchActivity : AppCompatActivity() {
             try {
                 val json = contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
                     ?: throw IllegalArgumentException(getString(R.string.audio_workbench_import_failed))
-                val imported = AudioWorkbenchPlan.parse(json)
+                val imported = RecordingPlanJson.parse(json)
                 repository.savePlan(imported)
                 runOnUiThread {
                     busy = false
@@ -680,10 +516,10 @@ class AudioWorkbenchActivity : AppCompatActivity() {
     }
 
     private fun refreshBooks(preferIncomplete: Boolean) {
-        val bookList = Workbench.books(cards)
+        val bookList = RecordingPlan.books(cards)
         books.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, bookList)
         val preferred = if (preferIncomplete) {
-            Workbench.nextIncompleteBook(cards) { it in projectState.unspoken || repository.clipFile(it).isFile }
+            RecordingPlan.nextIncompleteBook(cards) { it in projectState.unspoken || repository.clipFile(it).isFile }
         } else {
             selectedBook
         }
@@ -705,9 +541,9 @@ class AudioWorkbenchActivity : AppCompatActivity() {
                     it.gloss.contains(term, ignoreCase = true)
             }
         } else {
-            Workbench.search(requiredCards, currentBook, search.text.toString())
+            RecordingPlan.search(requiredCards, currentBook, search.text.toString())
         }
-        val completed = Workbench.coverage(requiredCards) { repository.clipFile(it).isFile }
+        val completed = RecordingPlan.coverage(requiredCards) { repository.clipFile(it).isFile }
         coverage.text = getString(R.string.audio_workbench_coverage, completed.recorded, completed.total)
         val noPlan = cards.isEmpty()
         val showList = step == Step.BOOKS || step == Step.SETTINGS
@@ -720,7 +556,7 @@ class AudioWorkbenchActivity : AppCompatActivity() {
         findViewById<RecyclerView>(R.id.audio_workbench_list).visibility =
             if (showList && !noPlan && visibleCards.isNotEmpty()) View.VISIBLE else View.GONE
         adapter.submitList(visibleCards.map { card ->
-            AudioWorkbenchRow(
+            RecordingCardRow(
                 card,
                 repository.clipFile(card.lemma).isFile,
                 activeLemma == card.lemma
@@ -728,7 +564,7 @@ class AudioWorkbenchActivity : AppCompatActivity() {
         })
     }
 
-    private fun toggleRecording(card: AudioWorkbenchCard) {
+    private fun toggleRecording(card: RecordingCard) {
         if (busy) return
         if (activeLemma == card.lemma) {
             stopRecording()
@@ -744,115 +580,128 @@ class AudioWorkbenchActivity : AppCompatActivity() {
         }
     }
 
-    private fun createMediaRecorder(): MediaRecorder {
-        return if (android.os.Build.VERSION.SDK_INT >= 31) {
-            MediaRecorder(this)
-        } else {
-            @Suppress("DEPRECATION")
-            MediaRecorder()
-        }
-    }
-
     private fun startRecording(lemma: String) {
+        if (pendingTake() != null) {
+            reviewPendingTake()
+            return
+        }
         stopRecording()
+        if (pendingTake() != null) return
         stopPlayback()
-        val output = repository.clipFile(lemma)
-        val clipsDirectory = checkNotNull(output.parentFile)
-        val temporary = File(clipsDirectory, "${output.nameWithoutExtension}.tmp.m4a")
-        val newRecorder = createMediaRecorder()
         try {
-            check(clipsDirectory.mkdirs() || clipsDirectory.isDirectory)
-            newRecorder.setAudioSource(MediaRecorder.AudioSource.MIC)
-            newRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-            newRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-            newRecorder.setAudioEncodingBitRate(96000)
-            newRecorder.setAudioSamplingRate(44100)
-            newRecorder.setAudioChannels(1)
-            newRecorder.setOutputFile(temporary.absolutePath)
-            newRecorder.prepare()
-            newRecorder.start()
-            recorder = newRecorder
-            temporaryRecording = temporary
+            audioRecorder.start(repository.recordingCandidateFile(lemma))
             activeLemma = lemma
             updateRows()
         } catch (exception: Exception) {
-            temporary.delete()
             Toast.makeText(this, R.string.audio_workbench_recording_failed, Toast.LENGTH_LONG).show()
-            newRecorder.release()
             activeLemma = null
             updateRows()
         }
     }
 
-    private fun stopRecording() {
-        val currentRecorder = recorder ?: return
-        val temporary = temporaryRecording
-        val lemma = activeLemma
-        recorder = null
-        temporaryRecording = null
+    private fun stopRecording(allowReview: Boolean = true) {
+        val lemma = activeLemma ?: return
         activeLemma = null
-        var savedLemma: String? = null
         try {
-            currentRecorder.stop()
-            if (temporary != null && lemma != null) {
-                temporary.copyTo(repository.clipFile(lemma), overwrite = true)
-                repository.recordingSaved(lemma)
-                temporary.delete()
-                savedLemma = lemma
+            audioRecorder.stop()
+            if (repository.clipFile(lemma).isFile) {
+                check(preferences.edit().putString(PENDING_TAKE_KEY, lemma).commit()) {
+                    getString(R.string.audio_review_failed)
+                }
+                if (allowReview) reviewPendingTake()
+            } else {
+                repository.commitRecording(lemma)
+                advanceToNextBookIfComplete(lemma)
             }
         } catch (exception: Exception) {
-            temporary?.delete()
             Toast.makeText(this, R.string.audio_workbench_recording_failed, Toast.LENGTH_LONG).show()
         } finally {
-            currentRecorder.release()
             updateRows()
-            savedLemma?.let(::advanceToNextBookIfComplete)
+        }
+    }
+
+    private fun pendingTake(): String? = preferences.getString(PENDING_TAKE_KEY, null)
+
+    private fun reviewPendingTake() {
+        val lemma = pendingTake() ?: return
+        if (reviewDialog?.isShowing == true) return
+        val candidate = repository.recordingCandidateFile(lemma)
+        if (!candidate.isFile) {
+            if (!preferences.edit().remove(PENDING_TAKE_KEY).commit()) {
+                Toast.makeText(this, R.string.audio_review_failed, Toast.LENGTH_LONG).show()
+            }
+            Toast.makeText(this, R.string.audio_review_missing, Toast.LENGTH_LONG).show()
+            return
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.audio_review_title)
+            .setMessage(getString(R.string.audio_review_message, lemma))
+            .setCancelable(false)
+            .setNegativeButton(R.string.audio_review_keep) { _, _ ->
+                finishReview(lemma, useNew = false)
+            }
+            .setPositiveButton(R.string.audio_review_use) { _, _ ->
+                finishReview(lemma, useNew = true)
+            }
+            .setNeutralButton(R.string.audio_review_play, null)
+            .create()
+        reviewDialog = dialog
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+                audioPlayer.play(listOf(candidate))
+            }
+        }
+        dialog.setOnDismissListener {
+            reviewDialog = null
+            stopPlayback()
+        }
+        dialog.show()
+    }
+
+    private fun finishReview(lemma: String, useNew: Boolean) {
+        try {
+            if (useNew) {
+                repository.commitRecording(lemma)
+            } else {
+                val candidate = repository.recordingCandidateFile(lemma)
+                check(!candidate.exists() || candidate.delete()) { getString(R.string.audio_review_failed) }
+            }
+            check(preferences.edit().remove(PENDING_TAKE_KEY).commit()) {
+                getString(R.string.audio_review_failed)
+            }
+            updateRows()
+            if (useNew) advanceToNextBookIfComplete(lemma)
+        } catch (exception: Exception) {
+            Toast.makeText(this, exception.message ?: getString(R.string.audio_review_failed), Toast.LENGTH_LONG).show()
+            window.decorView.post { reviewPendingTake() }
         }
     }
 
     private fun advanceToNextBookIfComplete(lemma: String) {
         val book = cards.firstOrNull { it.lemma == lemma }?.book ?: return
         val bookCards = cards.filter { it.book == book }
-        if (!Workbench.coverage(bookCards) { it in projectState.unspoken || repository.clipFile(it).isFile }.complete) return
-        val nextBook = Workbench.nextIncompleteBook(cards) {
+        if (!RecordingPlan.coverage(bookCards) { it in projectState.unspoken || repository.clipFile(it).isFile }.complete) return
+        val nextBook = RecordingPlan.nextIncompleteBook(cards) {
             it in projectState.unspoken || repository.clipFile(it).isFile
         } ?: return
-        val nextIndex = Workbench.books(cards).indexOf(nextBook)
+        val nextIndex = RecordingPlan.books(cards).indexOf(nextBook)
         if (nextIndex >= 0 && nextBook != selectedBook) books.setSelection(nextIndex)
     }
 
-    private fun playRecording(card: AudioWorkbenchCard) {
+    private fun playRecording(card: RecordingCard) {
         if (busy) return
         stopRecording()
-        stopPlayback()
-        try {
-            val mediaPlayer = MediaPlayer()
-            player = mediaPlayer
-            mediaPlayer.setDataSource(repository.clipFile(card.lemma).absolutePath)
-            mediaPlayer.setOnPreparedListener {
-                if (player === it) it.start()
-            }
-            mediaPlayer.setOnCompletionListener { stopPlayback() }
-            mediaPlayer.setOnErrorListener { _, _, _ ->
-                stopPlayback()
-                Toast.makeText(this, R.string.audio_workbench_playback_failed, Toast.LENGTH_LONG).show()
-                true
-            }
-            mediaPlayer.prepareAsync()
-        } catch (exception: Exception) {
-            stopPlayback()
-            Toast.makeText(this, R.string.audio_workbench_playback_failed, Toast.LENGTH_LONG).show()
-        }
+        if (pendingTake() == null) audioPlayer.play(listOf(repository.clipFile(card.lemma)))
     }
 
     private fun stopPlayback() {
-        playbackGeneration++
-        player?.release()
-        player = null
+        audioPlayer.stop()
     }
 
     companion object {
         private const val LANGUAGE_KEY = "audio_workbench_language"
+        private const val PENDING_TAKE_KEY = "pending_recording_lemma"
+        private const val PREFERENCES_NAME = "audio-project"
     }
 
     private enum class Step { LANGUAGE, BOOKS, EXPORT, SETTINGS }

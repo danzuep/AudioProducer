@@ -29,7 +29,7 @@ object VerseWorkflow {
         "genitive" to "gen", "vocative" to "voc"
     )
 
-    fun chapterOrder(cards: List<AudioWorkbenchCard>, verses: List<AudioVerse>): List<AudioWorkbenchCard> {
+    fun chapterOrder(cards: List<RecordingCard>, verses: List<AudioVerse>): List<RecordingCard> {
         val byLemma = cards.associateBy { it.lemma }
         val counts = mutableMapOf<Int, MutableMap<String, Int>>()
         for (verse in verses) {
@@ -39,7 +39,7 @@ object VerseWorkflow {
             }
         }
         val placed = mutableSetOf<String>()
-        val ordered = mutableListOf<AudioWorkbenchCard>()
+        val ordered = mutableListOf<RecordingCard>()
         for ((_, chapter) in counts.entries.sortedBy { it.key }) {
             for ((lemma, _) in chapter.entries.sortedByDescending { it.value }) {
                 if (placed.add(lemma)) ordered.add(byLemma.getValue(lemma))

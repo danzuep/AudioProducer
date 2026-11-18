@@ -1,16 +1,23 @@
 # Bible Audio Producer
 
-Record and review lemma audio for [MaculaScripta](https://github.com/danzuep/MaculaScripta).
+Record and review lemma audio using the
+[MACULA Greek](https://github.com/Clear-Bible/macula-greek/) and
+[MACULA Hebrew](https://github.com/Clear-Bible/macula-hebrew/) linguistic datasets.
+Greek New Testament support is included first; Hebrew is not yet bundled.
 The complete Greek New Testament recording plan is bundled and available offline on first
 launch. Enter the recording language, choose a book, and record its prompts. Use **Listen**
 to review verses, record their words, arrange phrases for the target language, and mark
-words as unspoken. Export recordings and grammar as MaculaScripta-compatible ZIP archives,
+words as unspoken. Export recordings and grammar as compatible Macula audio ZIP archives,
 or import earlier archives without replacing existing recordings. Imports in a different
 language are rejected to prevent mixing projects. Plans and recordings remain in private
 storage; export them before uninstalling.
 
+Inspired by BTT Recorder's take-review workflow, replacing an existing recording requires
+reviewing the new take first. The current take remains intact until the replacement is
+accepted, including if the app is interrupted during review.
+
 Verse playback uses the recordings available on the device; missing words are skipped.
-The web workbench's optional computer voice, neural smoothing, and whole-verse audio
+The optional computer voice, neural smoothing, and whole-verse audio
 download are not yet available in the Android app.
 
 ## Development
@@ -27,9 +34,9 @@ Node.js, curl, and network access to GitHub:
 The Android application ID is `io.github.danzuep.bibleaudioproducer`; it is a new app,
 not an upgrade of Story Producer.
 
-Every build, including CI and releases, generates the bundled assets from pinned commits
-of [MaculaScripta](https://github.com/danzuep/MaculaScripta/tree/dcfd3c024b3a00b51fcabc7e154129958500c1f9)
-and [MACULA Greek](https://github.com/Clear-Bible/macula-greek/tree/8423afe47b9e8f24b7772e808af45c7159a6fe7e).
+Every build, including CI and releases, generates the bundled assets from pinned source
+revisions, including [MACULA Greek](https://github.com/Clear-Bible/macula-greek/tree/8423afe47b9e8f24b7772e808af45c7159a6fe7e).
+The plan generator and its revision are specified in `scripts/generate-macula-assets.sh`.
 The generator checks the complete 27-book, 4,917-card plan rather than accepting a sample.
 Gradle reuses generated assets until its inputs change or the build directory is cleaned.
 An existing imported plan remains in place; clearing saved data restores the bundled plan.
@@ -39,9 +46,8 @@ The plan and verse data are adapted from the
 © 2022–2024 Biblica, Inc., and the
 [SBL Greek New Testament](https://github.com/LogosBible/SBLGNT/),
 © 2010 Society of Biblical Literature and Logos Bible Software, both licensed
-[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The plan and grammar
-algorithm are adapted from [MaculaScripta](https://github.com/danzuep/MaculaScripta/),
-licensed under [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0).
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Additional third-party
+attribution and license text are available in the app's settings.
 
 ## Releases
 
@@ -53,3 +59,4 @@ the APK names include `temporary-key`, and tagged releases are marked as prerele
 These APKs cannot upgrade installations signed with a different key. Configure all four
 secrets together for a production release; partial configuration fails the workflow.
 Manual runs without a version tag use the `dry-run` environment.
+When no version tags exist, the next `major:` PR starts at `v1.0.0`.

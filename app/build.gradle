@@ -2,8 +2,8 @@ apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 
 def keystorePropertiesFile = rootProject.file('keystore.properties')
-def appVersionName = (project.findProperty('appVersion') ?: '6.0.0').toString()
-def appVersionCode = (project.findProperty('appVersionCode') ?: '60000').toString().toInteger()
+def appVersionName = (project.findProperty('appVersion') ?: '1.0.0').toString()
+def appVersionCode = (project.findProperty('appVersionCode') ?: '10000').toString().toInteger()
 def maculaAssets = layout.buildDirectory.dir('generated/maculaAudioAssets')
 
 tasks.register('generateMaculaAssets', Exec) {

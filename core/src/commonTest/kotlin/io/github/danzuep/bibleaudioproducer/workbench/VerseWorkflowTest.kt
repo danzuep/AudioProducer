@@ -30,9 +30,9 @@ class VerseWorkflowTest {
     @Test
     fun ordersCardsByFirstChapterAndFrequency() {
         val cards = listOf(
-            AudioWorkbenchCard("JHN", "b", "", 1),
-            AudioWorkbenchCard("JHN", "a", "", 1),
-            AudioWorkbenchCard("JHN", "c", "", 1)
+            RecordingCard("JHN", "b", "", 1),
+            RecordingCard("JHN", "a", "", 1),
+            RecordingCard("JHN", "c", "", 1)
         )
         val verses = listOf(
             AudioVerse("JHN 1:1", listOf(word("a", "a", "noun"), word("b", "b", "noun"), word("a", "a", "noun"))),

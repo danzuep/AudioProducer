@@ -1,28 +1,17 @@
-package io.github.danzuep.bibleaudioproducer.controller.audioworkbench
+package io.github.danzuep.bibleaudioproducer.data
 
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import io.github.danzuep.bibleaudioproducer.workbench.GrammarRule
+import io.github.danzuep.bibleaudioproducer.workbench.AudioArchiveImport
+import io.github.danzuep.bibleaudioproducer.workbench.AudioProjectState
 import java.io.File
 import java.io.InputStream
 import java.util.zip.ZipInputStream
 
-data class AudioProjectState(
-    val rules: Map<String, GrammarRule> = emptyMap(),
-    val seedOrders: Map<String, List<Int>> = emptyMap(),
-    val unspoken: Set<String> = emptySet()
-)
-
-data class AudioArchiveImport(
-    val language: String,
-    val state: AudioProjectState,
-    val added: Int,
-    val skipped: Int
-)
-
 internal data class ImportedClip(val lemma: String, val mime: String, val file: File)
 
-internal object MaculaArchive {
+internal object MaculaAudioArchive {
     private const val MAX_ENTRIES = 1600
     private const val MAX_BYTES = 100L * 1024 * 1024
     private const val MAX_MANIFEST_BYTES = 1024 * 1024

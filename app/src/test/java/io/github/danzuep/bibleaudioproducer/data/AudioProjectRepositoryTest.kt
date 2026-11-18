@@ -1,14 +1,15 @@
-package io.github.danzuep.bibleaudioproducer.controller.audioworkbench
+package io.github.danzuep.bibleaudioproducer.data
 
 import com.google.gson.JsonParser
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import io.github.danzuep.bibleaudioproducer.workbench.AudioWorkbenchCard
-import io.github.danzuep.bibleaudioproducer.workbench.AudioWorkbenchCoverage
-import io.github.danzuep.bibleaudioproducer.workbench.Workbench
+import io.github.danzuep.bibleaudioproducer.workbench.RecordingCard
+import io.github.danzuep.bibleaudioproducer.workbench.RecordingCoverage
+import io.github.danzuep.bibleaudioproducer.workbench.RecordingPlan
 import io.github.danzuep.bibleaudioproducer.workbench.GrammarRule
+import io.github.danzuep.bibleaudioproducer.workbench.AudioProjectState
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
@@ -16,10 +17,10 @@ import java.util.zip.ZipInputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
-class AudioWorkbenchPlanTest {
+class AudioProjectRepositoryTest {
     @Test
     fun parseReadsMaculaCardsAndKeepsOneRecordingPerLemma() {
-        val cards = AudioWorkbenchPlan.parse(
+        val cards = RecordingPlanJson.parse(
             """{"cards":[
                 {"book":"JHN","greek":"λογος","gloss":"word","occurrences":330},
                 {"book":"JHN","greek":"θεος","gloss":"God","occurrences":132},
@@ -28,13 +29,13 @@ class AudioWorkbenchPlanTest {
         )
 
         assertEquals(listOf("λογος", "θεος"), cards.map { it.lemma })
-        assertEquals(listOf("JHN"), Workbench.books(cards))
+        assertEquals(listOf("JHN"), RecordingPlan.books(cards))
         assertEquals(330, cards.first().occurrences)
     }
 
     @Test
     fun coverageAndNextBookReflectSavedClips() {
-        val cards = AudioWorkbenchPlan.parse(
+        val cards = RecordingPlanJson.parse(
             """{"cards":[
                 {"book":"JHN","greek":"λογος","gloss":"word"},
                 {"book":"MRK","greek":"θεος","gloss":"God"}
@@ -42,18 +43,18 @@ class AudioWorkbenchPlanTest {
         )
         val recorded = setOf("λογος")
 
-        assertEquals(AudioWorkbenchCoverage(1, 2), Workbench.coverage(cards) { it in recorded })
-        assertEquals("MRK", Workbench.nextIncompleteBook(cards) { it in recorded })
-        assertTrue(Workbench.coverage(cards) { true }.complete)
-        assertFalse(Workbench.coverage(cards) { false }.complete)
+        assertEquals(RecordingCoverage(1, 2), RecordingPlan.coverage(cards) { it in recorded })
+        assertEquals("MRK", RecordingPlan.nextIncompleteBook(cards) { it in recorded })
+        assertTrue(RecordingPlan.coverage(cards) { true }.complete)
+        assertFalse(RecordingPlan.coverage(cards) { false }.complete)
     }
 
     @Test
     fun savedPlanCanBeLoadedAgain() {
         val directory = Files.createTempDirectory("audio-workbench-plan-test").toFile()
         try {
-            val repository = AudioWorkbenchRepository(directory)
-            val cards = AudioWorkbenchPlan.parse(
+            val repository = AudioProjectRepository(directory)
+            val cards = RecordingPlanJson.parse(
                 """{"cards":[{"book":"JHN","greek":"λογος","gloss":"word","occurrences":330}]}"""
             )
 
@@ -73,8 +74,8 @@ class AudioWorkbenchPlanTest {
                 """{"cards":[{"book":"JHN","lemma":"λογος","gloss":"word","occurrences":330}]}"""
             )
             assertEquals(
-                listOf(AudioWorkbenchCard("JHN", "λογος", "word", 330)),
-                AudioWorkbenchRepository(directory).loadPlan()
+                listOf(RecordingCard("JHN", "λογος", "word", 330)),
+                AudioProjectRepository(directory).loadPlan()
             )
         } finally {
             directory.deleteRecursively()
@@ -85,8 +86,8 @@ class AudioWorkbenchPlanTest {
     fun exportContainsMaculaCompatibleManifestAndRecordedClips() {
         val directory = Files.createTempDirectory("audio-workbench-test").toFile()
         try {
-            val repository = AudioWorkbenchRepository(directory)
-            val cards = AudioWorkbenchPlan.parse(
+            val repository = AudioProjectRepository(directory)
+            val cards = RecordingPlanJson.parse(
                 """{"cards":[{"book":"JHN","greek":"λογος","gloss":"word","occurrences":330}]}"""
             )
             repository.clipFile("λογος").apply {
@@ -119,9 +120,9 @@ class AudioWorkbenchPlanTest {
     fun exportSplitsAfterMaculaClipLimitAndKeepsClipNumbersUnique() {
         val directory = Files.createTempDirectory("audio-workbench-parts-test").toFile()
         try {
-            val repository = AudioWorkbenchRepository(directory)
+            val repository = AudioProjectRepository(directory)
             val cards = (1..1501).map { index ->
-                AudioWorkbenchCard("JHN", "lemma-$index", "word", 1).also { card ->
+                RecordingCard("JHN", "lemma-$index", "word", 1).also { card ->
                     repository.clipFile(card.lemma).apply {
                         parentFile?.mkdirs()
                         createNewFile()
@@ -143,8 +144,8 @@ class AudioWorkbenchPlanTest {
     fun importPreservesExistingClipsAndRoundTripsUpstreamMetadata() {
         val directory = Files.createTempDirectory("audio-workbench-import-test").toFile()
         try {
-            val repository = AudioWorkbenchRepository(directory)
-            val cards = listOf(AudioWorkbenchCard("JHN", "existing", "", 1))
+            val repository = AudioProjectRepository(directory)
+            val cards = listOf(RecordingCard("JHN", "existing", "", 1))
             repository.clipFile("existing").apply {
                 parentFile!!.mkdirs()
                 writeBytes(byteArrayOf(9))
@@ -215,8 +216,51 @@ class AudioWorkbenchPlanTest {
                     zip.write("""{"format":"macula-scripta-audio","version":1,"language":"French","clips":[]}""".toByteArray())
                     zip.closeEntry()
                 }
+
+                @Test
+                fun recordingCandidateDoesNotReplaceCurrentUntilCommitted() {
+                    val directory = Files.createTempDirectory("audio-candidate-test").toFile()
+                    try {
+                        val repository = AudioProjectRepository(directory)
+                        val current = repository.clipFile("λόγος")
+                        check(current.parentFile!!.mkdirs())
+                        current.writeBytes(byteArrayOf(1))
+                        val candidate = repository.recordingCandidateFile("λόγος")
+                        candidate.writeBytes(byteArrayOf(2))
+
+                        assertEquals(listOf(1), current.readBytes().map { it.toInt() })
+                        repository.commitRecording("λόγος")
+                        assertEquals(listOf(2), current.readBytes().map { it.toInt() })
+                        assertFalse(candidate.exists())
+                        assertEquals(listOf("λόγος"), repository.recordedCards(emptyList()).map { it.lemma })
+                        assertTrue(runCatching { repository.commitRecording("λόγος") }.isFailure)
+                        assertEquals(listOf(2), current.readBytes().map { it.toInt() })
+                    } finally {
+                        directory.deleteRecursively()
+                    }
+
+                    @Test
+                    fun failedRecordingMetadataSaveRestoresBothTakes() {
+                        val directory = Files.createTempDirectory("audio-candidate-failure-test").toFile()
+                        try {
+                            val repository = AudioProjectRepository(directory)
+                            val current = repository.clipFile("λόγος")
+                            check(current.parentFile!!.mkdirs())
+                            current.writeBytes(byteArrayOf(1))
+                            val candidate = repository.recordingCandidateFile("λόγος")
+                            candidate.writeBytes(byteArrayOf(2))
+                            check(File(directory, "clip-metadata.json").mkdir())
+
+                            assertTrue(runCatching { repository.commitRecording("λόγος") }.isFailure)
+                            assertEquals(listOf(1), current.readBytes().map { it.toInt() })
+                            assertEquals(listOf(2), candidate.readBytes().map { it.toInt() })
+                        } finally {
+                            directory.deleteRecursively()
+                        }
+                    }
+                }
             }
-            val repository = AudioWorkbenchRepository(directory)
+            val repository = AudioProjectRepository(directory)
             val error = runCatching {
                 repository.importArchive(archive.toByteArray().inputStream(), "English", AudioProjectState())
             }.exceptionOrNull()
