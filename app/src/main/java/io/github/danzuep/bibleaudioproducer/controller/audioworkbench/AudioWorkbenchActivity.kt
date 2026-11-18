@@ -282,14 +282,22 @@ class AudioWorkbenchActivity : AppCompatActivity() {
         }
     }
 
+    private fun createMediaRecorder(): MediaRecorder {
+        return if (android.os.Build.VERSION.SDK_INT >= 31) {
+            MediaRecorder(this)
+        } else {
+            @Suppress("DEPRECATION")
+            MediaRecorder()
+        }
+    }
+
     private fun startRecording(lemma: String) {
         stopRecording()
         stopPlayback()
         val output = repository.clipFile(lemma)
         val clipsDirectory = checkNotNull(output.parentFile)
         val temporary = File(clipsDirectory, "${output.nameWithoutExtension}.tmp.m4a")
-        @Suppress("DEPRECATION")
-        val newRecorder = if (android.os.Build.VERSION.SDK_INT >= 31) MediaRecorder(this) else MediaRecorder()
+        val newRecorder = createMediaRecorder()
         try {
             check(clipsDirectory.mkdirs() || clipsDirectory.isDirectory)
             newRecorder.setAudioSource(MediaRecorder.AudioSource.MIC)
