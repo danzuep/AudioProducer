@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.text.Editable
+import android.text.InputType
 import android.text.TextWatcher
 import android.view.Menu
 import android.view.MenuItem
@@ -34,13 +35,16 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
 import com.google.android.material.card.MaterialCardView
 import io.github.danzuep.bibleaudioproducer.R
-import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioPlayer
-import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioRecorder
 import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioDecoder
 import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioEncoder
+import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioPlayer
+import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioRecorder
+import io.github.danzuep.bibleaudioproducer.audio.AndroidGreekTts
 import io.github.danzuep.bibleaudioproducer.audio.AndroidNeuralSmoother
+import io.github.danzuep.bibleaudioproducer.audio.AzureGreekSpeech
 import io.github.danzuep.bibleaudioproducer.audio.NeuralModelStore
 import io.github.danzuep.bibleaudioproducer.audio.NeuralStrength
+import io.github.danzuep.bibleaudioproducer.audio.SpeechCredentials
 import io.github.danzuep.bibleaudioproducer.audio.VerseAudio
 import io.github.danzuep.bibleaudioproducer.audio.VerseExportFormat
 import io.github.danzuep.bibleaudioproducer.data.RecordingPlanJson
@@ -63,6 +67,9 @@ class WorkbenchActivity : AppCompatActivity() {
     private val preferences by lazy { getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE) }
     private val audioRecorder by lazy { AndroidAudioRecorder(this) }
     private val neuralModels by lazy { NeuralModelStore(File(filesDir, "audio-models")) }
+    private val speechCredentials by lazy { SpeechCredentials(preferences) }
+    private var androidGreekTts: AndroidGreekTts? = null
+    private var speechGeneration = 0
     private val audioPlayer by lazy {
         AndroidAudioPlayer {
             playingLemma = null
@@ -88,6 +95,7 @@ class WorkbenchActivity : AppCompatActivity() {
             override fun isRecording(card: RecordingCard) = activeLemma == card.lemma
             override fun isPlaying(card: RecordingCard) = playingLemma == card.lemma
             override fun playRecording(card: RecordingCard) = this@WorkbenchActivity.playRecording(card)
+            override fun speakGreek(text: String) = this@WorkbenchActivity.speakGreek(text)
             override fun closeRecording() {
                 stopRecording()
                 stopPlayback()
@@ -263,6 +271,7 @@ class WorkbenchActivity : AppCompatActivity() {
             importArchive.launch(arrayOf("application/zip", "application/octet-stream"))
         }
         findViewById<Button>(R.id.audio_clear_data).setOnClickListener { confirmClearData() }
+        findViewById<Button>(R.id.audio_speech_settings).setOnClickListener { showSpeechSettings() }
         findViewById<Button>(R.id.audio_import_neural_model).setOnClickListener {
             if (busy) return@setOnClickListener
             if (Build.VERSION.SDK_INT < 24) {
@@ -316,6 +325,7 @@ class WorkbenchActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        androidGreekTts?.shutdown()
         io.shutdown()
         super.onDestroy()
     }
@@ -1151,8 +1161,105 @@ class WorkbenchActivity : AppCompatActivity() {
         }
     }
 
+    private fun speakGreek(text: String) {
+        if (busy) return
+        stopRecording()
+        if (pendingTake() != null) return
+        stopPlayback()
+        val key = try {
+            speechCredentials.key()
+        } catch (exception: Exception) {
+            Toast.makeText(this, exception.message ?: getString(R.string.audio_speech_setup_failed), Toast.LENGTH_LONG).show()
+            return
+        }
+        if (key.isBlank()) {
+            Toast.makeText(this, R.string.audio_speech_fallback_notice, Toast.LENGTH_LONG).show()
+            val tts = androidGreekTts ?: AndroidGreekTts(this) { message ->
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed) {
+                        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }.also { androidGreekTts = it }
+            tts.speak(text)
+            return
+        }
+        val region = speechCredentials.region()
+        val generation = ++speechGeneration
+        io.execute {
+            val audioFile = File(cacheDir, "greek-speech.mp3")
+            try {
+                AzureGreekSpeech().synthesize(text, region, key, audioFile)
+                runOnUiThread {
+                    if (generation == speechGeneration && !isFinishing && !isDestroyed) {
+                        audioPlayer.play(listOf(audioFile))
+                    }
+                }
+            } catch (exception: Exception) {
+                runOnUiThread {
+                    if (generation == speechGeneration && !isFinishing && !isDestroyed) {
+                        Toast.makeText(
+                            this,
+                            getString(R.string.audio_speech_failed, exception.message ?: ""),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun showSpeechSettings() {
+        val region = EditText(this).apply {
+            hint = getString(R.string.audio_speech_region)
+            setSingleLine(true)
+            setText(speechCredentials.region())
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+        }
+        val key = EditText(this).apply {
+            hint = getString(R.string.audio_speech_key)
+            setSingleLine(true)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        val form = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(8), dp(24), 0)
+            addView(region)
+            addView(key)
+        }
+        val dialog = AlertDialog.Builder(this).setTitle(R.string.audio_speech_title)
+            .setView(form)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setNeutralButton(R.string.audio_speech_use_device_voice, null)
+            .setPositiveButton(android.R.string.ok, null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+                try {
+                    speechCredentials.clearKey()
+                    Toast.makeText(this, R.string.audio_speech_device_voice_enabled, Toast.LENGTH_LONG).show()
+                    dialog.dismiss()
+                } catch (exception: Exception) {
+                    Toast.makeText(this, exception.message ?: getString(R.string.audio_speech_setup_failed), Toast.LENGTH_LONG).show()
+                }
+            }
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                try {
+                    speechCredentials.save(region.text.toString().trim(), key.text.toString().trim())
+                    Toast.makeText(this, R.string.audio_speech_saved, Toast.LENGTH_LONG).show()
+                    dialog.dismiss()
+                } catch (exception: Exception) {
+                    Toast.makeText(this, exception.message ?: getString(R.string.audio_speech_setup_failed), Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+        dialog.show()
+    }
+
     private fun stopPlayback() {
+        speechGeneration++
         audioPlayer.stop()
+        androidGreekTts?.stop()
         if (playingLemma != null || playingVerseReference != null) {
             playingLemma = null
             playingVerseReference = null

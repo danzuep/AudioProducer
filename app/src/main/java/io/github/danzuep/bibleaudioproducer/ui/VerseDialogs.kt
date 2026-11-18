@@ -1,7 +1,6 @@
 package io.github.danzuep.bibleaudioproducer.ui
 
 import android.content.res.ColorStateList
-import android.graphics.Color
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -50,6 +49,7 @@ internal class VerseDialogs(
         fun isRecording(card: RecordingCard): Boolean
         fun isPlaying(card: RecordingCard): Boolean
         fun playRecording(card: RecordingCard)
+        fun speakGreek(text: String)
         fun closeRecording()
     }
 
@@ -113,7 +113,7 @@ internal class VerseDialogs(
                 missing == 0 -> activity.getString(R.string.audio_verse_ready)
                 else -> activity.getString(R.string.audio_verse_missing, missing)
             }
-            "${verse.reference} · $status\n${words.map { it.gloss }.filter { it.isNotBlank() && it != "-" }.joinToString(" ")}"
+            "${verse.reference} · $status\n${words.map { it.surface }.joinToString(" ")}"
         }
         AlertDialog.Builder(activity)
             .setTitle(activity.getString(R.string.audio_chapter, chapter))
@@ -131,6 +131,7 @@ internal class VerseDialogs(
         val unspoken = actions.state.unspoken.toMutableSet()
         var changed = false
         var fontSize = 28f
+        val recordedStates = mutableMapOf<String, Boolean>()
 
         val root = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -179,7 +180,14 @@ internal class VerseDialogs(
             flow.removeAllViews()
             order.forEachIndexed { orderIndex, wordIndex ->
                 val word = verse.words[wordIndex]
-                val token = wordToken(word, word.unspokenKey in unspoken, fontSize)
+                val recorded = repository.clipFile(word.lemma).isFile
+                recordedStates[word.lemma] = recorded
+                val token = wordToken(
+                    word,
+                    word.unspokenKey in unspoken,
+                    recorded,
+                    fontSize
+                )
                 token.setOnClickListener { showWordDetails(word) }
                 token.setOnLongClickListener {
                     if (word.unspokenKey in unspoken) unspoken.remove(word.unspokenKey)
@@ -273,6 +281,11 @@ internal class VerseDialogs(
         renderWords()
         refreshers.clear()
         refreshers.add {
+            val recordingStateChanged = order.map { verse.words[it].lemma }.distinct().any { lemma ->
+                val recorded = repository.clipFile(lemma).isFile
+                recordedStates.put(lemma, recorded)?.let { it != recorded } == true
+            }
+            if (recordingStateChanged) renderWords()
             val recorded = VerseWorkflow.spokenWords(
                 verse.words, actions.state.rules, actions.state.seedOrders[verse.reference], unspoken, order
             ).any { repository.clipFile(it.lemma).isFile }
@@ -352,6 +365,10 @@ internal class VerseDialogs(
         })
         header.addView(close, LinearLayout.LayoutParams(dp(40), dp(56)))
         root.addView(header)
+        root.addView(MaterialButton(activity).apply {
+            setText(R.string.audio_speak_greek)
+            setOnClickListener { actions.speakGreek(word.surface) }
+        })
 
         val content = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -415,7 +432,7 @@ internal class VerseDialogs(
         dialog.show()
     }
 
-    private fun wordToken(word: VerseWord, unspoken: Boolean, fontSize: Float): View {
+    private fun wordToken(word: VerseWord, unspoken: Boolean, recorded: Boolean, fontSize: Float): View {
         val token = FrameLayout(activity).apply {
             setPadding(dp(4), dp(8), dp(4), dp(8))
             isClickable = true
@@ -429,19 +446,16 @@ internal class VerseDialogs(
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
         }
-        if (word.gloss.isNotBlank() && word.gloss != "-") {
-            stack.addView(TextView(activity).apply {
-                text = word.gloss
-                gravity = Gravity.CENTER
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, max(10f, fontSize * 0.45f))
-                setTextColor(Color.DKGRAY)
-            })
-        }
         stack.addView(TextView(activity).apply {
             text = word.surface
             gravity = Gravity.CENTER
             setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSize)
-            setTextColor(ContextCompat.getColor(activity, R.color.workbench_primary_dark))
+            setTextColor(
+                ContextCompat.getColor(
+                    activity,
+                    if (recorded) R.color.workbench_recorded else R.color.workbench_primary_dark
+                )
+            )
         })
         token.addView(stack, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
