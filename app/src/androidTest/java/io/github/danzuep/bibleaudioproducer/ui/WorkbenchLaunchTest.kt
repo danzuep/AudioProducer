@@ -138,6 +138,12 @@ class WorkbenchLaunchTest {
         ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
             onView(withText(R.string.audio_review_use)).perform(click())
             awaitBooks(scenario, 27)
+            val deadline = System.currentTimeMillis() + 15_000
+            val preferences = context.getSharedPreferences("audio-project", Context.MODE_PRIVATE)
+            while (preferences.contains("pending_recording_lemma") && System.currentTimeMillis() < deadline) {
+                Thread.sleep(50)
+            }
+            assertTrue("Take review was not completed", !preferences.contains("pending_recording_lemma"))
             assertEquals(listOf(2), current.readBytes().map { it.toInt() })
             assertTrue(!repository.recordingCandidateFile("λόγος").exists())
         }
