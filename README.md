@@ -24,9 +24,11 @@ button changes to stop during playback. In **Listen**, arrange phrases and unche
 individual Greek forms to omit those forms wherever they occur.
 
 Verse playback uses the recordings available on the device; missing words are skipped.
-Choose **Save verse audio (WAV)** from a verse to export its recorded words in the
-selected order, with normalized levels and crossfaded joins. The app reports how many
-missing words were skipped. Computer voice is not yet available.
+Choose **Save verse audio** from a verse to export its recorded words in the selected
+order, with normalized levels and crossfaded joins. Choose lossless WAV, compatible
+AAC (M4A), or compact Opus (Ogg, Android 10 or later). All formats also support neural
+smoothing. The app reports how many missing words were skipped. Computer voice is not
+yet available.
 
 On Android 7.0 or later, **Save with neural smoothing** optionally blends an on-device
 SpeechT5 HiFi-GAN reconstruction into verses up to 30 seconds long. Choose the standard

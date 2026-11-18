@@ -5,6 +5,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.SystemClock
 import android.os.ParcelFileDescriptor
+import android.os.Build
 import android.view.MotionEvent
 import android.view.View
 import androidx.test.core.app.ActivityScenario
@@ -112,6 +113,16 @@ class WorkbenchLaunchTest {
                 if (!ready) Thread.sleep(50)
             }
             assertTrue("Verse data did not load", ready)
+            onView(withId(R.id.audio_listen)).perform(click())
+            onView(withText("Chapter 1")).perform(click())
+            onView(withText(startsWith("JHN 1:1 ·"))).perform(click())
+            onView(withText(R.string.audio_download_verse)).perform(click())
+            onView(withText(R.string.audio_format_wav)).check(matches(isDisplayed()))
+            onView(withText(R.string.audio_format_aac)).check(matches(isDisplayed()))
+            if (Build.VERSION.SDK_INT >= 29) {
+                onView(withText(R.string.audio_format_opus)).check(matches(isDisplayed()))
+            }
+            onView(withText(android.R.string.cancel)).perform(click())
             onView(withId(R.id.audio_listen)).perform(click())
             onView(withText("Chapter 1")).perform(click())
             onView(withText(startsWith("JHN 1:1 ·"))).perform(click())

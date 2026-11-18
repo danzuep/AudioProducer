@@ -33,10 +33,12 @@ import io.github.danzuep.bibleaudioproducer.R
 import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioPlayer
 import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioRecorder
 import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioDecoder
+import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioEncoder
 import io.github.danzuep.bibleaudioproducer.audio.AndroidNeuralSmoother
 import io.github.danzuep.bibleaudioproducer.audio.NeuralModelStore
 import io.github.danzuep.bibleaudioproducer.audio.NeuralStrength
 import io.github.danzuep.bibleaudioproducer.audio.VerseAudio
+import io.github.danzuep.bibleaudioproducer.audio.VerseExportFormat
 import io.github.danzuep.bibleaudioproducer.data.RecordingPlanJson
 import io.github.danzuep.bibleaudioproducer.data.AudioProjectRepository
 import io.github.danzuep.bibleaudioproducer.data.MaculaVerseJson
@@ -68,8 +70,8 @@ class WorkbenchActivity : AppCompatActivity() {
             override val state get() = projectState
             override val busy get() = this@WorkbenchActivity.busy
             override fun playVerse(verse: AudioVerse) = this@WorkbenchActivity.playVerse(verse)
-            override fun downloadVerse(verse: AudioVerse, strength: NeuralStrength?) =
-                this@WorkbenchActivity.downloadVerse(verse, strength)
+            override fun downloadVerse(verse: AudioVerse, strength: NeuralStrength?, format: VerseExportFormat) =
+                this@WorkbenchActivity.downloadVerse(verse, strength, format)
             override fun saveOrder(reference: String, order: List<Int>?, unspoken: Set<String>) =
                 saveVerseOrder(reference, order, unspoken)
             override fun toggleRecording(card: RecordingCard) = this@WorkbenchActivity.toggleRecording(card)
@@ -111,7 +113,8 @@ class WorkbenchActivity : AppCompatActivity() {
     }
     private var reviewDialog: AlertDialog? = null
     private data class VerseExport(
-        val reference: String, val lemmas: List<String>, val missing: Int, val strength: NeuralStrength?
+        val reference: String, val lemmas: List<String>, val missing: Int,
+        val strength: NeuralStrength?, val format: VerseExportFormat
     )
     private var pendingVerseExport: VerseExport? = null
 
@@ -136,7 +139,17 @@ class WorkbenchActivity : AppCompatActivity() {
     ) { uri ->
         if (uri != null) exportArchives(uri)
     }
-    private val saveVerse = registerForActivityResult(ActivityResultContracts.CreateDocument("audio/wav")) { uri ->
+    private val saveVerseWav = registerForActivityResult(ActivityResultContracts.CreateDocument("audio/wav")) {
+        completeVerseSave(it)
+    }
+    private val saveVerseAac = registerForActivityResult(ActivityResultContracts.CreateDocument("audio/mp4")) {
+        completeVerseSave(it)
+    }
+    private val saveVerseOpus = registerForActivityResult(ActivityResultContracts.CreateDocument("audio/ogg")) {
+        completeVerseSave(it)
+    }
+
+    private fun completeVerseSave(uri: Uri?) {
         val export = pendingVerseExport
         pendingVerseExport = null
         if (uri != null && export != null) exportVerse(uri, export)
@@ -156,7 +169,9 @@ class WorkbenchActivity : AppCompatActivity() {
         if (pendingReference != null && pendingLemmas != null) {
             pendingVerseExport = VerseExport(
                 pendingReference, pendingLemmas, savedInstanceState?.getInt("verse_export_missing") ?: 0,
-                savedInstanceState?.getString("verse_export_strength")?.let(NeuralStrength::valueOf)
+                savedInstanceState?.getString("verse_export_strength")?.let(NeuralStrength::valueOf),
+                savedInstanceState?.getString("verse_export_format")?.let(VerseExportFormat::valueOf)
+                    ?: VerseExportFormat.WAV
             )
         }
         setContentView(R.layout.activity_audio_workbench)
@@ -312,6 +327,7 @@ class WorkbenchActivity : AppCompatActivity() {
             outState.putStringArrayList("verse_export_lemmas", ArrayList(it.lemmas))
             outState.putInt("verse_export_missing", it.missing)
             outState.putString("verse_export_strength", it.strength?.name)
+            outState.putString("verse_export_format", it.format.name)
         }
         super.onSaveInstanceState(outState)
     }
@@ -441,7 +457,7 @@ class WorkbenchActivity : AppCompatActivity() {
         if (pendingTake() == null) audioPlayer.play(words.map { repository.clipFile(it.lemma) })
     }
 
-    private fun downloadVerse(verse: AudioVerse, strength: NeuralStrength?) {
+    private fun downloadVerse(verse: AudioVerse, strength: NeuralStrength?, format: VerseExportFormat) {
         if (busy) return
         stopRecording()
         stopPlayback()
@@ -467,8 +483,15 @@ class WorkbenchActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.audio_word_not_recorded, Toast.LENGTH_LONG).show()
             return
         }
-        pendingVerseExport = VerseExport(verse.reference, recorded.map { it.lemma }, words.size - recorded.size, strength)
-        saveVerse.launch("${verse.reference.replace(Regex("[^A-Za-z0-9]+"), "-")}.wav")
+        pendingVerseExport = VerseExport(
+            verse.reference, recorded.map { it.lemma }, words.size - recorded.size, strength, format
+        )
+        val name = "${verse.reference.replace(Regex("[^A-Za-z0-9]+"), "-")}.${format.extension}"
+        when (format) {
+            VerseExportFormat.WAV -> saveVerseWav.launch(name)
+            VerseExportFormat.AAC -> saveVerseAac.launch(name)
+            VerseExportFormat.OPUS -> saveVerseOpus.launch(name)
+        }
     }
 
     private fun exportVerse(uri: Uri, export: VerseExport) {
@@ -491,10 +514,22 @@ class WorkbenchActivity : AppCompatActivity() {
                 val samples = export.strength?.let {
                     AndroidNeuralSmoother().smooth(assembled, neuralModels.modelFile, it)
                 } ?: assembled
-                val wav = VerseAudio.encodeWav(samples)
-                val output = contentResolver.openOutputStream(uri)
-                    ?: throw IllegalStateException(getString(R.string.audio_download_failed))
-                output.use { it.write(wav) }
+                if (export.format == VerseExportFormat.WAV) {
+                    val wav = VerseAudio.encodeWav(samples)
+                    val output = contentResolver.openOutputStream(uri)
+                        ?: throw IllegalStateException(getString(R.string.audio_download_failed))
+                    output.use { it.write(wav) }
+                } else {
+                    val temporary = File.createTempFile("verse-export-", ".${export.format.extension}", cacheDir)
+                    try {
+                        AndroidAudioEncoder().encode(samples, temporary, export.format)
+                        val output = contentResolver.openOutputStream(uri)
+                            ?: throw IllegalStateException(getString(R.string.audio_download_failed))
+                        output.use { destination -> temporary.inputStream().use { it.copyTo(destination) } }
+                    } finally {
+                        temporary.delete()
+                    }
+                }
                 runOnUiThread {
                     busy = false
                     Toast.makeText(

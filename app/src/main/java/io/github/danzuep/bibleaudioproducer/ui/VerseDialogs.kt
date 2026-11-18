@@ -2,6 +2,7 @@ package io.github.danzuep.bibleaudioproducer.ui
 
 import android.view.View
 import android.content.res.ColorStateList
+import android.os.Build
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.FrameLayout
@@ -15,6 +16,7 @@ import androidx.core.content.ContextCompat
 import com.google.android.material.button.MaterialButton
 import io.github.danzuep.bibleaudioproducer.R
 import io.github.danzuep.bibleaudioproducer.audio.NeuralStrength
+import io.github.danzuep.bibleaudioproducer.audio.VerseExportFormat
 import io.github.danzuep.bibleaudioproducer.data.AudioProjectRepository
 import io.github.danzuep.bibleaudioproducer.workbench.AudioProjectState
 import io.github.danzuep.bibleaudioproducer.workbench.AudioVerse
@@ -30,7 +32,7 @@ internal class VerseDialogs(
         val state: AudioProjectState
         val busy: Boolean
         fun playVerse(verse: AudioVerse)
-        fun downloadVerse(verse: AudioVerse, strength: NeuralStrength?)
+        fun downloadVerse(verse: AudioVerse, strength: NeuralStrength?, format: VerseExportFormat)
         fun saveOrder(reference: String, order: List<Int>?, unspoken: Set<String>)
         fun toggleRecording(card: RecordingCard)
         fun pressRecording(card: RecordingCard)
@@ -100,12 +102,23 @@ internal class VerseDialogs(
             .setItems(labels) { _, index ->
                 when (index) {
                     0 -> actions.playVerse(verse)
-                    1 -> actions.downloadVerse(verse, null)
-                    2 -> actions.downloadVerse(verse, NeuralStrength.STANDARD)
-                    3 -> actions.downloadVerse(verse, NeuralStrength.STRONG)
+                    1 -> chooseFormat(verse, null)
+                    2 -> chooseFormat(verse, NeuralStrength.STANDARD)
+                    3 -> chooseFormat(verse, NeuralStrength.STRONG)
                     4 -> arrangeVerse(verse)
                     5 -> showVerseWords(verse)
                 }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun chooseFormat(verse: AudioVerse, strength: NeuralStrength?) {
+        val formats = VerseExportFormat.entries.filter { Build.VERSION.SDK_INT >= it.minSdk }
+        AlertDialog.Builder(activity)
+            .setTitle(R.string.audio_choose_format)
+            .setItems(formats.map { activity.getString(it.label) }.toTypedArray()) { _, index ->
+                actions.downloadVerse(verse, strength, formats[index])
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
