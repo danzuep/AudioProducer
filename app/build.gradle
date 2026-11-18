@@ -6,11 +6,11 @@ def appVersionName = (project.findProperty('appVersion') ?: '6.0.0').toString()
 def appVersionCode = (project.findProperty('appVersionCode') ?: '60000').toString().toInteger()
 
 android {
-    namespace 'org.sil.storyproducer'
+    namespace 'io.github.danzuep.bibleaudioproducer'
     compileSdk 35
 
     defaultConfig {
-        applicationId 'org.sil.storyproducer'
+        applicationId 'io.github.danzuep.bibleaudioproducer'
         minSdk 23
         targetSdk 35
         versionCode appVersionCode
@@ -44,6 +44,8 @@ android {
         release {
             if (keystorePropertiesFile.isFile()) {
                 signingConfig signingConfigs.release
+            } else {
+                signingConfig signingConfigs.debug
             }
             minifyEnabled false
         }
@@ -61,9 +63,10 @@ android {
             def abi = output.getFilter(com.android.build.OutputFile.ABI) ?: 'universal'
             def abiCodes = ['armeabi-v7a': 1, 'arm64-v8a': 2, 'x86': 3, 'x86_64': 4]
             output.versionCodeOverride = defaultConfig.versionCode * 10 + (abiCodes[abi] ?: 0)
-            def versionPart = variant.name == 'release' ?
-                (keystorePropertiesFile.isFile() ? variant.versionName : 'release-not-signed') : variant.name
-            output.outputFileName = "AudioWorkbench-${versionPart}-${abi}.apk"
+            def versionPart = variant.name == 'release' ? variant.versionName : variant.name
+            def signingSuffix = variant.name == 'release' && !keystorePropertiesFile.isFile() ?
+                '-temporary-key' : ''
+            output.outputFileName = "BibleAudioProducer-${versionPart}-${abi}${signingSuffix}.apk"
         }
     }
     testOptions { unitTests.includeAndroidResources = true }

@@ -25,7 +25,7 @@ A clear and concise description of what should change to improve usability.
 If applicable, add screenshots to help explain your problem.
 
 **Versions of the software and Android**
--Audio Workbench Version:
+-Bible Audio Producer Version:
 -Android Version: 
 
 **Additional context**

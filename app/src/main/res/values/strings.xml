@@ -1,6 +1,6 @@
 <resources>
-    <string name="app_name">Audio Workbench</string>
-    <string name="audio_workbench_title">Audio Workbench</string>
+    <string name="app_name">Bible Audio Producer</string>
+    <string name="audio_workbench_title">Bible Audio Producer</string>
     <string name="audio_workbench_language_hint">Recording language</string>
     <string name="audio_workbench_language_required">Enter a recording language before exporting.</string>
     <string name="audio_workbench_import">Import plan</string>
