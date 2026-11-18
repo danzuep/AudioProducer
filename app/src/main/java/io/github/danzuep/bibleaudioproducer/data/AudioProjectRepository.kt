@@ -224,11 +224,13 @@ class AudioProjectRepository(private val root: File) {
             zip.closeEntry()
 
             cards.forEachIndexed { index, card ->
-                zip.putNextEntry(ZipEntry(clipEntries[index].file))
                 val clip = clipFile(card.lemma)
                 require(clip.length() > 0) { "Clip file is empty and cannot be exported: ${card.lemma}" }
-                clip.inputStream().use { it.copyTo(zip) }
-                zip.closeEntry()
+                clip.inputStream().use { input ->
+                    zip.putNextEntry(ZipEntry(clipEntries[index].file))
+                    input.copyTo(zip)
+                    zip.closeEntry()
+                }
             }
         }
     }
