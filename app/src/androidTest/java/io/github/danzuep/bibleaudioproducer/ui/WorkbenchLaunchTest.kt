@@ -275,8 +275,25 @@ class WorkbenchLaunchTest {
 
     private fun awaitBooks(scenario: ActivityScenario<WorkbenchActivity>, count: Int) {
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-        onView(allOf(withText("Project001"), isDisplayed())).perform(click())
-        val deadline = System.currentTimeMillis() + 15_000
+        if (!awaitBookCount(scenario, count, 500)) {
+            var verseOpen = false
+            scenario.onActivity { activity ->
+                verseOpen = activity.findViewById<View>(R.id.audio_verse_close)?.isShown == true
+            }
+            if (verseOpen) onView(withId(R.id.audio_verse_close)).perform(click())
+            if (!awaitBookCount(scenario, count, 500)) {
+                onView(allOf(withText("Project001"), isDisplayed())).perform(click())
+            }
+        }
+        assertTrue("Recording plan did not load", awaitBookCount(scenario, count, 15_000))
+    }
+
+    private fun awaitBookCount(
+        scenario: ActivityScenario<WorkbenchActivity>,
+        count: Int,
+        timeoutMillis: Long
+    ): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMillis
         var loaded = false
         while (!loaded && System.currentTimeMillis() < deadline) {
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
@@ -285,6 +302,6 @@ class WorkbenchLaunchTest {
             }
             if (!loaded) Thread.sleep(50)
         }
-        assertTrue("Recording plan did not load", loaded)
+        return loaded
     }
 }

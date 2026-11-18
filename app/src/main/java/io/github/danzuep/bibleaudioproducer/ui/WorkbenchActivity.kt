@@ -8,6 +8,8 @@ import android.os.Handler
 import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -188,12 +190,6 @@ class WorkbenchActivity : AppCompatActivity() {
         }
         val toolbar = findViewById<Toolbar>(R.id.audio_workbench_toolbar)
         setSupportActionBar(toolbar)
-        toolbar.inflateMenu(R.menu.audio_workbench)
-        toolbar.setOnMenuItemClickListener {
-            if (step == Step.SETTINGS) showStep(if (activeProjectId == null) Step.PROJECTS else Step.BOOKS)
-            else showStep(Step.SETTINGS)
-            true
-        }
         toolbar.setNavigationOnClickListener { showProjects() }
 
         language = findViewById(R.id.audio_workbench_language)
@@ -289,6 +285,23 @@ class WorkbenchActivity : AppCompatActivity() {
         }
 
         showProjects()
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.audio_workbench, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == R.id.audio_menu_settings) {
+            showStep(if (step == Step.SETTINGS) {
+                if (activeProjectId == null) Step.PROJECTS else Step.BOOKS
+            } else {
+                Step.SETTINGS
+            })
+            return true
+        }
+        return super.onOptionsItemSelected(item)
     }
 
     override fun onResume() {
