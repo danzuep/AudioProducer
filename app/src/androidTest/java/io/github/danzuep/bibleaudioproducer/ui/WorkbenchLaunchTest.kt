@@ -11,6 +11,7 @@ import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.Espresso.closeSoftKeyboard
 import androidx.test.espresso.action.ViewActions.replaceText
 import androidx.test.espresso.action.ViewActions.click
+import androidx.test.espresso.action.ViewActions.scrollTo
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
 import androidx.test.espresso.matcher.ViewMatchers.isEnabled
@@ -30,6 +31,7 @@ import io.github.danzuep.bibleaudioproducer.R
 import io.github.danzuep.bibleaudioproducer.audio.VerseAudio
 import io.github.danzuep.bibleaudioproducer.data.RecordingPlanJson
 import io.github.danzuep.bibleaudioproducer.data.AudioProjectRepository
+import io.github.danzuep.bibleaudioproducer.data.MaculaVerseJson
 import java.io.File
 import android.widget.Button
 import org.hamcrest.Matchers.startsWith
@@ -90,6 +92,13 @@ class WorkbenchLaunchTest {
 
     @Test
     fun savesAnOrderForABundledVerse() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val verse = context.assets.open("books/JHN.json").bufferedReader().use {
+            MaculaVerseJson.parse(it.readText()).first { item -> item.reference == "JHN 1:1" }
+        }
+        val skipped = verse.words.filterNot { it.proper }.first { candidate ->
+            verse.words.count { it.surface == candidate.surface } == 1
+        }
         ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
             awaitBooks(scenario, 27)
             onView(withId(R.id.audio_step_books)).perform(click())
@@ -104,12 +113,16 @@ class WorkbenchLaunchTest {
             onView(withText("Chapter 1")).perform(click())
             onView(withText(startsWith("JHN 1:1 ·"))).perform(click())
             onView(withText(R.string.audio_arrange_verse)).perform(click())
+            onView(withText(context.getString(R.string.audio_speak_word, skipped.surface)))
+                .perform(scrollTo(), click())
             onView(withText(R.string.audio_save_order)).perform(click())
             val stateFile = File(directory, "audio-state.json")
             val saveDeadline = System.currentTimeMillis() + 15_000
             while (!stateFile.isFile && System.currentTimeMillis() < saveDeadline) Thread.sleep(50)
             assertTrue("Verse order was not saved", stateFile.isFile)
-            assertTrue(AudioProjectRepository(directory).loadState().seedOrders.containsKey("JHN 1:1"))
+            val saved = AudioProjectRepository(directory).loadState()
+            assertTrue(saved.seedOrders.containsKey("JHN 1:1"))
+            assertTrue(skipped.unspokenKey in saved.unspoken)
             onView(withId(R.id.audio_listen)).perform(click())
             onView(withText("Chapter 1")).perform(click())
             onView(withText(startsWith("JHN 1:1 ·"))).perform(click())
@@ -130,89 +143,6 @@ class WorkbenchLaunchTest {
             repository.recordingCandidateFile("λόγος").writeBytes(byteArrayOf(2))
             check(context.getSharedPreferences("audio-project", Context.MODE_PRIVATE).edit()
                 .putString("pending_recording_lemma", "λόγος").commit())
-        }
-
-        @Test
-        fun recordingPlaybackCanStopAndReturnsToPlayWhenComplete() {
-            check(directory.mkdirs())
-            File(directory, "recording-plan.json").writeText(
-                """{"cards":[{"book":"JHN","lemma":"λογος","gloss":"word","occurrences":1}]}"""
-            )
-            val clip = AudioProjectRepository(directory).clipFile("λογος")
-            check(clip.parentFile!!.mkdirs())
-            clip.writeBytes(VerseAudio.encodeWav(FloatArray(16000) { 0.1f }))
-            ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
-                awaitBooks(scenario, 1)
-                onView(withId(R.id.audio_step_books)).perform(click())
-                onView(withId(R.id.audio_workbench_play)).perform(click())
-                awaitPlayDescription(scenario, "Stop λογος")
-                onView(withId(R.id.audio_workbench_play)).perform(click())
-                awaitPlayDescription(scenario, "Play λογος")
-                onView(withId(R.id.audio_workbench_play)).perform(click())
-                awaitPlayDescription(scenario, "Stop λογος")
-                awaitPlayDescription(scenario, "Play λογος")
-            }
-        }
-
-        @Test
-        fun holdShowsWaveformSavesOnReleaseAndPreservesTakeOnCancel() {
-            val context = ApplicationProvider.getApplicationContext<Context>()
-            InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(
-                context.packageName, Manifest.permission.RECORD_AUDIO
-            )
-            check(directory.mkdirs())
-            File(directory, "recording-plan.json").writeText(
-                """{"cards":[{"book":"JHN","lemma":"λογος","gloss":"word","occurrences":1}]}"""
-            )
-            val repository = AudioProjectRepository(directory)
-            ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
-                awaitBooks(scenario, 1)
-                onView(withId(R.id.audio_step_books)).perform(click())
-                onView(withId(R.id.audio_workbench_record)).check(matches(isDisplayed()))
-                fun touch(action: Int) = scenario.onActivity { activity ->
-                    val button = activity.findViewById<Button>(R.id.audio_workbench_record)
-                    val now = SystemClock.uptimeMillis()
-                    val event = MotionEvent.obtain(now, now, action, button.width / 2f, button.height / 2f, 0)
-                    try {
-                        button.dispatchTouchEvent(event)
-                    } finally {
-                        event.recycle()
-                    }
-                }
-                touch(MotionEvent.ACTION_DOWN)
-                val deadline = System.currentTimeMillis() + 10_000
-                var showing = false
-                while (!showing && System.currentTimeMillis() < deadline) {
-                    scenario.onActivity {
-                        showing = it.findViewById<View>(R.id.audio_workbench_waveform)?.visibility == View.VISIBLE
-                    }
-                    if (!showing) Thread.sleep(25)
-                }
-                assertTrue("Recording waveform did not appear", showing)
-                Thread.sleep(800)
-                touch(MotionEvent.ACTION_UP)
-                val clip = repository.clipFile("λογος")
-                assertTrue("Take was not saved on release", clip.isFile && clip.length() > 0)
-                val original = clip.readBytes()
-                touch(MotionEvent.ACTION_DOWN)
-                Thread.sleep(800)
-                touch(MotionEvent.ACTION_CANCEL)
-                assertArrayEquals(original, clip.readBytes())
-                assertTrue(!repository.recordingCandidateFile("λογος").exists())
-            }
-        }
-
-        private fun awaitPlayDescription(scenario: ActivityScenario<WorkbenchActivity>, description: String) {
-            val deadline = System.currentTimeMillis() + 10_000
-            var matches = false
-            while (!matches && System.currentTimeMillis() < deadline) {
-                scenario.onActivity { activity ->
-                    matches = activity.findViewById<Button>(R.id.audio_workbench_play)
-                        ?.contentDescription?.toString() == description
-                }
-                if (!matches) Thread.sleep(25)
-            }
-            assertTrue("Playback control did not become $description", matches)
         }
 
         prepareTake()
@@ -236,6 +166,89 @@ class WorkbenchLaunchTest {
             assertEquals(listOf(2), current.readBytes().map { it.toInt() })
             assertTrue(!repository.recordingCandidateFile("λόγος").exists())
         }
+    }
+
+    @Test
+    fun recordingPlaybackCanStopAndReturnsToPlayWhenComplete() {
+        check(directory.mkdirs())
+        File(directory, "recording-plan.json").writeText(
+            """{"cards":[{"book":"JHN","lemma":"λογος","gloss":"word","occurrences":1}]}"""
+        )
+        val clip = AudioProjectRepository(directory).clipFile("λογος")
+        check(clip.parentFile!!.mkdirs())
+        clip.writeBytes(VerseAudio.encodeWav(FloatArray(16000) { 0.1f }))
+        ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
+            awaitBooks(scenario, 1)
+            onView(withId(R.id.audio_step_books)).perform(click())
+            onView(withId(R.id.audio_workbench_play)).perform(click())
+            awaitPlayDescription(scenario, "Stop λογος")
+            onView(withId(R.id.audio_workbench_play)).perform(click())
+            awaitPlayDescription(scenario, "Play λογος")
+            onView(withId(R.id.audio_workbench_play)).perform(click())
+            awaitPlayDescription(scenario, "Stop λογος")
+            awaitPlayDescription(scenario, "Play λογος")
+        }
+    }
+
+    @Test
+    fun holdShowsWaveformSavesOnReleaseAndPreservesTakeOnCancel() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(
+            context.packageName, Manifest.permission.RECORD_AUDIO
+        )
+        check(directory.mkdirs())
+        File(directory, "recording-plan.json").writeText(
+            """{"cards":[{"book":"JHN","lemma":"λογος","gloss":"word","occurrences":1}]}"""
+        )
+        val repository = AudioProjectRepository(directory)
+        ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
+            awaitBooks(scenario, 1)
+            onView(withId(R.id.audio_step_books)).perform(click())
+            onView(withId(R.id.audio_workbench_record)).check(matches(isDisplayed()))
+            fun touch(action: Int) = scenario.onActivity { activity ->
+                val button = activity.findViewById<Button>(R.id.audio_workbench_record)
+                val now = SystemClock.uptimeMillis()
+                val event = MotionEvent.obtain(now, now, action, button.width / 2f, button.height / 2f, 0)
+                try {
+                    button.dispatchTouchEvent(event)
+                } finally {
+                    event.recycle()
+                }
+            }
+            touch(MotionEvent.ACTION_DOWN)
+            val deadline = System.currentTimeMillis() + 10_000
+            var showing = false
+            while (!showing && System.currentTimeMillis() < deadline) {
+                scenario.onActivity {
+                    showing = it.findViewById<View>(R.id.audio_workbench_waveform)?.visibility == View.VISIBLE
+                }
+                if (!showing) Thread.sleep(25)
+            }
+            assertTrue("Recording waveform did not appear", showing)
+            Thread.sleep(800)
+            touch(MotionEvent.ACTION_UP)
+            val clip = repository.clipFile("λογος")
+            assertTrue("Take was not saved on release", clip.isFile && clip.length() > 0)
+            val original = clip.readBytes()
+            touch(MotionEvent.ACTION_DOWN)
+            Thread.sleep(800)
+            touch(MotionEvent.ACTION_CANCEL)
+            assertArrayEquals(original, clip.readBytes())
+            assertTrue(!repository.recordingCandidateFile("λογος").exists())
+        }
+    }
+
+    private fun awaitPlayDescription(scenario: ActivityScenario<WorkbenchActivity>, description: String) {
+        val deadline = System.currentTimeMillis() + 10_000
+        var matches = false
+        while (!matches && System.currentTimeMillis() < deadline) {
+            scenario.onActivity { activity ->
+                matches = activity.findViewById<Button>(R.id.audio_workbench_play)
+                    ?.contentDescription?.toString() == description
+            }
+            if (!matches) Thread.sleep(25)
+        }
+        assertTrue("Playback control did not become $description", matches)
     }
 
     private fun awaitBooks(scenario: ActivityScenario<WorkbenchActivity>, count: Int) {
