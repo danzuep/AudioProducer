@@ -13,6 +13,12 @@ assert.equal(plan.summary.tokens, 133115, "Expected the full pinned Greek New Te
 assert.equal(plan.summary.cards, 4917);
 assert.equal(plan.summary.coverage, 1);
 assert.equal(plan.cards.length, plan.summary.cards);
+assert.equal(new Set(plan.cards.map((card) => card.greek)).size, plan.cards.length);
+assert.equal(plan.stages[0].book, "JHN");
+assert.ok(plan.cards.every((card) =>
+  books.has(card.book) && typeof card.greek === "string" && card.greek.length > 0 &&
+  typeof card.gloss === "string" && Number.isInteger(card.occurrences)
+));
 assert.deepEqual(new Set(plan.stages.map((stage) => stage.book)), books);
 
 const [header, ...lines] = readFileSync(source, "utf8").trim().split("\n");

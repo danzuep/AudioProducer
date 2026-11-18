@@ -54,7 +54,8 @@ class AudioWorkbenchRepository(private val root: File) {
 
     fun recordingSaved(lemma: String) {
         val metadata = loadMetadata().toMutableMap()
-        if (metadata.remove(lemma) != null) writeJson(metadataFile, metadata)
+        metadata[lemma] = "audio/mp4"
+        writeJson(metadataFile, metadata)
     }
 
     fun importArchive(input: InputStream, language: String, state: AudioProjectState): AudioArchiveImport {
@@ -73,7 +74,13 @@ class AudioWorkbenchRepository(private val root: File) {
                         if (destination.exists()) {
                             skipped++
                         } else {
-                            check(clip.file.renameTo(destination)) { "Unable to save an imported recording." }
+                            val staged = File.createTempFile("audio-import-", ".tmp", clipsDirectory)
+                            try {
+                                clip.file.copyTo(staged, overwrite = true)
+                                check(staged.renameTo(destination)) { "Unable to save an imported recording." }
+                            } finally {
+                                staged.delete()
+                            }
                             created.add(destination)
                             metadata[clip.lemma] = clip.mime
                         }

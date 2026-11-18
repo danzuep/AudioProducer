@@ -9,12 +9,12 @@ greek_revision=8423afe47b9e8f24b7772e808af45c7159a6fe7e
 
 mkdir -p "$source_dir/scripts" "$source_dir/site/static" "$output"
 for file in LICENSE scripts/generate-recording-plan.mjs scripts/macula-tokens.mjs site/static/recording-prompts.js; do
-  curl --fail --location --retry 3 --silent --show-error \
+  curl --fail --location --retry 3 --connect-timeout 15 --max-time 180 --silent --show-error \
     "https://raw.githubusercontent.com/danzuep/MaculaScripta/$macula_revision/$file" \
     --output "$source_dir/$file"
 done
 cp "$source_dir/LICENSE" "$output/MaculaScripta-LICENSE.txt"
-curl --fail --location --retry 3 --silent --show-error \
+curl --fail --location --retry 3 --connect-timeout 15 --max-time 180 --silent --show-error \
   "https://raw.githubusercontent.com/Clear-Bible/macula-greek/$greek_revision/SBLGNT/tsv/macula-greek-SBLGNT.tsv" \
   --output "$source_dir/macula-greek-SBLGNT.tsv"
 

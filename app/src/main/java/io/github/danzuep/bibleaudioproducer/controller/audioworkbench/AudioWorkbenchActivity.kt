@@ -9,6 +9,7 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
@@ -236,6 +237,11 @@ class AudioWorkbenchActivity : AppCompatActivity() {
         pendingLemma = null
         stopRecording()
         stopPlayback()
+        if (next != Step.LANGUAGE) {
+            language.clearFocus()
+            (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager)
+                .hideSoftInputFromWindow(language.windowToken, 0)
+        }
         if (step != next) search.text.clear()
         step = next
         findViewById<View>(R.id.audio_language_panel).visibility = if (next == Step.LANGUAGE) View.VISIBLE else View.GONE
@@ -290,8 +296,11 @@ class AudioWorkbenchActivity : AppCompatActivity() {
                 verse.words, projectState.rules, projectState.seedOrders[verse.reference], projectState.unspoken
             )
             val missing = words.map { it.lemma }.distinct().count { !repository.clipFile(it).isFile }
-            val status = if (missing == 0) getString(R.string.audio_verse_ready)
-                else getString(R.string.audio_verse_missing, missing)
+            val status = when {
+                verse.words.none { !it.proper } -> getString(R.string.audio_verse_no_words)
+                missing == 0 -> getString(R.string.audio_verse_ready)
+                else -> getString(R.string.audio_verse_missing, missing)
+            }
             "${verse.reference} · $status\n${words.map { it.gloss }.filter { it.isNotBlank() && it != "-" }.joinToString(" ")}"
         }
         AlertDialog.Builder(this)
@@ -458,14 +467,19 @@ class AudioWorkbenchActivity : AppCompatActivity() {
     }
 
     private fun playVerse(verse: AudioVerse) {
+        if (busy) return
         stopRecording()
         stopPlayback()
-        val words = VerseWorkflow.spokenWords(
+        val spoken = VerseWorkflow.spokenWords(
             verse.words, projectState.rules, projectState.seedOrders[verse.reference], projectState.unspoken
-        ).filter { repository.clipFile(it.lemma).isFile }
+        )
+        val words = spoken.filter { repository.clipFile(it.lemma).isFile }
         if (words.isEmpty()) {
             Toast.makeText(this, R.string.audio_word_not_recorded, Toast.LENGTH_SHORT).show()
             return
+        }
+        if (words.size != spoken.size) {
+            Toast.makeText(this, R.string.audio_playback_missing_words, Toast.LENGTH_SHORT).show()
         }
         playVerseWord(words, 0, playbackGeneration)
     }
@@ -790,6 +804,7 @@ class AudioWorkbenchActivity : AppCompatActivity() {
     }
 
     private fun playRecording(card: AudioWorkbenchCard) {
+        if (busy) return
         stopPlayback()
         try {
             val mediaPlayer = MediaPlayer()

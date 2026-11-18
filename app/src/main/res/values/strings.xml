@@ -26,6 +26,7 @@
     <string name="audio_choose_chapter">Choose a chapter</string>
     <string name="audio_chapter">Chapter %1$d</string>
     <string name="audio_verse_ready">Ready</string>
+    <string name="audio_verse_no_words">No recordable words</string>
     <string name="audio_verse_missing">%1$d words missing</string>
     <string name="audio_play_verse">Play recorded words</string>
     <string name="audio_arrange_verse">Arrange and omit words</string>
@@ -41,6 +42,7 @@
     <string name="audio_order_failed">Unable to save verse order.</string>
     <string name="audio_record_stop">Record / stop</string>
     <string name="audio_word_not_recorded">No recording is available.</string>
+    <string name="audio_playback_missing_words">Missing words will be skipped.</string>
     <string name="audio_workbench_language_hint">Recording language</string>
     <string name="audio_workbench_language_required">Enter a recording language before exporting.</string>
     <string name="audio_workbench_import">Import plan</string>

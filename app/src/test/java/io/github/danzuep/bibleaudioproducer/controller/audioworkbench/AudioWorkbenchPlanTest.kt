@@ -127,87 +127,6 @@ class AudioWorkbenchPlanTest {
                         createNewFile()
                     }
 
-                    @Test
-                    fun importPreservesExistingClipsAndRoundTripsUpstreamMetadata() {
-                        val directory = Files.createTempDirectory("audio-workbench-import-test").toFile()
-                        try {
-                            val repository = AudioWorkbenchRepository(directory)
-                            val cards = listOf(AudioWorkbenchCard("JHN", "existing", "", 1))
-                            repository.clipFile("existing").apply {
-                                parentFile!!.mkdirs()
-                                writeBytes(byteArrayOf(9))
-                            }
-                            val archive = ByteArrayOutputStream().also { bytes ->
-                                ZipOutputStream(bytes).use { zip ->
-                                    zip.putNextEntry(ZipEntry("manifest.json"))
-                                    zip.write(
-                                        """{"format":"macula-scripta-audio","version":1,"language":"Example",
-                                            "rules":{"NP.nom|V":{"keep":0,"flip":1}},
-                                            "seed_orders":{"JHN 1:1":[1,0]},"unspoken":["τὸν"],
-                                            "clips":[{"lemma":"existing","file":"clips/1.webm","mime":"audio/webm"},
-                                                     {"lemma":"other","file":"clips/2.webm","mime":"audio/webm"}]}"""
-                                            .toByteArray()
-                                    )
-                                    zip.closeEntry()
-                                    for (name in listOf("clips/1.webm", "clips/2.webm")) {
-                                        zip.putNextEntry(ZipEntry(name))
-                                        zip.write(byteArrayOf(1, 2, 3))
-                                        zip.closeEntry()
-                                    }
-                                }
-                            }
-
-                            val result = repository.importArchive(archive.toByteArray().inputStream(), "", AudioProjectState())
-                            assertEquals(1, result.added)
-                            assertEquals(1, result.skipped)
-                            assertEquals("Example", result.language)
-                            assertEquals(listOf(9), repository.clipFile("existing").readBytes().map { it.toInt() })
-                            assertEquals(GrammarRule(0, 1), result.state.rules["NP.nom|V"])
-                            assertEquals(listOf(1, 0), result.state.seedOrders["JHN 1:1"])
-                            assertEquals(setOf("τὸν"), result.state.unspoken)
-                            repository.saveState(result.state)
-                            assertEquals(result.state, repository.loadState())
-
-                            val parts = repository.exportParts(cards, result.language)
-                            val output = ByteArrayOutputStream()
-                            repository.writeExport(parts.single().cards, result.language, output, state = result.state)
-                            val entries = mutableMapOf<String, ByteArray>()
-                            ZipInputStream(output.toByteArray().inputStream()).use { zip ->
-                                while (true) {
-                                    val entry = zip.nextEntry ?: break
-                                    entries[entry.name] = zip.readBytes()
-                                }
-                            }
-                            val manifest = JsonParser.parseString(entries.getValue("manifest.json").toString(Charsets.UTF_8)).asJsonObject
-                            assertEquals(1, manifest.getAsJsonObject("rules").getAsJsonObject("NP.nom|V").get("flip").asInt)
-                            assertEquals("audio/webm", manifest.getAsJsonArray("clips")[1].asJsonObject.get("mime").asString)
-                            assertEquals(listOf(1, 2, 3), entries.getValue("clips/2.webm").map { it.toInt() })
-                        } finally {
-                            directory.deleteRecursively()
-                        }
-                    }
-
-                    @Test
-                    fun importRejectsDifferentLanguageBeforeSavingClips() {
-                        val directory = Files.createTempDirectory("audio-workbench-language-test").toFile()
-                        try {
-                            val archive = ByteArrayOutputStream().also { bytes ->
-                                ZipOutputStream(bytes).use { zip ->
-                                    zip.putNextEntry(ZipEntry("manifest.json"))
-                                    zip.write("""{"format":"macula-scripta-audio","version":1,"language":"French","clips":[]}""".toByteArray())
-                                    zip.closeEntry()
-                                }
-                            }
-                            val repository = AudioWorkbenchRepository(directory)
-                            val error = runCatching {
-                                repository.importArchive(archive.toByteArray().inputStream(), "English", AudioProjectState())
-                            }.exceptionOrNull()
-                            assertTrue(error is IllegalArgumentException)
-                            assertTrue(repository.recordedCards(emptyList()).isEmpty())
-                        } finally {
-                            directory.deleteRecursively()
-                        }
-                    }
                 }
             }
 
@@ -215,6 +134,93 @@ class AudioWorkbenchPlanTest {
 
             assertEquals(listOf(1500, 1), parts.map { it.cards.size })
             assertEquals(listOf(1, 1501), parts.map { it.firstClipNumber })
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun importPreservesExistingClipsAndRoundTripsUpstreamMetadata() {
+        val directory = Files.createTempDirectory("audio-workbench-import-test").toFile()
+        try {
+            val repository = AudioWorkbenchRepository(directory)
+            val cards = listOf(AudioWorkbenchCard("JHN", "existing", "", 1))
+            repository.clipFile("existing").apply {
+                parentFile!!.mkdirs()
+                writeBytes(byteArrayOf(9))
+            }
+            val archive = ByteArrayOutputStream().also { bytes ->
+                ZipOutputStream(bytes).use { zip ->
+                    zip.putNextEntry(ZipEntry("manifest.json"))
+                    zip.write(
+                        """{"format":"macula-scripta-audio","version":1,"language":"Example",
+                            "rules":{"NP.nom|V":{"keep":0,"flip":1}},
+                            "seed_orders":{"JHN 1:1":[1,0]},"unspoken":["τὸν"],
+                            "clips":[{"lemma":"existing","file":"clips/1.webm","mime":"audio/webm"},
+                                     {"lemma":"other","file":"clips/2.webm","mime":"audio/webm"},
+                                     {"lemma":"shared","file":"clips/2.webm","mime":"audio/webm"}]}"""
+                            .toByteArray()
+                    )
+                    zip.closeEntry()
+                    for (name in listOf("clips/1.webm", "clips/2.webm")) {
+                        zip.putNextEntry(ZipEntry(name))
+                        zip.write(byteArrayOf(1, 2, 3))
+                        zip.closeEntry()
+                    }
+                }
+            }
+
+            val result = repository.importArchive(archive.toByteArray().inputStream(), "", AudioProjectState())
+            assertEquals(2, result.added)
+            assertEquals(1, result.skipped)
+            assertEquals("Example", result.language)
+            assertEquals(listOf(9), repository.clipFile("existing").readBytes().map { it.toInt() })
+            assertEquals(listOf(1, 2, 3), repository.clipFile("shared").readBytes().map { it.toInt() })
+            assertEquals(GrammarRule(0, 1), result.state.rules["NP.nom|V"])
+            assertEquals(listOf(1, 0), result.state.seedOrders["JHN 1:1"])
+            assertEquals(setOf("τὸν"), result.state.unspoken)
+            repository.recordingSaved("shared")
+            repository.saveState(result.state)
+            assertEquals(result.state, repository.loadState())
+
+            val parts = repository.exportParts(cards, result.language)
+            val output = ByteArrayOutputStream()
+            repository.writeExport(parts.single().cards, result.language, output, state = result.state)
+            val entries = mutableMapOf<String, ByteArray>()
+            ZipInputStream(output.toByteArray().inputStream()).use { zip ->
+                while (true) {
+                    val entry = zip.nextEntry ?: break
+                    entries[entry.name] = zip.readBytes()
+                }
+            }
+            val manifest = JsonParser.parseString(entries.getValue("manifest.json").toString(Charsets.UTF_8)).asJsonObject
+            assertEquals(1, manifest.getAsJsonObject("rules").getAsJsonObject("NP.nom|V").get("flip").asInt)
+            assertEquals("audio/webm", manifest.getAsJsonArray("clips")[1].asJsonObject.get("mime").asString)
+            assertEquals(listOf(1, 2, 3), entries.getValue("clips/2.webm").map { it.toInt() })
+            assertEquals("audio/mp4", manifest.getAsJsonArray("clips")[2].asJsonObject.get("mime").asString)
+            assertEquals(listOf(1, 2, 3), entries.getValue("clips/3.m4a").map { it.toInt() })
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun importRejectsDifferentLanguageBeforeSavingClips() {
+        val directory = Files.createTempDirectory("audio-workbench-language-test").toFile()
+        try {
+            val archive = ByteArrayOutputStream().also { bytes ->
+                ZipOutputStream(bytes).use { zip ->
+                    zip.putNextEntry(ZipEntry("manifest.json"))
+                    zip.write("""{"format":"macula-scripta-audio","version":1,"language":"French","clips":[]}""".toByteArray())
+                    zip.closeEntry()
+                }
+            }
+            val repository = AudioWorkbenchRepository(directory)
+            val error = runCatching {
+                repository.importArchive(archive.toByteArray().inputStream(), "English", AudioProjectState())
+            }.exceptionOrNull()
+            assertTrue(error is IllegalArgumentException)
+            assertTrue(repository.recordedCards(emptyList()).isEmpty())
         } finally {
             directory.deleteRecursively()
         }
