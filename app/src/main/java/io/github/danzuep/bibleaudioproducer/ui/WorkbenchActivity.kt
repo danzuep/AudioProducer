@@ -350,6 +350,8 @@ class WorkbenchActivity : AppCompatActivity() {
         if (busy) return
         if (activeLemma != null || pendingTake() != null) stopRecording()
         if (pendingTake() != null) {
+            showStep(Step.PROJECTS)
+            renderProjects()
             reviewPendingTake()
             return
         }
