@@ -288,28 +288,47 @@ internal class AzureGreekSpeech {
 
 internal class AndroidGreekTts(
     context: android.content.Context,
+    preferredVoiceName: String?,
+    private val onVoiceChanged: (String?) -> Unit = {},
     private val onError: (String) -> Unit
 ) {
     private var ready = false
     private var failed = false
     private var pendingText: String? = null
+    private var voices = emptyList<Voice>()
+    private var selectedVoice: Voice? = null
+    private val voiceCallbacks = mutableListOf<(List<Voice>) -> Unit>()
     private lateinit var engine: TextToSpeech
 
     init {
         engine = TextToSpeech(context.applicationContext) { status ->
             if (status != TextToSpeech.SUCCESS) {
                 failed = true
-                onError("No compatible Italian speech voice is installed.")
+                voiceCallbacks.toList().forEach { it(emptyList()) }
+                voiceCallbacks.clear()
+                onError("Android speech synthesis could not be initialized.")
             } else {
-                val italianVoices = engine.voices.orEmpty().filter { it.locale.language == "it" }
-                val voice = italianVoices.maxWithOrNull(
-                    compareBy<Voice>({ it.isNetworkConnectionRequired }, { it.quality })
-                )
+                voices = engine.voices.orEmpty()
+                    .filter { it.locale.language in setOf("el", "it") }
+                    .sortedWith(
+                        compareBy<Voice>({ it.locale.language != "el" }, { it.isNetworkConnectionRequired })
+                            .thenByDescending { it.quality }
+                            .thenBy { it.name }
+                    )
+                val voice = voices.firstOrNull { it.name == preferredVoiceName }
+                    ?: voices.firstOrNull { it.locale.language == "el" }
+                    ?: voices.firstOrNull()
                 if (voice == null || engine.setVoice(voice) != TextToSpeech.SUCCESS) {
                     failed = true
-                    onError("No compatible Italian speech voice is installed.")
+                    voiceCallbacks.toList().forEach { it(emptyList()) }
+                    voiceCallbacks.clear()
+                    onError("Install a Greek or Italian Android TTS voice to use device speech.")
                 } else {
+                    selectedVoice = voice
+                    onVoiceChanged(voice.name)
                     ready = true
+                    voiceCallbacks.toList().forEach { it(voices) }
+                    voiceCallbacks.clear()
                     pendingText?.let(::speakNow)
                     pendingText = null
                 }
@@ -327,18 +346,40 @@ internal class AndroidGreekTts(
     fun speak(text: String) {
         when {
             ready -> speakNow(text)
-            failed -> onError("No compatible Italian speech voice is installed.")
+            failed -> onError("Install a Greek or Italian Android TTS voice to use device speech.")
             else -> pendingText = text
         }
     }
+
+    fun availableVoices(callback: (List<Voice>) -> Unit) {
+        if (ready) callback(voices)
+        else if (failed) callback(emptyList())
+        else voiceCallbacks += callback
+    }
+
+    fun selectVoice(name: String): Boolean {
+        val voice = voices.firstOrNull { it.name == name } ?: return false
+        if (engine.setVoice(voice) != TextToSpeech.SUCCESS) return false
+        selectedVoice = voice
+        onVoiceChanged(voice.name)
+        return true
+    }
+
+    fun selectedVoiceName(): String? = selectedVoice?.name
 
     fun shutdown() = engine.shutdown()
 
     fun stop() = engine.stop()
 
     private fun speakNow(text: String) {
+        val voice = selectedVoice
+        val spokenText = if (voice?.locale?.language == "it") {
+            ClassicalGreekG2p.italianRespelling(text)
+        } else {
+            text
+        }
         val result = engine.speak(
-            ClassicalGreekG2p.italianRespelling(text),
+            spokenText,
             TextToSpeech.QUEUE_FLUSH,
             null,
             "greek-${System.nanoTime()}"

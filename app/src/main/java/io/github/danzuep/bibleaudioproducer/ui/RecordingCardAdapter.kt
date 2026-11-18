@@ -1,5 +1,6 @@
 package io.github.danzuep.bibleaudioproducer.ui
 
+import android.content.res.ColorStateList
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -9,7 +10,9 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import io.github.danzuep.bibleaudioproducer.R
+import io.github.danzuep.bibleaudioproducer.audio.GreekTransliterator
 import io.github.danzuep.bibleaudioproducer.workbench.RecordingCard
+import androidx.core.content.ContextCompat
 
 data class RecordingCardRow(
     val card: RecordingCard,
@@ -60,6 +63,7 @@ class RecordingCardAdapter(
 
     inner class RecordingCardViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         private val lemma = view.findViewById<TextView>(R.id.audio_workbench_lemma)
+        private val transliteration = view.findViewById<TextView>(R.id.audio_workbench_transliteration)
         private val gloss = view.findViewById<TextView>(R.id.audio_workbench_gloss)
         private val grammar = view.findViewById<TextView>(R.id.audio_workbench_grammar)
         private val occurrences = view.findViewById<TextView>(R.id.audio_workbench_occurrences)
@@ -71,6 +75,7 @@ class RecordingCardAdapter(
 
         fun bind(row: RecordingCardRow) {
             lemma.text = row.card.lemma
+            transliteration.text = GreekTransliterator.transliterate(row.card.lemma)
             gloss.text = row.card.gloss
             grammar.text = row.grammar
             occurrences.text = itemView.context.getString(
@@ -78,6 +83,12 @@ class RecordingCardAdapter(
                 row.card.occurrences
             )
             record.setText(if (row.recording) R.string.audio_stop_symbol else R.string.audio_record_symbol)
+            record.backgroundTintList = ColorStateList.valueOf(
+                ContextCompat.getColor(
+                    itemView.context,
+                    if (row.recorded) R.color.workbench_muted else R.color.workbench_record
+                )
+            )
             record.contentDescription = itemView.context.getString(
                 if (row.recording) R.string.audio_recording_active else R.string.audio_hold_record, row.card.lemma
             )

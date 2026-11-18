@@ -75,7 +75,10 @@ class AudioProjectRepositoryTest {
                 rules = mapOf("V|NP.nom" to GrammarRule(keep = 2, flip = 1)),
                 seedOrders = mapOf("JHN 1:1" to listOf(1, 0)),
                 unspoken = setOf("λόγος"),
-                wordOrders = mapOf("JHN 1:1" to listOf(2, 0, 1))
+                wordOrders = mapOf("JHN 1:1" to listOf(2, 0, 1)),
+                neuralAudio = true,
+                neuralOff = setOf("JHN 1:1"),
+                neuralStrength = io.github.danzuep.bibleaudioproducer.audio.NeuralStrength.STRONG
             )
 
             repository.saveState(state)
@@ -129,8 +132,43 @@ class AudioProjectRepositoryTest {
 
             assertTrue(manifest.contains("macula-scripta-audio"))
             assertTrue(manifest.contains("\"language\": \"Example\""))
-            assertTrue(manifest.contains("\"lemma\": \"λογος\""))
+            assertTrue(manifest.contains("\"surface\": \"λογος\""))
             assertEquals(listOf(1, 2, 3), entries.getValue("clips/1.m4a").map { it.toInt() })
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun importUsesSurfaceForm() {
+        val directory = Files.createTempDirectory("audio-surface-import-test").toFile()
+        try {
+            val archive = ByteArrayOutputStream().also { bytes ->
+                ZipOutputStream(bytes).use { zip ->
+                    zip.putNextEntry(ZipEntry("manifest.json"))
+                    zip.write(
+                        """{"format":"macula-scripta-audio","version":1,"language":"Example",
+                            "clips":[{"surface":"λόγου","file":"clips/1.webm","mime":"audio/webm"},
+                                     {"surface":"θεός","file":"clips/2.webm","mime":"audio/webm"}]}"""
+                            .toByteArray()
+                    )
+                    zip.closeEntry()
+                    listOf("clips/1.webm", "clips/2.webm").forEach { name ->
+                        zip.putNextEntry(ZipEntry(name))
+                        zip.write(byteArrayOf(1, 2, 3))
+                        zip.closeEntry()
+                    }
+                }
+            }
+
+            val repository = AudioProjectRepository(directory)
+            assertEquals(
+                2,
+                repository.importArchive(archive.toByteArray().inputStream(), "", AudioProjectState()).added
+            )
+            assertTrue(repository.clipFile("λόγου").isFile)
+            assertFalse(repository.clipFile("λόγος").isFile)
+            assertTrue(repository.clipFile("θεός").isFile)
         } finally {
             directory.deleteRecursively()
         }
@@ -161,7 +199,7 @@ class AudioProjectRepositoryTest {
     }
 
     @Test
-    fun importPreservesExistingClipsAndRoundTripsUpstreamMetadata() {
+    fun importPreservesExistingClipsAndRoundTripsMetadata() {
         val directory = Files.createTempDirectory("audio-workbench-import-test").toFile()
         try {
             val repository = AudioProjectRepository(directory)
@@ -177,10 +215,10 @@ class AudioProjectRepositoryTest {
                         """{"format":"macula-scripta-audio","version":1,"language":"Example",
                             "rules":{"NP.nom|V":{"keep":0,"flip":1}},
                             "seed_orders":{"JHN 1:1":[1,0]},"unspoken":["τὸν"],
-                            "clips":[{"lemma":"other","file":"clips/missing.webm","mime":"audio/webm"},
-                                     {"lemma":"existing","file":"clips/1.webm","mime":"audio/webm"},
-                                     {"lemma":"other","file":"clips/2.webm","mime":"audio/webm"},
-                                     {"lemma":"shared","file":"clips/2.webm","mime":"audio/webm"}]}"""
+                            "clips":[{"surface":"missing","file":"clips/missing.webm","mime":"audio/webm"},
+                                     {"surface":"existing","file":"clips/1.webm","mime":"audio/webm"},
+                                     {"surface":"other","file":"clips/2.webm","mime":"audio/webm"},
+                                     {"surface":"shared","file":"clips/2.webm","mime":"audio/webm"}]}"""
                             .toByteArray()
                     )
                     zip.closeEntry()
