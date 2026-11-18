@@ -9,7 +9,7 @@ import java.io.File
 import java.io.InputStream
 import java.util.zip.ZipInputStream
 
-internal data class ImportedClip(val lemma: String, val mime: String, val file: File)
+internal data class ImportedClip(val surface: String, val mime: String, val file: File)
 
 internal object MaculaAudioArchive {
     private const val MAX_ENTRIES = 1600
@@ -65,28 +65,38 @@ internal object MaculaAudioArchive {
         for (element in clips) {
             val clip = element.takeIf { it.isJsonObject }?.asJsonObject
                 ?: throw IllegalArgumentException("Invalid audio clip entry.")
-            val lemma = clip.string("lemma")
+            val surface = clip.string("surface").ifBlank { clip.string("lemma") }
             val filename = clip.string("file")
             val mime = clip.string("mime").ifEmpty { "audio/webm" }
             val file = entries[filename]
-            if (lemma.isBlank() || lemma in seen || !mime.startsWith("audio/") ||
+            if (surface.isBlank() || surface in seen || !mime.startsWith("audio/") ||
                 file == null || file.length() == 0L
             ) {
                 skipped++
             } else {
-                seen.add(lemma)
-                imported.add(ImportedClip(lemma, mime, file))
+                seen.add(surface)
+                imported.add(ImportedClip(surface, mime, file))
             }
         }
         val incomingRules = readRules(manifest.getAsJsonObject("rules"))
         val incomingOrders = readOrders(manifest.getAsJsonObject("seed_orders"))
         val incomingWordOrders = readOrders(manifest.getAsJsonObject("word_orders"))
         val incomingUnspoken = manifest.getAsJsonArray("unspoken")?.map { it.asString }?.toSet().orEmpty()
+        val incomingNeuralOff = manifest.getAsJsonArray("neural_off")?.map { it.asString }?.toSet().orEmpty()
+        val incomingNeuralStrength = manifest.string("neural_strength")
+            .let { runCatching { io.github.danzuep.bibleaudioproducer.audio.NeuralStrength.valueOf(it) }.getOrNull() }
         val merged = AudioProjectState(
             rules = if (current.seedOrders.isEmpty()) incomingRules else current.rules,
             seedOrders = if (current.seedOrders.isEmpty()) incomingOrders else current.seedOrders,
             unspoken = current.unspoken + incomingUnspoken,
-            wordOrders = if (current.wordOrders.isEmpty()) incomingWordOrders else current.wordOrders
+            wordOrders = if (current.wordOrders.isEmpty()) incomingWordOrders else current.wordOrders,
+            neuralAudio = current.neuralAudio || manifest.get("neural_audio")?.asBoolean == true,
+            neuralOff = current.neuralOff + incomingNeuralOff,
+            neuralStrength = if (current.seedOrders.isEmpty()) {
+                incomingNeuralStrength ?: current.neuralStrength
+            } else {
+                current.neuralStrength
+            }
         )
         val (added, alreadyRecorded) = consume(imported)
         return AudioArchiveImport(

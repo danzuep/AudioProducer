@@ -9,7 +9,8 @@
     <string name="audio_choose_verse">Choose chapter and verse</string>
     <string name="audio_project_create_failed">Unable to create the project.</string>
     <string name="audio_project_load_failed">Unable to load this project.</string>
-    <string name="audio_verse_drag_hint">Drag words to reorder · pinch to resize · long press to omit</string>
+    <string name="audio_verse_drag_hint">Long press a word to enable reordering. Tap or long press again to exit; tap a word for details and disable/restore it there.</string>
+    <string name="audio_verse_drag_enabled">Reorder mode on · drag words; tap or long press a word to exit</string>
     <string name="audio_word_details">Word details</string>
     <string name="audio_word_record">Record word</string>
     <string name="audio_word_play">Play word</string>
@@ -25,7 +26,10 @@
     <string name="audio_word_field_mandarin">Mandarin gloss</string>
     <string name="audio_word_field_morphology">Morphology</string>
     <string name="audio_word_unspoken">Mark %1$s as unspoken</string>
-    <string name="audio_word_spoken">Restore %1$s to translation</string>
+    <string name="audio_word_spoken">Include %1$s in playback</string>
+    <string name="audio_word_disable">Skip this Greek form in playback</string>
+    <string name="audio_word_restore">Include this Greek form in playback</string>
+    <string name="audio_verse_neural_toggle">Smooth this verse</string>
     <string name="audio_step_language">1. Language</string>
     <string name="audio_step_books">2. Books</string>
     <string name="audio_step_export">3. Export</string>
@@ -47,7 +51,17 @@
     <string name="audio_speech_device_voice_enabled">Device speech selected.</string>
     <string name="audio_speech_failed">Unable to synthesize Greek speech: %1$s</string>
     <string name="audio_speak_greek">Speak Greek</string>
-    <string name="audio_speech_fallback_notice">Using the installed Italian Android voice. This fallback approximates Classical pronunciation; configure Azure for IPA-based speech.</string>
+    <string name="audio_speech_fallback_notice">Using the selected Android TTS voice. Greek voices read Greek directly; Italian voices use a Classical pronunciation respelling.</string>
+    <string name="audio_tts_voice_choose">Choose installed Android TTS voice</string>
+    <string name="audio_tts_voice_title">Android speech voice</string>
+    <string name="audio_tts_voice_unavailable">No Greek or Italian Android TTS voices are installed.</string>
+    <string name="audio_tts_voice_selected">Android TTS voice selected.</string>
+    <string name="audio_tts_voice_current">Android voice: %1$s</string>
+    <string name="audio_tts_voice_save_failed">Unable to save the selected TTS voice.</string>
+    <string name="audio_neural_global_toggle">Enable neural verse smoothing</string>
+    <string name="audio_neural_strength_standard">Smoothing strength: Standard</string>
+    <string name="audio_neural_strength_strong">Smoothing strength: Strong</string>
+    <string name="audio_neural_strength_title">Neural smoothing strength</string>
     <string name="audio_clear_data">Clear saved data</string>
     <string name="audio_clear_title">Delete all saved data?</string>
     <string name="audio_clear_message">This permanently deletes your recordings, language, grammar, and imported plan. Export first if you need a copy.</string>
@@ -57,7 +71,7 @@
     <string name="audio_view_license">MaculaScripta license</string>
     <string name="audio_runtime_license">ONNX Runtime license</string>
     <string name="audio_license_failed">Unable to load the license.</string>
-    <string name="audio_data_attribution">Plan and verse data adapted from MACULA Greek Linguistic Datasets © 2022–2024 Biblica, Inc. (CC BY 4.0), https://github.com/Clear-Bible/macula-greek/. SBL Greek New Testament © 2010 Society of Biblical Literature and Logos Bible Software (CC BY 4.0), https://github.com/LogosBible/SBLGNT/. CC BY license: https://creativecommons.org/licenses/by/4.0/. Plan, grammar, and audio processing adapted from MaculaScripta, https://github.com/danzuep/MaculaScripta/ (Apache 2.0). Neural inference uses ONNX Runtime © Microsoft Corporation (MIT).</string>
+    <string name="audio_data_attribution">Plan and verse data adapted from MACULA Greek Linguistic Datasets © 2022–2024 Biblica, Inc. (CC BY 4.0), https://github.com/Clear-Bible/macula-greek/. SBL Greek New Testament © 2010 Society of Biblical Literature and Logos Bible Software (CC BY 4.0), https://github.com/LogosBible/SBLGNT/. CC BY license: https://creativecommons.org/licenses/by/4.0/. Plan, grammar, transliteration, and audio processing adapted from MaculaScripta, https://github.com/danzuep/MaculaScripta/ (Apache 2.0). Neural inference uses ONNX Runtime © Microsoft Corporation (MIT).</string>
     <string name="audio_listen">Listen and arrange verses</string>
     <string name="audio_verses_load_failed">Verse data is unavailable for this book.</string>
     <string name="audio_choose_chapter">Choose a chapter</string>
@@ -66,6 +80,8 @@
     <string name="audio_verse_no_words">No recordable words</string>
     <string name="audio_verse_missing">%1$d words missing</string>
     <string name="audio_play_verse">Play recorded words</string>
+    <string name="audio_play_chapter">Play chapter</string>
+    <string name="audio_stop_chapter">Stop chapter</string>
     <string name="audio_download_verse">Save verse audio</string>
     <string name="audio_download_neural">Save with neural smoothing</string>
     <string name="audio_download_neural_strong">Save with stronger neural smoothing</string>
@@ -76,7 +92,7 @@
     <string name="audio_neural_model_title">Neural smoothing model</string>
     <string name="audio_neural_model_required">Import the SpeechT5 HiFi-GAN ONNX model first. The model runs on your device; recordings are not uploaded. See the README for the model download.</string>
     <string name="audio_neural_import">Import neural model</string>
-    <string name="audio_neural_imported">Neural model imported. Choose a verse to save with smoothing.</string>
+    <string name="audio_neural_imported">Neural model imported. Enable smoothing in Settings to use it during playback.</string>
     <string name="audio_neural_import_failed">Unable to import the neural model.</string>
     <string name="audio_neural_version">Neural smoothing requires Android 7.0 or later.</string>
     <string name="audio_download_complete">Saved %1$s.</string>
@@ -92,7 +108,7 @@
     <string name="audio_move_later">Move later</string>
     <string name="audio_speak_word">Speak %1$s</string>
     <string name="audio_save_order">Save order</string>
-    <string name="audio_reset_order">Reset order</string>
+    <string name="audio_reset_order">Reset Greek order</string>
     <string name="audio_order_saved">Verse order saved.</string>
     <string name="audio_order_failed">Unable to save verse order.</string>
     <string name="audio_record_stop">Record / stop</string>
@@ -105,6 +121,7 @@
     <string name="audio_review_missing">The new take is unavailable. Check the recording before continuing.</string>
     <string name="audio_word_not_recorded">No recording is available.</string>
     <string name="audio_playback_missing_words">Missing words will be skipped.</string>
+    <string name="audio_playback_too_long">This chapter is too long to render for playback.</string>
     <string name="audio_workbench_language_hint">Recording language</string>
     <string name="audio_workbench_language_required">Enter a recording language before exporting.</string>
     <string name="audio_workbench_import">Import plan</string>

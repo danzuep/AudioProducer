@@ -1,27 +1,32 @@
 # Bible Audio Producer
 
-Record and review lemma audio using the
+Record and review Greek-form audio using the
 [MACULA Greek](https://github.com/Clear-Bible/macula-greek/) and
 [MACULA Hebrew](https://github.com/Clear-Bible/macula-hebrew/) linguistic datasets.
 Greek New Testament support is included first; Hebrew is not yet bundled.
 The complete Greek New Testament recording plan is bundled and available offline on first
 launch. The first screen lists projects; a new project with no name is assigned a name such
 as **Project001**. Opening a project with no recordings starts at John 1:1. Select a chapter
-and verse to open its interactive original Greek text. Tap a word to inspect its Macula
-metadata and English gloss, then record or play its audio. Pinch to resize the text,
-drag words to change their order, and long-press a word to omit it from the translation.
+and verse to open its interactive original Greek text and transliteration. Tap a word to
+inspect its Macula metadata and English gloss, then record or play that Greek form.
+Long-press a word to enable reorder mode, drag words into place, then tap or long-press
+again to exit. Reset restores the original Greek order. Disable or restore a form from its
+word details.
 Closing the verse returns to the project's most-used words. Open **Settings** from the gear
 icon to set the recording language, import plans or audio, export archives, or manage data.
 Imports in a different language are rejected to prevent mixing projects. Plans and
 recordings remain in private storage; export them before uninstalling.
 
-The chapter verse list and verse text show the original Greek; recorded words are marked
-green. For natural neural speech with Classical/Erasmian pronunciation, the app can map
+The chapter verse list and verse text show the original Greek; recorded forms are marked
+green and disabled forms grey. The chapter list can play or save each verse, and its header
+plays or stops the full chapter. For natural neural speech with Classical/Erasmian pronunciation, the app can map
 polytonic Greek to IPA and embed it in Azure Speech SSML. Configure an Azure Speech
 subscription and region in Settings for IPA-based neural synthesis; the speech service
 receives the Greek text and generated IPA. The subscription key is encrypted with Android
-Keystore. Without a key, the app uses the highest-quality installed Italian Android TTS
-voice and a pronunciation respelling instead. This fallback is approximate (Android TTS
+Keystore. Without a key, choose an installed Greek or Italian Android TTS voice in Settings.
+Greek voices speak the original text directly, including the Samsung Greek Classic voice
+when it is exposed by the active system TTS engine; Italian voices use a pronunciation
+respelling instead. This fallback is approximate (Android TTS
 does not standardize IPA or SSML support), depends on installed voice data, and the voice
 provider may process speech locally or over its network. The IPA transcription models
 Classical vowel quality, explicit macrons, breathing, diphthongs, and stress; it does not
@@ -35,10 +40,16 @@ Hold the red record button and release to save; drag far away or cancel the gest
 to discard the take. A live waveform shows microphone activity while recording. When
 using an accessibility service or keyboard, activate the button once to start and again
 to stop. After granting microphone permission, start the recording again. The play
-button changes to stop during playback. Long-pressing a verse word marks its Greek form
-as unspoken wherever it occurs in the translation.
+button changes to stop during playback. Disabled forms are skipped in playback and shown
+in grey; recordings are keyed by the Greek surface form rather than shared by the lemma.
+Legacy audio archives remain importable; their lemma-keyed clips are not reused for
+different inflected forms.
+When a word-list recording is saved, the next unrecorded card is brought to the same
+position in the list.
 
 Verse playback uses the recordings available on the device; missing words are skipped.
+Playback normalizes levels, trims silence, and crossfades joins. Enable neural smoothing
+globally in Settings, choose a per-verse opt-out, and select standard or strong blending.
 Choose **Save verse audio** from a verse to export its recorded words in the selected
 order, with normalized levels and crossfaded joins. Choose lossless WAV, compatible
 AAC (M4A), or compact Opus (Ogg, Android 10 or later). All formats also support neural
