@@ -258,11 +258,11 @@ internal class VerseDialogs(
             renderWords()
         }
         scroll = ScrollView(activity).apply {
-            fillViewport = true
+            setFillViewport(true)
             isVerticalScrollBarEnabled = true
             isScrollbarFadingEnabled = false
-            addView(flow, ScrollView.LayoutParams(
-                ScrollView.LayoutParams.MATCH_PARENT, ScrollView.LayoutParams.WRAP_CONTENT
+            addView(flow, ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             ))
         }
         root.addView(scroll, LinearLayout.LayoutParams(

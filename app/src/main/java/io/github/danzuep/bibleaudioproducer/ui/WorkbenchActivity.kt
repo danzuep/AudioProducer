@@ -397,7 +397,7 @@ class WorkbenchActivity : AppCompatActivity() {
     private fun promptNewProject() {
         val name = EditText(this).apply {
             hint = getString(R.string.audio_project_name_hint)
-            singleLine = true
+            setSingleLine(true)
             setPadding(dp(20), dp(12), dp(20), dp(12))
         }
         AlertDialog.Builder(this)

@@ -47,7 +47,8 @@ the model is distributed separately and ONNX Runtime license text is in app sett
 
 Thank you to [MaculaScripta](https://github.com/danzuep/MaculaScripta) for the audio
 workbench and plan generator, and to [BTT Recorder](https://github.com/Bible-Translation-Tools/BTT-Recorder)
-for inspiration from its recording and take-review workflows.
+for inspiration from its recording and take-review workflows. This project also builds on
+the upstream [Story Producer](https://github.com/sillsdev/StoryProducer) repository.
 
 ## Development
 
