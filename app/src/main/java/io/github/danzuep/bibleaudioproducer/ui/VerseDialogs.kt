@@ -155,6 +155,7 @@ internal class VerseDialogs(
             setOnClickListener { showVerseActions(verse) }
         }
         val close = Button(activity).apply {
+            id = R.id.audio_verse_close
             text = "×"
             contentDescription = activity.getString(android.R.string.cancel)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 28f)
