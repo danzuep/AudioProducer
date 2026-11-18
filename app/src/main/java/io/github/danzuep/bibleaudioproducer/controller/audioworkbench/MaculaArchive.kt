@@ -80,11 +80,12 @@ internal object MaculaArchive {
             val filename = clip.string("file")
             val mime = clip.string("mime").ifEmpty { "audio/webm" }
             val file = entries[filename]
-            if (lemma.isBlank() || !seen.add(lemma) || !mime.startsWith("audio/") ||
+            if (lemma.isBlank() || lemma in seen || !mime.startsWith("audio/") ||
                 file == null || file.length() == 0L
             ) {
                 skipped++
             } else {
+                seen.add(lemma)
                 imported.add(ImportedClip(lemma, mime, file))
             }
         }

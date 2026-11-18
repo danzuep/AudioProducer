@@ -156,7 +156,8 @@ class AudioWorkbenchPlanTest {
                         """{"format":"macula-scripta-audio","version":1,"language":"Example",
                             "rules":{"NP.nom|V":{"keep":0,"flip":1}},
                             "seed_orders":{"JHN 1:1":[1,0]},"unspoken":["τὸν"],
-                            "clips":[{"lemma":"existing","file":"clips/1.webm","mime":"audio/webm"},
+                            "clips":[{"lemma":"other","file":"clips/missing.webm","mime":"audio/webm"},
+                                     {"lemma":"existing","file":"clips/1.webm","mime":"audio/webm"},
                                      {"lemma":"other","file":"clips/2.webm","mime":"audio/webm"},
                                      {"lemma":"shared","file":"clips/2.webm","mime":"audio/webm"}]}"""
                             .toByteArray()
@@ -172,7 +173,7 @@ class AudioWorkbenchPlanTest {
 
             val result = repository.importArchive(archive.toByteArray().inputStream(), "", AudioProjectState())
             assertEquals(2, result.added)
-            assertEquals(1, result.skipped)
+            assertEquals(2, result.skipped)
             assertEquals("Example", result.language)
             assertEquals(listOf(9), repository.clipFile("existing").readBytes().map { it.toInt() })
             assertEquals(listOf(1, 2, 3), repository.clipFile("shared").readBytes().map { it.toInt() })

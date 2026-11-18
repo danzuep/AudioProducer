@@ -98,6 +98,11 @@ class AudioWorkbenchLaunchTest {
             while (!stateFile.isFile && System.currentTimeMillis() < saveDeadline) Thread.sleep(50)
             assertTrue("Verse order was not saved", stateFile.isFile)
             assertTrue(AudioWorkbenchRepository(directory).loadState().seedOrders.containsKey("JHN 1:1"))
+            onView(withId(R.id.audio_listen)).perform(click())
+            onView(withText("Chapter 1")).perform(click())
+            onView(withText(startsWith("JHN 1:1 ·"))).perform(click())
+            onView(withText(R.string.audio_record_verse_words)).perform(click())
+            onView(withText(android.R.string.ok)).perform(click())
         }
     }
 

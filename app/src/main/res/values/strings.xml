@@ -51,7 +51,7 @@
     <string name="audio_workbench_search_hint">Search words and glosses</string>
     <string name="audio_workbench_empty">Loading the Greek New Testament recording plan…</string>
     <string name="audio_workbench_load_failed">Unable to load the recording plan.</string>
-    <string name="audio_workbench_no_results">No matching words in this book.</string>
+    <string name="audio_workbench_no_results">No matching words.</string>
     <string name="audio_workbench_play">Play</string>
     <string name="audio_workbench_record">Record</string>
     <string name="audio_workbench_record_again">Record again</string>

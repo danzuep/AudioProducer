@@ -15,6 +15,7 @@ import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Spinner
@@ -111,7 +112,7 @@ class AudioWorkbenchActivity : AppCompatActivity() {
         language.setText(getPreferences(MODE_PRIVATE).getString(LANGUAGE_KEY, ""))
         language.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_DONE) {
-                saveLanguage()
+                continueToBooks()
                 true
             } else {
                 false
@@ -122,14 +123,7 @@ class AudioWorkbenchActivity : AppCompatActivity() {
         findViewById<Button>(R.id.audio_step_books).setOnClickListener { showStep(Step.BOOKS) }
         findViewById<Button>(R.id.audio_step_export).setOnClickListener { showStep(Step.EXPORT) }
         findViewById<Button>(R.id.audio_step_settings).setOnClickListener { showStep(Step.SETTINGS) }
-        findViewById<Button>(R.id.audio_language_next).setOnClickListener {
-            if (language.text.toString().isBlank()) {
-                Toast.makeText(this, R.string.audio_workbench_language_required, Toast.LENGTH_LONG).show()
-            } else {
-                saveLanguage()
-                showStep(Step.BOOKS)
-            }
-        }
+        findViewById<Button>(R.id.audio_language_next).setOnClickListener { continueToBooks() }
         books.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
@@ -233,6 +227,15 @@ class AudioWorkbenchActivity : AppCompatActivity() {
             .apply()
     }
 
+    private fun continueToBooks() {
+        if (language.text.toString().isBlank()) {
+            Toast.makeText(this, R.string.audio_workbench_language_required, Toast.LENGTH_LONG).show()
+        } else {
+            saveLanguage()
+            showStep(Step.BOOKS)
+        }
+    }
+
     private fun showStep(next: Step) {
         pendingLemma = null
         stopRecording()
@@ -279,6 +282,9 @@ class AudioWorkbenchActivity : AppCompatActivity() {
     }
 
     private fun showChapters() {
+        search.clearFocus()
+        (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager)
+            .hideSoftInputFromWindow(search.windowToken, 0)
         val chapters = bookVerses.map { it.chapter }.distinct()
         AlertDialog.Builder(this)
             .setTitle(R.string.audio_choose_chapter)
@@ -341,7 +347,6 @@ class AudioWorkbenchActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(24, 8, 24, 8)
         }
-        val scroll = ScrollView(this).apply { addView(content) }
         lateinit var draw: () -> Unit
         draw = {
             content.removeAllViews()
@@ -389,7 +394,7 @@ class AudioWorkbenchActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle(getString(R.string.audio_arrange_title, verse.reference))
             .setMessage(R.string.audio_arrange_description)
-            .setView(scroll)
+            .setView(dialogScroll(content))
             .setNegativeButton(android.R.string.cancel, null)
             .setNeutralButton(R.string.audio_reset_order) { _, _ ->
                 saveVerseOrder(verse.reference, null, unspoken)
@@ -460,10 +465,23 @@ class AudioWorkbenchActivity : AppCompatActivity() {
         }
         AlertDialog.Builder(this)
             .setTitle(verse.reference)
-            .setView(ScrollView(this).apply { addView(content) })
+            .setView(dialogScroll(content))
             .setPositiveButton(android.R.string.ok, null)
             .setOnDismissListener { pendingLemma = null; stopRecording(); stopPlayback() }
             .show()
+    }
+
+    private fun dialogScroll(content: View): View {
+        val scroll = ScrollView(this).apply { addView(content) }
+        return FrameLayout(this).apply {
+            addView(
+                scroll,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    (resources.displayMetrics.heightPixels * 0.4f).toInt()
+                )
+            )
+        }
     }
 
     private fun playVerse(verse: AudioVerse) {
@@ -805,6 +823,7 @@ class AudioWorkbenchActivity : AppCompatActivity() {
 
     private fun playRecording(card: AudioWorkbenchCard) {
         if (busy) return
+        stopRecording()
         stopPlayback()
         try {
             val mediaPlayer = MediaPlayer()
