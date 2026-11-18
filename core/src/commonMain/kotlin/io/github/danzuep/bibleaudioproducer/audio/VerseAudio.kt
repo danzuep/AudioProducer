@@ -13,8 +13,8 @@ object VerseAudio {
 
     fun assemble(clips: List<FloatArray>): FloatArray {
         require(clips.isNotEmpty()) { "No recordings are available for this verse." }
-        val parts = clips.map { trimSilence(normalize(it)) }.filter { it.isNotEmpty() }
-        require(parts.isNotEmpty()) { "The recordings contain no audible audio." }
+        val parts = clips.map { trimSilence(normalize(it)) }
+        require(parts.all { it.isNotEmpty() }) { "A recording contains no audible audio." }
         val fades = parts.zipWithNext { a, b -> minOf(480, a.size / 2, b.size / 2) }
         val size = parts.sumOf { it.size.toLong() } - fades.sumOf { it.toLong() }
         require(size <= Int.MAX_VALUE) { "The verse is too long to render." }

@@ -3,7 +3,7 @@ set -euo pipefail
 
 if [[ "${1:-false}" == "true" ]]; then
   ./gradlew :app:installDebug
-  adb shell -T "run-as io.github.danzuep.bibleaudioproducer.debug sh -c 'cat > files/test-model.onnx'" < "$RUNNER_TEMP/neural-model.onnx"
+  adb shell -T "run-as io.github.danzuep.bibleaudioproducer.debug sh -c 'mkdir -p files && cat > files/test-model.onnx'" < "$RUNNER_TEMP/neural-model.onnx"
   ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.testNeuralModel=true
 else
   ./gradlew :app:connectedDebugAndroidTest

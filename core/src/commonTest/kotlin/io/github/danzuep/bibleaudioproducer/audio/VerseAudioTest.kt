@@ -17,11 +17,12 @@ class VerseAudioTest {
     }
 
     @Test
-    fun dropsSilentClipsAndKeepsMarginsAroundSpeech() {
+    fun keepsMarginsAroundSpeechAndRejectsSilentClips() {
         val speech = FloatArray(4000) { if (it in 1800..2199) 0.2f else 0f }
-        val joined = VerseAudio.assemble(listOf(FloatArray(100), speech))
+        val joined = VerseAudio.assemble(listOf(speech))
         assertEquals(1680, joined.size)
         assertFailsWith<IllegalArgumentException> { VerseAudio.assemble(listOf(FloatArray(20))) }
+        assertFailsWith<IllegalArgumentException> { VerseAudio.assemble(listOf(speech, FloatArray(20))) }
     }
 
     @Test
