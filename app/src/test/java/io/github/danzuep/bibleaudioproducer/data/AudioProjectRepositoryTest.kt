@@ -199,7 +199,7 @@ class AudioProjectRepositoryTest {
     }
 
     @Test
-    fun importPreservesExistingClipsAndRoundTripsUpstreamMetadata() {
+    fun importPreservesExistingClipsAndRoundTripsMetadata() {
         val directory = Files.createTempDirectory("audio-workbench-import-test").toFile()
         try {
             val repository = AudioProjectRepository(directory)
@@ -215,10 +215,10 @@ class AudioProjectRepositoryTest {
                         """{"format":"macula-scripta-audio","version":1,"language":"Example",
                             "rules":{"NP.nom|V":{"keep":0,"flip":1}},
                             "seed_orders":{"JHN 1:1":[1,0]},"unspoken":["τὸν"],
-                            "clips":[{"lemma":"other","file":"clips/missing.webm","mime":"audio/webm"},
-                                     {"lemma":"existing","file":"clips/1.webm","mime":"audio/webm"},
-                                     {"lemma":"other","file":"clips/2.webm","mime":"audio/webm"},
-                                     {"lemma":"shared","file":"clips/2.webm","mime":"audio/webm"}]}"""
+                            "clips":[{"surface":"missing","file":"clips/missing.webm","mime":"audio/webm"},
+                                     {"surface":"existing","file":"clips/1.webm","mime":"audio/webm"},
+                                     {"surface":"other","file":"clips/2.webm","mime":"audio/webm"},
+                                     {"surface":"shared","file":"clips/2.webm","mime":"audio/webm"}]}"""
                             .toByteArray()
                     )
                     zip.closeEntry()

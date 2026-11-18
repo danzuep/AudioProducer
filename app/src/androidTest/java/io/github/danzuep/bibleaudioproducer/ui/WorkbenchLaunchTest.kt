@@ -8,6 +8,9 @@ import android.os.ParcelFileDescriptor
 import android.os.Build
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
+import android.widget.TextView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.onView
@@ -22,6 +25,9 @@ import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.espresso.matcher.ViewMatchers.withContentDescription
 import androidx.test.espresso.action.ViewActions.longClick
+import androidx.test.espresso.UiController
+import androidx.test.espresso.ViewAction
+import androidx.test.espresso.matcher.ViewMatchers.isAssignableFrom
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.core.content.ContextCompat
@@ -111,18 +117,85 @@ class WorkbenchLaunchTest {
         val skipped = verse.words.filterNot { it.proper }.first { candidate ->
             verse.words.count { it.surface == candidate.surface } == 1
         }
+        var expectedSurfaceOrder: List<String>? = null
         ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
             awaitBooks(scenario, 27)
             onView(withText(skipped.surface)).check(matches(isDisplayed()))
             onView(withContentDescription(context.getString(R.string.audio_word_unspoken, skipped.surface)))
                 .perform(longClick())
+            onView(withText(R.string.audio_verse_drag_enabled)).check(matches(isDisplayed()))
+            onView(withText(skipped.surface)).perform(object : ViewAction {
+                override fun getDescription() = "Drag the word to the opposite end of the verse"
+
+                override fun getConstraints() = isAssignableFrom(TextView::class.java)
+
+                override fun perform(uiController: UiController, view: View) {
+                    var token = view
+                    while (token !is FrameLayout || token.parent !is ViewGroup) {
+                        token = token.parent as? View
+                            ?: throw AssertionError("Greek word token was not found")
+                    }
+                    val flow = token.parent as ViewGroup
+                    val sourceIndex = flow.indexOfChild(token)
+                    val targetIndex = if (sourceIndex == 0) flow.childCount - 1 else 0
+                    check(targetIndex != sourceIndex)
+                    val expected = (0 until flow.childCount).map { index ->
+                        val stack = (flow.getChildAt(index) as FrameLayout).getChildAt(0) as ViewGroup
+                        (stack.getChildAt(0) as TextView).text.toString()
+                    }.toMutableList()
+                    val moved = expected.removeAt(sourceIndex)
+                    val destination = if (targetIndex > sourceIndex) targetIndex - 1 else targetIndex
+                    expected.add(destination, moved)
+                    expectedSurfaceOrder = expected
+                    val start = IntArray(2)
+                    val end = IntArray(2)
+                    token.getLocationOnScreen(start)
+                    flow.getChildAt(targetIndex).getLocationOnScreen(end)
+                    val downTime = SystemClock.uptimeMillis()
+                    fun inject(action: Int, x: Int, y: Int, elapsed: Long) {
+                        val event = MotionEvent.obtain(
+                            downTime, downTime + elapsed, action, x.toFloat(), y.toFloat(), 0
+                        )
+                        try {
+                            uiController.injectMotionEvent(event)
+                        } finally {
+                            event.recycle()
+                        }
+                    }
+                    inject(
+                        MotionEvent.ACTION_DOWN,
+                        start[0] + token.width / 2,
+                        start[1] + token.height / 2,
+                        0
+                    )
+                    inject(
+                        MotionEvent.ACTION_MOVE,
+                        end[0] + flow.getChildAt(targetIndex).width / 2,
+                        end[1] + flow.getChildAt(targetIndex).height / 2,
+                        100
+                    )
+                    inject(
+                        MotionEvent.ACTION_UP,
+                        end[0] + flow.getChildAt(targetIndex).width / 2,
+                        end[1] + flow.getChildAt(targetIndex).height / 2,
+                        150
+                    )
+                }
+            })
+            onView(withContentDescription(context.getString(R.string.audio_word_unspoken, skipped.surface)))
+                .perform(click())
+            onView(withContentDescription(context.getString(R.string.audio_word_unspoken, skipped.surface)))
+                .perform(click())
+            onView(withText(R.string.audio_word_disable)).perform(click())
             onView(withId(R.id.audio_verse_close)).perform(click())
             val stateFile = File(directory, "audio-state.json")
             val saveDeadline = System.currentTimeMillis() + 15_000
             while (!stateFile.isFile && System.currentTimeMillis() < saveDeadline) Thread.sleep(50)
             assertTrue("Verse order was not saved", stateFile.isFile)
             val saved = AudioProjectRepository(directory).loadState()
-            assertTrue(saved.wordOrders.containsKey("JHN 1:1"))
+            val savedOrder = saved.wordOrders["JHN 1:1"]
+                ?: throw AssertionError("Reordered verse indices were not saved")
+            assertEquals(expectedSurfaceOrder, savedOrder.map { verse.words[it].surface })
             assertTrue(skipped.unspokenKey in saved.unspoken)
             onView(withId(R.id.audio_choose_verse)).perform(click())
             onView(withText("Chapter 1")).perform(click())
