@@ -11,3 +11,4 @@
 
 - The sandbox usually cannot run Gradle, so validate with Actions: push the branch, then `gh workflow run android.yml --ref <branch>` and watch it with `gh run view <run-id>`. If it asks for permission to run, retrying once may work around it.
 - The `build` job runs `:core:jvmTest` and `:app:testDebugUnitTest`. Once it passes, open the pull request (see the release title prefixes above) without waiting for the slower emulator `launch` jobs.
+- If the pull request tool is unavailable, run `gh pr create --base main --head <branch> --title "<prefix>: ..." --body "..."` instead; check for a PR template first.
