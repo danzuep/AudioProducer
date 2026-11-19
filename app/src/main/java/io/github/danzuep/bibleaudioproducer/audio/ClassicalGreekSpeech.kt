@@ -313,10 +313,12 @@ internal class AndroidGreekTts(
             override fun onDone(utteranceId: String?) {
                 val callback = utteranceId?.let(fileCallbacks::remove)
                 if (callback != null) callback(true) else this@AndroidGreekTts.onDone()
+                shutdownWhenIdle()
             }
             override fun onError(utteranceId: String?) {
                 val callback = utteranceId?.let(fileCallbacks::remove)
                 if (callback != null) callback(false) else onError("Android speech synthesis failed.")
+                shutdownWhenIdle()
             }
         })
     }
@@ -367,7 +369,7 @@ internal class AndroidGreekTts(
     fun synthesize(text: String, directory: File, done: (File?) -> Unit) {
         availableVoices { available ->
             val voice = selectedVoice
-            if (available.isEmpty() || voice == null) return@availableVoices done(null)
+            if (closed || available.isEmpty() || voice == null) return@availableVoices done(null)
             val file = File(directory, "tts-${voice.name.hashCode()}-${text.hashCode()}.wav")
             if (file.length() > 0) return@availableVoices done(file)
             val id = "greek-file-${System.nanoTime()}"
@@ -401,21 +403,34 @@ internal class AndroidGreekTts(
         closed = true
         pendingTexts = null
         voiceCallbacks.clear()
-        if (ready) engine.stop()
-        releaseFileRequests()
-        engine.shutdown()
+        if (fileCallbacks.isEmpty()) {
+            if (ready) engine.stop()
+            shutdownWhenIdle()
+        } else {
+            main.postDelayed({
+                fileCallbacks.values.toList().forEach { it(false) }
+                fileCallbacks.clear()
+                shutdownWhenIdle()
+            }, 10_000)
+        }
     }
 
     fun stop() {
         pendingTexts = null
-        if (ready) engine.stop()
-        releaseFileRequests()
+        // Stopping the Pico engine mid-synthesis can crash it, so let file requests finish.
+        if (ready && fileCallbacks.isEmpty()) engine.stop()
     }
 
-    private fun releaseFileRequests() {
-        val callbacks = fileCallbacks.values.toList()
-        fileCallbacks.clear()
-        callbacks.forEach { it(false) }
+    private var engineShutDown = false
+
+
+    private fun shutdownWhenIdle() {
+        main.post {
+            if (closed && fileCallbacks.isEmpty() && !engineShutDown) {
+                engineShutDown = true
+                engine.shutdown()
+            }
+        }
     }
 
     private fun speakNow(texts: List<String>) {
