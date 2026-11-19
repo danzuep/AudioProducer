@@ -127,7 +127,6 @@
     <string name="audio_review_failed">Unable to finish reviewing this recording.</string>
     <string name="audio_review_missing">The new take is unavailable. Check the recording before continuing.</string>
     <string name="audio_word_not_recorded">No recording is available.</string>
-    <string name="audio_playback_missing_words">Missing words will be skipped.</string>
     <string name="audio_playback_too_long">This chapter is too long to render for playback.</string>
     <string name="audio_workbench_language_hint">Recording language</string>
     <string name="audio_workbench_language_required">Enter a recording language before exporting.</string>

@@ -299,6 +299,7 @@ internal class AndroidGreekTts(
     private var voices = emptyList<Voice>()
     private var selectedVoice: Voice? = null
     private val voiceCallbacks = mutableListOf<(List<Voice>) -> Unit>()
+    private val fileCallbacks = java.util.concurrent.ConcurrentHashMap<String, (Boolean) -> Unit>()
     private var closed = false
     private val main = android.os.Handler(android.os.Looper.getMainLooper())
 
@@ -309,9 +310,13 @@ internal class AndroidGreekTts(
     init {
         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) = Unit
-            override fun onDone(utteranceId: String?) = this@AndroidGreekTts.onDone()
+            override fun onDone(utteranceId: String?) {
+                val callback = utteranceId?.let(fileCallbacks::remove)
+                if (callback != null) callback(true) else this@AndroidGreekTts.onDone()
+            }
             override fun onError(utteranceId: String?) {
-                onError("Android speech synthesis failed.")
+                val callback = utteranceId?.let(fileCallbacks::remove)
+                if (callback != null) callback(false) else onError("Android speech synthesis failed.")
             }
         })
     }
@@ -355,6 +360,24 @@ internal class AndroidGreekTts(
             ready -> speakNow(texts)
             failed -> onError("Install a Greek or Italian Android TTS voice to use device speech.")
             else -> pendingTexts = texts
+        }
+    }
+
+    // Renders the text to a cached WAV so it can be mixed with recordings; calls back on a TTS thread.
+    fun synthesize(text: String, directory: File, done: (File?) -> Unit) {
+        availableVoices { available ->
+            val voice = selectedVoice
+            if (available.isEmpty() || voice == null) return@availableVoices done(null)
+            val file = File(directory, "tts-${voice.name.hashCode()}-${text.hashCode()}.wav")
+            if (file.length() > 0) return@availableVoices done(file)
+            val id = "greek-file-${System.nanoTime()}"
+            val spoken = if (voice.language() == "it") ClassicalGreekG2p.italianRespelling(text) else text
+            fileCallbacks[id] = { ok -> done(file.takeIf { ok && it.length() > 0 }) }
+            val params = android.os.Bundle()
+            if (engine.synthesizeToFile(spoken, params, file, id) == TextToSpeech.ERROR) {
+                fileCallbacks.remove(id)
+                done(null)
+            }
         }
     }
 

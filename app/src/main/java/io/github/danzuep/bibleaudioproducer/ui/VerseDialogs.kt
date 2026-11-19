@@ -339,8 +339,7 @@ internal class VerseDialogs(
                 )
                 token.setOnClickListener {
                     showWordDetails(word, word.disabled(unspoken)) { disabled ->
-                        if (disabled) unspoken.add(word.unspokenKey)
-                        else unspoken.remove(word.unspokenKey)
+                        word.withDisabled(unspoken, disabled)
                         changed = true
                         renderWords()
                     }
@@ -515,7 +514,6 @@ internal class VerseDialogs(
         lateinit var dialog: AlertDialog
         root.addView(MaterialButton(activity).apply {
             setText(if (disabled) R.string.audio_word_restore else R.string.audio_word_disable)
-            isEnabled = !word.glossless
             setOnClickListener {
                 onToggleDisabled(!disabled)
                 dialog.dismiss()

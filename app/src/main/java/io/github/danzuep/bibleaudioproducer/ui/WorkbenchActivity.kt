@@ -685,13 +685,10 @@ class WorkbenchActivity : AppCompatActivity() {
             speakGreek(listOf(VerseWorkflow.originalText(verse)))
             return
         }
-        if (words.size != spoken.size) {
-            Toast.makeText(this, R.string.audio_playback_missing_words, Toast.LENGTH_SHORT).show()
-        }
         if (pendingTake() == null) {
             playingVerseReference = verse.reference
             updateRows()
-            renderAndPlay(listOf(verse.reference to words), mapOf(verse.reference to smoothOverride))
+            renderAndPlay(listOf(verse.reference to spoken), mapOf(verse.reference to smoothOverride))
         }
     }
 
@@ -718,13 +715,10 @@ class WorkbenchActivity : AppCompatActivity() {
             speakGreek(verses.map(VerseWorkflow::originalText))
             return
         }
-        if (recorded.size != spokenGroups.sumOf { it.second.size }) {
-            Toast.makeText(this, R.string.audio_playback_missing_words, Toast.LENGTH_SHORT).show()
-        }
         if (pendingTake() == null) {
             playingChapterKey = key
             updateRows()
-            renderAndPlay(groups.filter { it.second.isNotEmpty() })
+            renderAndPlay(spokenGroups.filter { it.second.isNotEmpty() })
         }
     }
 
@@ -765,9 +759,11 @@ class WorkbenchActivity : AppCompatActivity() {
                 var sampleCount = 0L
                 val maxPlaybackSamples = VerseAudio.SAMPLE_RATE * if (groups.size > 1) 600L else 180L
                 val renderedVerses = groups.map { (reference, words) ->
-                    val clips = words.map { word ->
+                    val clips = words.mapNotNull { word ->
                         val surface = word.surface
-                        decoded.getOrPut(surface) { decoder.decode(targetRepository.clipFile(surface)) }.also {
+                        val recording = targetRepository.clipFile(surface)
+                        val source = if (recording.isFile) recording else greekClip(surface)
+                        source?.let { decoded.getOrPut(surface) { decoder.decode(it) } }?.also {
                             sampleCount += it.size
                             require(sampleCount <= maxPlaybackSamples) {
                                 getString(R.string.audio_playback_too_long)
@@ -1505,6 +1501,32 @@ class WorkbenchActivity : AppCompatActivity() {
                 updateRows()
             }
         }
+    }
+
+    // Blocks the calling background thread; returns null when text-to-speech is unavailable.
+    private fun greekClip(text: String): File? {
+        val key = try { speechCredentials.key() } catch (exception: Exception) { null }
+        val clip = if (key == null) {
+            null
+        } else if (key.isBlank()) {
+            val latch = java.util.concurrent.CountDownLatch(1)
+            var result: File? = null
+            runOnUiThread {
+                if (isFinishing || isDestroyed) latch.countDown()
+                else getAndroidGreekTts().synthesize(text, cacheDir) { result = it; latch.countDown() }
+            }
+            if (latch.await(30, java.util.concurrent.TimeUnit.SECONDS)) result else null
+        } else {
+            val file = File(cacheDir, "tts-az-${speechCredentials.region().hashCode()}-${text.hashCode()}.mp3")
+            try {
+                if (file.length() == 0L) AzureGreekSpeech().synthesize(text, speechCredentials.region(), key, file)
+                file
+            } catch (exception: Exception) {
+                null
+            }
+        }
+        setSpeechFailed(clip == null)
+        return clip
     }
 
     private fun setSpeechFailed(failed: Boolean) {
