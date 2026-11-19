@@ -135,7 +135,7 @@ class WorkbenchLaunchTest {
             awaitBooks(scenario, 27)
             onView(withText(skipped.surface)).check(matches(isDisplayed()))
             onView(withText(skipped.surface)).perform(object : ViewAction {
-                override fun getDescription() = "Drag the word to the opposite end of the verse"
+                override fun getDescription() = "Drag the word onto its adjacent card"
 
                 override fun getConstraints() = isAssignableFrom(TextView::class.java)
 
@@ -147,7 +147,7 @@ class WorkbenchLaunchTest {
                     }
                     val flow = token.parent as ViewGroup
                     val sourceIndex = flow.indexOfChild(token)
-                    val targetIndex = if (sourceIndex == 0) flow.childCount - 1 else 0
+                    val targetIndex = if (sourceIndex == 0) 1 else sourceIndex - 1
                     check(targetIndex != sourceIndex)
                     val expected = (0 until flow.childCount).map { index ->
                         val stack = (flow.getChildAt(index) as FrameLayout).getChildAt(0) as ViewGroup
