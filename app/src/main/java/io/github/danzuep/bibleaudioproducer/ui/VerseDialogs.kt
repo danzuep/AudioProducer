@@ -10,7 +10,6 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.Toast
 import android.util.TypedValue
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -40,6 +39,7 @@ internal class VerseDialogs(
     interface Actions {
         val state: AudioProjectState
         val busy: Boolean
+        val speechFailed: Boolean
         fun playVerse(verse: AudioVerse, smoothOverride: Boolean? = null)
         fun isPlayingVerse(verse: AudioVerse): Boolean
         fun playChapter(chapter: Int, verses: List<AudioVerse>)
@@ -197,8 +197,9 @@ internal class VerseDialogs(
                     state.wordOrders[verse.reference]
                 ).any { repository.clipFile(it.surface).isFile }
             }
-            chapterPlay.isEnabled = chapterRecorded
-            chapterPlay.alpha = if (chapterRecorded) 1f else 0.45f
+            val chapterPlayable = chapterRecorded || !actions.speechFailed
+            chapterPlay.isEnabled = chapterPlayable
+            chapterPlay.alpha = if (chapterPlayable) 1f else 0.45f
             chapterPlay.setText(
                 if (actions.isPlayingChapter(chapter)) R.string.audio_stop_symbol else R.string.audio_play_symbol
             )
@@ -210,8 +211,9 @@ internal class VerseDialogs(
                     verse.words, state.rules, state.seedOrders[verse.reference], state.unspoken,
                     state.wordOrders[verse.reference]
                 ).any { repository.clipFile(it.surface).isFile }
-                button.isEnabled = recorded
-                button.alpha = if (recorded) 1f else 0.45f
+                val playable = recorded || !actions.speechFailed
+                button.isEnabled = playable
+                button.alpha = if (playable) 1f else 0.45f
                 button.setText(
                     if (actions.isPlayingVerse(verse)) R.string.audio_stop_symbol else R.string.audio_play_symbol
                 )
@@ -221,7 +223,7 @@ internal class VerseDialogs(
                 )
             }
             wordLabels.forEach { (word, label) ->
-                label.setTextColor(wordColor(word.unspokenKey in state.unspoken, repository.clipFile(word.surface).isFile))
+                label.setTextColor(wordColor(word.disabled(state.unspoken), repository.clipFile(word.surface).isFile))
             }
         }
         refreshers.clear()
@@ -331,12 +333,12 @@ internal class VerseDialogs(
                 recordedStates[word.surface] = recorded
                 val token = wordToken(
                     word,
-                    word.unspokenKey in unspoken,
+                    word.disabled(unspoken),
                     recorded,
                     28f
                 )
                 token.setOnClickListener {
-                    showWordDetails(word, word.unspokenKey in unspoken) { disabled ->
+                    showWordDetails(word, word.disabled(unspoken)) { disabled ->
                         if (disabled) unspoken.add(word.unspokenKey)
                         else unspoken.remove(word.unspokenKey)
                         changed = true
@@ -433,14 +435,15 @@ internal class VerseDialogs(
             val recorded = VerseWorkflow.spokenWords(
                 verse.words, actions.state.rules, actions.state.seedOrders[verse.reference], unspoken, order
             ).any { repository.clipFile(it.surface).isFile }
-            play.isEnabled = recorded
+            val playable = recorded || !actions.speechFailed
+            play.isEnabled = playable
             play.setText(if (actions.isPlayingVerse(verse)) R.string.audio_stop_symbol else R.string.audio_play_symbol)
             play.contentDescription = if (actions.isPlayingVerse(verse)) {
                 activity.getString(R.string.audio_stop_word, verse.reference)
             } else {
                 activity.getString(R.string.audio_play_verse)
             }
-            play.alpha = if (recorded) 1f else 0.45f
+            play.alpha = if (playable) 1f else 0.45f
         }
         refreshControls()
 
@@ -492,11 +495,9 @@ internal class VerseDialogs(
             setOnClickListener { actions.recordWord(word) }
         }
         val play = roundButton(R.color.workbench_primary).apply {
-            isEnabled = repository.clipFile(word.surface).isFile
-            alpha = if (isEnabled) 1f else 0.4f
             setOnClickListener {
                 if (repository.clipFile(word.surface).isFile) actions.playRecording(card)
-                else Toast.makeText(activity, R.string.audio_word_not_recorded, Toast.LENGTH_SHORT).show()
+                else actions.speakGreek(word.surface)
             }
         }
         val close = Button(activity).apply {
@@ -514,6 +515,7 @@ internal class VerseDialogs(
         lateinit var dialog: AlertDialog
         root.addView(MaterialButton(activity).apply {
             setText(if (disabled) R.string.audio_word_restore else R.string.audio_word_disable)
+            isEnabled = !word.glossless
             setOnClickListener {
                 onToggleDisabled(!disabled)
                 dialog.dismiss()
@@ -567,7 +569,7 @@ internal class VerseDialogs(
             )
             record.setText(R.string.audio_record_symbol)
             record.contentDescription = activity.getString(R.string.audio_word_record, word.surface)
-            play.isEnabled = recorded || actions.isPlaying(card)
+            play.isEnabled = recorded || actions.isPlaying(card) || !actions.speechFailed
             play.alpha = if (play.isEnabled) 1f else 0.4f
             play.setText(if (actions.isPlaying(card)) R.string.audio_stop_symbol else R.string.audio_play_symbol)
             play.contentDescription = activity.getString(

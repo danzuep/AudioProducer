@@ -77,6 +77,7 @@ class WorkbenchActivity : AppCompatActivity() {
     private val speechCredentials by lazy { SpeechCredentials(preferences) }
     private var androidGreekTts: AndroidGreekTts? = null
     private var speechGeneration = 0
+    @Volatile private var speechFailed = false
     private val audioPlayer by lazy {
         AndroidAudioPlayer {
             playingTake = null
@@ -93,6 +94,7 @@ class WorkbenchActivity : AppCompatActivity() {
         VerseDialogs(this, { repository }, object : VerseDialogs.Actions {
             override val state get() = projectState
             override val busy get() = this@WorkbenchActivity.busy
+            override val speechFailed get() = this@WorkbenchActivity.speechFailed
             override fun playVerse(verse: AudioVerse, smoothOverride: Boolean?) =
                 this@WorkbenchActivity.playVerse(verse, smoothOverride)
             override fun isPlayingVerse(verse: AudioVerse) = playingVerseReference == verse.reference
@@ -680,7 +682,7 @@ class WorkbenchActivity : AppCompatActivity() {
         )
         val words = spoken.filter { repository.clipFile(it.surface).isFile }
         if (words.isEmpty()) {
-            Toast.makeText(this, R.string.audio_word_not_recorded, Toast.LENGTH_SHORT).show()
+            speakGreek(listOf(VerseWorkflow.originalText(verse)))
             return
         }
         if (words.size != spoken.size) {
@@ -713,7 +715,7 @@ class WorkbenchActivity : AppCompatActivity() {
         }
         val recorded = groups.flatMap { it.second }
         if (recorded.isEmpty()) {
-            Toast.makeText(this, R.string.audio_word_not_recorded, Toast.LENGTH_SHORT).show()
+            speakGreek(verses.map(VerseWorkflow::originalText))
             return
         }
         if (recorded.size != spokenGroups.sumOf { it.second.size }) {
@@ -1505,7 +1507,15 @@ class WorkbenchActivity : AppCompatActivity() {
         }
     }
 
-    private fun speakGreek(text: String) {
+    private fun setSpeechFailed(failed: Boolean) {
+        if (speechFailed == failed) return
+        speechFailed = failed
+        runOnUiThread { if (!isFinishing && !isDestroyed) verseDialogs.refreshControls() }
+    }
+
+    private fun speakGreek(text: String) = speakGreek(listOf(text))
+
+    private fun speakGreek(texts: List<String>) {
         if (busy) return
         stopRecording()
         if (pendingTake() != null) return
@@ -1514,25 +1524,30 @@ class WorkbenchActivity : AppCompatActivity() {
             speechCredentials.key()
         } catch (exception: Exception) {
             Toast.makeText(this, exception.message ?: getString(R.string.audio_speech_setup_failed), Toast.LENGTH_LONG).show()
+            setSpeechFailed(true)
             return
         }
         if (key.isBlank()) {
             Toast.makeText(this, R.string.audio_speech_fallback_notice, Toast.LENGTH_LONG).show()
-            getAndroidGreekTts().speak(text)
+            getAndroidGreekTts().speak(texts)
             return
         }
         val region = speechCredentials.region()
         val generation = ++speechGeneration
         io.execute {
-            val audioFile = File(cacheDir, "greek-speech.mp3")
+            val audioFiles = texts.indices.map { File(cacheDir, "greek-speech-$it.mp3") }
             try {
-                AzureGreekSpeech().synthesize(text, region, key, audioFile)
+                texts.forEachIndexed { index, text ->
+                    AzureGreekSpeech().synthesize(text, region, key, audioFiles[index])
+                }
                 runOnUiThread {
                     if (generation == speechGeneration && !isFinishing && !isDestroyed) {
-                        audioPlayer.play(listOf(audioFile))
+                        setSpeechFailed(false)
+                        audioPlayer.play(audioFiles)
                     }
                 }
             } catch (exception: Exception) {
+                setSpeechFailed(true)
                 runOnUiThread {
                     if (generation == speechGeneration && !isFinishing && !isDestroyed) {
                         Toast.makeText(
@@ -1574,6 +1589,7 @@ class WorkbenchActivity : AppCompatActivity() {
             dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
                 try {
                     speechCredentials.clearKey()
+                    setSpeechFailed(false)
                     Toast.makeText(this, R.string.audio_speech_device_voice_enabled, Toast.LENGTH_LONG).show()
                     dialog.dismiss()
                 } catch (exception: Exception) {
@@ -1583,6 +1599,7 @@ class WorkbenchActivity : AppCompatActivity() {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 try {
                     speechCredentials.save(region.text.toString().trim(), key.text.toString().trim())
+                    setSpeechFailed(false)
                     Toast.makeText(this, R.string.audio_speech_saved, Toast.LENGTH_LONG).show()
                     dialog.dismiss()
                 } catch (exception: Exception) {
@@ -1675,12 +1692,14 @@ class WorkbenchActivity : AppCompatActivity() {
         androidGreekTts ?: AndroidGreekTts(
             this,
             preferences.getString(DEVICE_TTS_VOICE_KEY, null),
+            onDone = { setSpeechFailed(false) },
             onVoiceChanged = {
                 runOnUiThread {
                     if (!isFinishing && !isDestroyed) refreshAudioSettingControls()
                 }
             }
         ) { message ->
+            setSpeechFailed(true)
             runOnUiThread {
                 if (!isFinishing && !isDestroyed) {
                     Toast.makeText(this, message, Toast.LENGTH_LONG).show()
@@ -1712,6 +1731,7 @@ class WorkbenchActivity : AppCompatActivity() {
                             Toast.makeText(this, R.string.audio_tts_voice_save_failed, Toast.LENGTH_LONG).show()
                             return@setSingleChoiceItems
                         }
+                        setSpeechFailed(false)
                         refreshAudioSettingControls()
                         Toast.makeText(this, R.string.audio_tts_voice_selected, Toast.LENGTH_SHORT).show()
                         dialog.dismiss()

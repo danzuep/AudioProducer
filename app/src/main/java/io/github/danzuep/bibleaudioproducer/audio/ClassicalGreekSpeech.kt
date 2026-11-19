@@ -295,7 +295,7 @@ internal class AndroidGreekTts(
 ) {
     private var ready = false
     private var failed = false
-    private var pendingText: String? = null
+    private var pendingTexts: List<String>? = null
     private var voices = emptyList<Voice>()
     private var selectedVoice: Voice? = null
     private val voiceCallbacks = mutableListOf<(List<Voice>) -> Unit>()
@@ -338,8 +338,8 @@ internal class AndroidGreekTts(
         voiceCallbacks.clear()
         callbacks.forEach { it(if (ready) voices else emptyList()) }
         if (error != null) onError(error)
-        if (ready) pendingText?.let(::speakNow)
-        pendingText = null
+        if (ready) pendingTexts?.let(::speakNow)
+        pendingTexts = null
     }
 
     private fun Voice.language() = when (locale.language) {
@@ -348,11 +348,13 @@ internal class AndroidGreekTts(
         else -> null
     }
 
-    fun speak(text: String) {
+    fun speak(text: String) = speak(listOf(text))
+
+    fun speak(texts: List<String>) {
         when {
-            ready -> speakNow(text)
+            ready -> speakNow(texts)
             failed -> onError("Install a Greek or Italian Android TTS voice to use device speech.")
-            else -> pendingText = text
+            else -> pendingTexts = texts
         }
     }
 
@@ -374,30 +376,30 @@ internal class AndroidGreekTts(
 
     fun shutdown() {
         closed = true
-        pendingText = null
+        pendingTexts = null
         voiceCallbacks.clear()
         engine.shutdown()
     }
 
     fun stop() {
-        pendingText = null
+        pendingTexts = null
         if (ready) engine.stop()
     }
 
-    private fun speakNow(text: String) {
-        val voice = selectedVoice
-        val spokenText = if (voice?.language() == "it") {
-            ClassicalGreekG2p.italianRespelling(text)
-        } else {
-            text
+    private fun speakNow(texts: List<String>) {
+        val italian = selectedVoice?.language() == "it"
+        texts.forEachIndexed { index, text ->
+            val result = engine.speak(
+                if (italian) ClassicalGreekG2p.italianRespelling(text) else text,
+                if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD,
+                null,
+                "greek-${System.nanoTime()}"
+            )
+            if (result == TextToSpeech.ERROR) {
+                onError("Android speech synthesis failed.")
+                return
+            }
         }
-        val result = engine.speak(
-            spokenText,
-            TextToSpeech.QUEUE_FLUSH,
-            null,
-            "greek-${System.nanoTime()}"
-        )
-        if (result == TextToSpeech.ERROR) onError("Android speech synthesis failed.")
     }
 }
 
