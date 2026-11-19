@@ -62,6 +62,12 @@ object VerseWorkflow {
         "genitive" to "gen", "vocative" to "voc"
     )
 
+    fun nextReference(references: List<String>, current: String, onboarding: Boolean): String? {
+        if (onboarding && current == "JHN 3:16") return references.firstOrNull { it == "JHN 1:1" }
+        val index = references.indexOf(current)
+        return if (index >= 0) references.getOrNull(index + 1) else null
+    }
+
     fun chapterOrder(cards: List<RecordingCard>, verses: List<AudioVerse>): List<RecordingCard> {
         val byLemma = cards.associateBy { it.lemma }
         val counts = mutableMapOf<Int, MutableMap<String, Int>>()
@@ -187,9 +193,10 @@ object VerseWorkflow {
 
     fun spokenWords(
         words: List<VerseWord>, rules: Map<String, GrammarRule>,
-        explicit: List<Int>?, unspoken: Set<String>, wordOrder: List<Int>? = null
+        explicit: List<Int>?, unspoken: Set<String>, wordOrder: List<Int>? = null,
+        includeProper: Boolean = false
     ): List<VerseWord> = orderedWordIndices(words, rules, wordOrder, explicit).map(words::get)
-        .filter { !it.proper && !it.disabled(unspoken) }
+        .filter { (includeProper || !it.proper) && !it.disabled(unspoken) }
 
     fun originalText(verse: AudioVerse) = verse.words.joinToString(" ") { it.surface }
 

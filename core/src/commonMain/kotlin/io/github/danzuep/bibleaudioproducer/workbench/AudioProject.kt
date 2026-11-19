@@ -9,7 +9,9 @@ data class AudioProjectState(
     val wordOrders: Map<String, List<Int>> = emptyMap(),
     val neuralAudio: Boolean = false,
     val neuralOff: Set<String> = emptySet(),
-    val neuralStrength: NeuralStrength = NeuralStrength.STANDARD
+    val neuralStrength: NeuralStrength = NeuralStrength.STANDARD,
+    val fullVerseReferences: Set<String> = emptySet(),
+    val defaultWordOrder: String? = null
 )
 
 data class AudioArchiveImport(

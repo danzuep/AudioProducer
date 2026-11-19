@@ -55,21 +55,99 @@ internal class VerseDialogs(
         fun playRecording(card: RecordingCard)
         fun speakGreek(text: String)
         fun stopPlayback()
+        fun hasRecordingPermission(): Boolean
+        fun completeVerse(
+            verse: AudioVerse, order: List<Int>, unspoken: Set<String>, neuralOff: Set<String>,
+            mode: WordOrderMode
+        )
     }
 
     private val refreshers = mutableListOf<() -> Unit>()
+    private var takeEditor: VerseTakeEditor? = null
+
+    fun stopForBackground() = takeEditor?.stopForBackground()
+
+    fun dispose() {
+        takeEditor?.dispose()
+        takeEditor = null
+    }
 
     fun refreshControls() = refreshers.toList().forEach { it() }
 
-    fun showChapters(bookVerses: List<AudioVerse>) {
-        val chapters = bookVerses.map { it.chapter }.distinct()
-        AlertDialog.Builder(activity)
-            .setTitle(R.string.audio_choose_chapter)
-            .setItems(chapters.map { activity.getString(R.string.audio_chapter, it) }.toTypedArray()) { _, index ->
-                showVerses(bookVerses, chapters[index])
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+    private data class Page(val view: View, val refresh: () -> Unit, val close: () -> Boolean)
+    private val pages = mutableListOf<Page>()
+    private var previousVisibility = emptyMap<View, Int>()
+    val hasPages: Boolean get() = pages.isNotEmpty()
+
+    private fun push(view: View, refresh: () -> Unit, close: () -> Boolean) {
+        val container = activity.findViewById<FrameLayout>(R.id.audio_navigation_panel)
+        if (pages.isEmpty()) {
+            val root = container.parent as ViewGroup
+            previousVisibility = (0 until root.childCount).map(root::getChildAt)
+                .filter { it !== container && it.id != R.id.audio_workbench_toolbar }
+                .associateWith { it.visibility }
+            previousVisibility.keys.forEach { it.visibility = View.GONE }
+            container.visibility = View.VISIBLE
+        }
+        container.removeAllViews()
+        container.addView(view)
+        pages.add(Page(view, refresh, close))
+        activity.invalidateOptionsMenu()
+        refreshers.clear()
+        refreshers.add(refresh)
+        refresh()
+    }
+
+    fun back(): Boolean {
+        if (pages.isEmpty()) return false
+        if (!pages.last().close()) return true
+        pages.removeAt(pages.lastIndex)
+        activity.invalidateOptionsMenu()
+        val container = activity.findViewById<FrameLayout>(R.id.audio_navigation_panel)
+        container.removeAllViews()
+        refreshers.clear()
+        if (pages.isEmpty()) {
+            container.visibility = View.GONE
+            previousVisibility.forEach { (view, visibility) -> view.visibility = visibility }
+            previousVisibility = emptyMap()
+        } else {
+            val page = pages.last()
+            container.addView(page.view)
+            refreshers.add(page.refresh)
+            page.refresh()
+        }
+        return true
+    }
+
+    fun showChapterPicker(bookVerses: List<AudioVerse>, selected: Int, onSelect: (Int) -> Unit) {
+        val root = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+        }
+        val header = LinearLayout(activity).apply { gravity = Gravity.CENTER_VERTICAL }
+        header.addView(Button(activity).apply {
+            text = "←"
+            contentDescription = activity.getString(R.string.audio_back)
+            setOnClickListener { back() }
+        })
+        header.addView(TextView(activity).apply {
+            setText(R.string.audio_choose_chapter)
+            textSize = 20f
+        })
+        root.addView(header)
+        val rows = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        bookVerses.map { it.chapter }.distinct().forEach { chapter ->
+            rows.addView(MaterialButton(activity).apply {
+                text = activity.getString(R.string.audio_chapter, chapter) + if (chapter == selected) " ✓" else ""
+                setOnClickListener {
+                    back()
+                    onSelect(chapter)
+                }
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        root.addView(ScrollView(activity).apply { addView(rows) },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        push(root, {}) { actions.stopPlayback(); true }
     }
 
     private fun showVerseActions(verse: AudioVerse) {
@@ -103,7 +181,7 @@ internal class VerseDialogs(
             .show()
     }
 
-    private fun showVerses(bookVerses: List<AudioVerse>, chapter: Int) {
+    fun showVerses(bookVerses: List<AudioVerse>, chapter: Int) {
         val verses = bookVerses.filter { it.chapter == chapter }
         val root = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -153,7 +231,6 @@ internal class VerseDialogs(
                 contentDescription = verse.words.joinToString(" ") { it.surface }
                 setOnClickListener {
                     actions.stopPlayback()
-                    chapterDialog?.dismiss()
                     openVerse(verse)
                 }
                 verse.words.forEach { word ->
@@ -189,16 +266,14 @@ internal class VerseDialogs(
             row.addView(download, LinearLayout.LayoutParams(dp(44), dp(48)))
             rows.addView(row)
         }
-        val dialog = AlertDialog.Builder(activity).setView(root).create()
-        chapterDialog = dialog
         chapterPlay.setOnClickListener { actions.playChapter(chapter, verses) }
-        close.setOnClickListener { dialog.dismiss() }
+        close.setOnClickListener { back() }
         val refresh = {
             val state = actions.state
             val chapterRecorded = verses.any { verse ->
                 VerseWorkflow.spokenWords(
                     verse.words, state.rules, state.seedOrders[verse.reference], state.unspoken,
-                    state.wordOrders[verse.reference]
+                    state.wordOrders[verse.reference], verse.reference in state.fullVerseReferences
                 ).any { repository.playableClip(it) != null }
             }
             val chapterPlayable = chapterRecorded || !actions.speechFailed
@@ -213,7 +288,7 @@ internal class VerseDialogs(
             verseButtons.forEach { (verse, button) ->
                 val recorded = VerseWorkflow.spokenWords(
                     verse.words, state.rules, state.seedOrders[verse.reference], state.unspoken,
-                    state.wordOrders[verse.reference]
+                    state.wordOrders[verse.reference], verse.reference in state.fullVerseReferences
                 ).any { repository.playableClip(it) != null }
                 val playable = recorded || !actions.speechFailed
                 button.isEnabled = playable
@@ -230,26 +305,24 @@ internal class VerseDialogs(
                 label.setTextColor(wordColor(word.disabled(state.unspoken), repository.clipFile(word.surface).isFile))
             }
         }
-        refreshers.clear()
-        refreshers.add(refresh)
-        refresh()
-        dialog.setOnDismissListener {
-            refreshers.remove(refresh)
-            if (chapterDialog === dialog) chapterDialog = null
-            actions.stopPlayback()
-        }
-        dialog.show()
-        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        push(root, refresh) { actions.stopPlayback(); true }
     }
 
     fun openVerse(verse: AudioVerse) {
         if (actions.busy) return
-        var order = VerseWorkflow.orderedWordIndices(
+        val defaultMode = actions.state.defaultWordOrder
+            ?.let { name -> runCatching { WordOrderMode.valueOf(name) }.getOrNull() }
+            ?.takeIf { it != WordOrderMode.CUSTOM }
+        val hasSavedOrder = verse.reference in actions.state.wordOrders || verse.reference in actions.state.seedOrders
+        var order = if (!hasSavedOrder && defaultMode != null) {
+            VerseWorkflow.modeOrder(verse.words, defaultMode).toMutableList()
+        } else VerseWorkflow.orderedWordIndices(
             verse.words, actions.state.rules, actions.state.wordOrders[verse.reference],
             actions.state.seedOrders[verse.reference]
         ).toMutableList()
         val unspoken = actions.state.unspoken.toMutableSet()
-        var changed = false
+        var changed = !hasSavedOrder && defaultMode != null
+        var selectedMode = if (!hasSavedOrder) defaultMode else null
         var neuralChanged = false
         val neuralOff = actions.state.neuralOff.toMutableSet()
         var smoothOverride: Boolean? =
@@ -311,14 +384,16 @@ internal class VerseDialogs(
         var selecting = false
         val orderMode = Spinner(activity).apply {
             adapter = ArrayAdapter(activity, android.R.layout.simple_spinner_dropdown_item, modeLabels)
-            val current = modes.firstOrNull {
+            val current = selectedMode ?: modes.firstOrNull {
                 it != WordOrderMode.CUSTOM && VerseWorkflow.modeOrder(verse.words, it) == order
             } ?: WordOrderMode.CUSTOM
+            selectedMode = current
             setSelection(current.ordinal)
             onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
                 override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                     val mode = modes[position]
                     if (selecting || mode == WordOrderMode.CUSTOM) return
+                    selectedMode = mode
                     val next = VerseWorkflow.modeOrder(verse.words, mode)
                     if (next != order) {
                         order = next.toMutableList()
@@ -343,6 +418,33 @@ internal class VerseDialogs(
         controls.addView(orderMode)
         controls.addView(neural, LinearLayout.LayoutParams(0, dp(48), 1f))
         root.addView(controls)
+        root.addView(MaterialButton(activity).apply {
+            text = "Add verse recording"
+            setOnClickListener {
+                val spoken = order.map(verse.words::get).filter { !it.disabled(unspoken) }
+                if (spoken.isEmpty()) return@setOnClickListener
+                actions.stopPlayback()
+                lateinit var editor: VerseTakeEditor
+                editor = VerseTakeEditor(activity, repository, spoken, verse.reference,
+                    actions::hasRecordingPermission, { back() }, {
+                        back()
+                        changed = false
+                        neuralChanged = false
+                        back()
+                        actions.completeVerse(
+                            verse, order.toList(), unspoken.toSet(), neuralOff.toSet(),
+                            selectedMode ?: WordOrderMode.CUSTOM
+                        )
+                    })
+                takeEditor = editor
+                push(editor.view(), {}) {
+                    if (editor.close()) {
+                        takeEditor = null
+                        true
+                    } else false
+                }
+            }
+        })
 
         lateinit var flow: VerseFlowLayout
         lateinit var scroll: ScrollView
@@ -419,6 +521,7 @@ internal class VerseDialogs(
                                         selecting = true
                                         orderMode.setSelection(WordOrderMode.CUSTOM.ordinal)
                                         selecting = false
+                                        selectedMode = WordOrderMode.CUSTOM
                                         changed = true
                                         renderWords()
                                     }
@@ -449,15 +552,15 @@ internal class VerseDialogs(
             LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
         ))
         renderWords()
-        refreshers.clear()
-        refreshers.add {
+        val refresh = {
             val recordingStateChanged = order.map { verse.words[it].surface }.distinct().any { surface ->
                 val recorded = repository.clipFile(surface).isFile
                 recordedStates.put(surface, recorded)?.let { it != recorded } == true
             }
             if (recordingStateChanged) renderWords()
             val recorded = VerseWorkflow.spokenWords(
-                verse.words, actions.state.rules, actions.state.seedOrders[verse.reference], unspoken, order
+                verse.words, actions.state.rules, actions.state.seedOrders[verse.reference], unspoken, order,
+                verse.reference in actions.state.fullVerseReferences
             ).any { repository.playableClip(it) != null }
             val playable = recorded || !actions.speechFailed
             play.isEnabled = playable
@@ -469,13 +572,8 @@ internal class VerseDialogs(
             }
             play.alpha = if (playable) 1f else 0.45f
         }
-        refreshControls()
-
-        val dialog = AlertDialog.Builder(activity).setView(root).create()
-        verseDialog = dialog
-        close.setOnClickListener { dialog.dismiss() }
-        dialog.setOnDismissListener {
-            refreshers.clear()
+        close.setOnClickListener { back() }
+        push(root, refresh) {
             if (changed || neuralChanged) {
                 actions.saveVerseState(
                     verse.reference,
@@ -485,18 +583,9 @@ internal class VerseDialogs(
                 )
             }
             actions.stopPlayback()
-            verseDialog = null
+            true
         }
-        dialog.show()
-        dialog.window?.setLayout(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        )
     }
-
-    private var verseDialog: AlertDialog? = null
-
-    private var chapterDialog: AlertDialog? = null
 
     private fun showWordDetails(word: VerseWord, disabled: Boolean, onToggleDisabled: (Boolean) -> Unit) {
         val card = RecordingCard("", word.surface, word.gloss, 0)

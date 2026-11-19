@@ -78,7 +78,9 @@ class AudioProjectRepositoryTest {
                 wordOrders = mapOf("JHN 1:1" to listOf(2, 0, 1)),
                 neuralAudio = true,
                 neuralOff = setOf("JHN 1:1"),
-                neuralStrength = io.github.danzuep.bibleaudioproducer.audio.NeuralStrength.STRONG
+                neuralStrength = io.github.danzuep.bibleaudioproducer.audio.NeuralStrength.STRONG,
+                fullVerseReferences = setOf("JHN 3:16"),
+                defaultWordOrder = "ENGLISH_SVO"
             )
 
             repository.saveState(state)
@@ -134,6 +136,33 @@ class AudioProjectRepositoryTest {
             assertTrue(manifest.contains("\"language\": \"Example\""))
             assertTrue(manifest.contains("\"surface\": \"λογος\""))
             assertEquals(listOf(1, 2, 3), entries.getValue("clips/1.m4a").map { it.toInt() })
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun exportsCommittedVerseClipWithItsWavMimeAndBytes() {
+        val directory = Files.createTempDirectory("audio-verse-export-test").toFile()
+        try {
+            val repository = AudioProjectRepository(directory)
+            val candidate = repository.recordingCandidateFile("λόγος")
+            check(candidate.parentFile!!.mkdirs())
+            val bytes = io.github.danzuep.bibleaudioproducer.audio.VerseAudio.encodeWav(floatArrayOf(0.5f))
+            candidate.writeBytes(bytes)
+            repository.commitRecording("λόγος")
+            val output = ByteArrayOutputStream()
+            repository.writeExport(listOf(RecordingCard("JHN", "λόγος", "word", 1)), "Example", output)
+            val entries = mutableMapOf<String, ByteArray>()
+            ZipInputStream(output.toByteArray().inputStream()).use { zip ->
+                while (true) {
+                    val entry = zip.nextEntry ?: break
+                    entries[entry.name] = zip.readBytes()
+                }
+            }
+            val manifest = entries.getValue("manifest.json").toString(Charsets.UTF_8)
+            assertTrue(manifest.contains("\"mime\": \"audio/wav\""))
+            assertEquals(bytes.toList(), entries.getValue("clips/1.wav").toList())
         } finally {
             directory.deleteRecursively()
         }

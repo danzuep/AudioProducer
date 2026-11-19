@@ -92,6 +92,9 @@ internal object MaculaAudioArchive {
             wordOrders = if (current.wordOrders.isEmpty()) incomingWordOrders else current.wordOrders,
             neuralAudio = current.neuralAudio || manifest.get("neural_audio")?.asBoolean == true,
             neuralOff = current.neuralOff + incomingNeuralOff,
+            fullVerseReferences = current.fullVerseReferences +
+                manifest.getAsJsonArray("full_verse_references")?.map { it.asString }?.toSet().orEmpty(),
+            defaultWordOrder = current.defaultWordOrder ?: manifest.string("default_word_order").ifBlank { null },
             neuralStrength = if (current.seedOrders.isEmpty()) {
                 incomingNeuralStrength ?: current.neuralStrength
             } else {

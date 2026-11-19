@@ -48,9 +48,27 @@ class AudioProjectRepository(private val root: File) {
         return File(clipsDirectory, "${clip.nameWithoutExtension}.tmp.m4a")
     }
 
-    fun commitRecording(greekForm: String) {
+    internal fun newVerseDraft(): File {
+        check(root.mkdirs() || root.isDirectory)
+        return File.createTempFile("verse-draft-", ".m4a", root)
+    }
+
+    internal fun newVersePreview(): File {
+        check(root.mkdirs() || root.isDirectory)
+        return File.createTempFile("verse-preview-", ".wav", root)
+    }
+
+    fun commitRecording(greekForm: String, mime: String? = null) {
         val candidate = recordingCandidateFile(greekForm)
         require(candidate.isFile && candidate.length() > 0) { "The new recording is unavailable or empty." }
+        val resolvedMime = mime ?: candidate.inputStream().use { input ->
+            val header = ByteArray(12)
+            if (input.read(header) == header.size &&
+                header.copyOfRange(0, 4).contentEquals("RIFF".toByteArray()) &&
+                header.copyOfRange(8, 12).contentEquals("WAVE".toByteArray())
+            ) "audio/wav" else "audio/mp4"
+        }
+        require(resolvedMime == "audio/mp4" || resolvedMime == "audio/wav") { "Unsupported recording format." }
         val current = clipFile(greekForm)
         val backup = if (current.isFile) {
             File.createTempFile("previous-take-", ".tmp", clipsDirectory).also {
@@ -66,7 +84,7 @@ class AudioProjectRepository(private val root: File) {
         try {
             check(candidate.renameTo(current)) { "Unable to save the new recording." }
             try {
-                recordingSaved(greekForm)
+                recordingSaved(greekForm, resolvedMime)
             } catch (exception: Exception) {
                 val candidateRestored = current.renameTo(candidate)
                 val previousRestored = backup == null || (candidateRestored && backup.renameTo(current))
@@ -100,20 +118,22 @@ class AudioProjectRepository(private val root: File) {
         }.orEmpty()
         val unspoken = state.getAsJsonArray("unspoken")?.map { it.asString }?.toSet().orEmpty()
         val neuralOff = state.getAsJsonArray("neuralOff")?.map { it.asString }?.toSet().orEmpty()
+        val fullVerseReferences = state.getAsJsonArray("fullVerseReferences")?.map { it.asString }?.toSet().orEmpty()
         val neuralStrength = state.get("neuralStrength")?.asString
             ?.let { runCatching { io.github.danzuep.bibleaudioproducer.audio.NeuralStrength.valueOf(it) }.getOrNull() }
             ?: io.github.danzuep.bibleaudioproducer.audio.NeuralStrength.STANDARD
         return AudioProjectState(
             rules, orders, unspoken, wordOrders,
-            state.get("neuralAudio")?.asBoolean ?: false, neuralOff, neuralStrength
+            state.get("neuralAudio")?.asBoolean ?: false, neuralOff, neuralStrength, fullVerseReferences,
+            state.get("defaultWordOrder")?.takeUnless { it.isJsonNull }?.asString
         )
     }
 
     fun saveState(state: AudioProjectState) = writeJson(stateFile, state)
 
-    fun recordingSaved(greekForm: String) {
+    fun recordingSaved(greekForm: String, mime: String = "audio/mp4") {
         val metadata = loadMetadata().toMutableMap()
-        metadata[greekForm] = "audio/mp4"
+        metadata[greekForm] = mime
         writeJson(metadataFile, metadata)
     }
 
@@ -233,7 +253,8 @@ class AudioProjectRepository(private val root: File) {
             language = language.trim(), clips = clipEntries, rules = state.rules,
             seedOrders = state.seedOrders, wordOrders = state.wordOrders,
             unspoken = state.unspoken.toList(), neuralAudio = state.neuralAudio,
-            neuralOff = state.neuralOff.toList(), neuralStrength = state.neuralStrength.name
+            neuralOff = state.neuralOff.toList(), neuralStrength = state.neuralStrength.name,
+            fullVerseReferences = state.fullVerseReferences.toList(), defaultWordOrder = state.defaultWordOrder
         )
         ZipOutputStream(output.buffered()).use { zip ->
             zip.putNextEntry(ZipEntry("manifest.json"))
@@ -274,6 +295,8 @@ private data class ExportManifest(
     @SerializedName("neural_audio") val neuralAudio: Boolean = false,
     @SerializedName("neural_off") val neuralOff: List<String> = emptyList(),
     @SerializedName("neural_strength") val neuralStrength: String = "STANDARD",
+    @SerializedName("full_verse_references") val fullVerseReferences: List<String> = emptyList(),
+    @SerializedName("default_word_order") val defaultWordOrder: String? = null,
     val clips: List<ExportClip>
 )
 

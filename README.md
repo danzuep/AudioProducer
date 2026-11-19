@@ -6,16 +6,31 @@ Record and review Greek-form audio using the
 Greek New Testament support is included first; Hebrew is not yet bundled.
 The complete Greek New Testament recording plan is bundled and available offline on first
 launch. The first screen lists projects; a new project with no name is assigned a name such
-as **Project001**. Opening a project with no recordings starts at John 1:1. Select a chapter
-and verse to open its interactive original Greek text and transliteration. Tap a word to
+as **Project001**. New projects start with John 3:16 to try a word order and record a
+verse; existing projects keep their previous behavior. Select a book, tap the chapter
+button to choose a chapter, then choose **Show verses** to navigate its verses. Back
+returns to the previous screen. Tap a word to
 inspect its Macula metadata and English gloss, then record or play that Greek form.
 Hold a word until it lifts, drag it into place, and release to drop it. Reset restores the
 original Greek order. Disable or restore a form from its word details.
-Closing the verse returns to the recording cards. Select a book and chapter side by side;
+Closing the verse returns to the chapter list or recording cards. Select a book and chapter side by side;
 cards are sorted by frequency within that chapter. Open **Settings** from the gear
 icon to set the recording language, import plans or audio, export archives, or manage data.
 Imports in a different language are rejected to prevent mixing projects. Plans and
 recordings remain in private storage; export them before uninstalling.
+
+In a verse, select a word-order mode or drag individual words, then choose **Add verse
+recording**. Record the whole verse in that order. The app suggests boundaries at quiet
+points; select each word, adjust the start and end with the sliders or typed seconds,
+preview it, and save it or keep its existing clip. Suggestions are approximate and must
+be reviewed. Disabled words are omitted; restore them in word details before recording
+if needed. Verse clips are saved as lossless WAV audio, including very short selections.
+Each saved clip is keyed by Greek surface form, so repeated forms share a
+recording: replacing any existing clip requires confirmation. Back discards the unsaved
+verse take but keeps clips already saved. Once every word is reviewed, **Finish verse**
+saves the order and advances from John 3:16 to John 1:1, then through the following
+verses. The selected preset is used for subsequent verses unless they already have a
+saved order; a custom order is specific to its verse.
 
 The chapter verse list and verse text show pronunciation above each Greek word and
 English and Chinese glosses below where available. Recorded forms are marked
@@ -62,7 +77,8 @@ globally in Settings, choose a per-verse opt-out, and select standard or strong 
 Choose **Save verse audio** from a verse to export its recorded words in the selected
 order, with normalized levels and crossfaded joins. Choose lossless WAV, compatible
 AAC (M4A), or compact Opus (Ogg, Android 10 or later). All formats also support neural
-smoothing. The app reports how many missing words were skipped. Computer voice is not
+smoothing. Very short audio (under 128 ms) must be saved as WAV instead of AAC.
+The app reports how many missing words were skipped. Computer voice is not
 yet available.
 
 On Android 7.0 or later, **Save with neural smoothing** optionally blends an on-device

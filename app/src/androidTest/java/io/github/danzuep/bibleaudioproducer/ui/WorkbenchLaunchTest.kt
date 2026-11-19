@@ -34,7 +34,6 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.core.content.ContextCompat
 import androidx.appcompat.widget.Toolbar
 import androidx.recyclerview.widget.RecyclerView
-import android.widget.NumberPicker
 import android.widget.Spinner
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -45,6 +44,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import io.github.danzuep.bibleaudioproducer.R
 import io.github.danzuep.bibleaudioproducer.audio.VerseAudio
+import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioDecoder
 import io.github.danzuep.bibleaudioproducer.data.RecordingPlanJson
 import io.github.danzuep.bibleaudioproducer.data.AudioProjectRepository
 import io.github.danzuep.bibleaudioproducer.data.MaculaVerseJson
@@ -88,8 +88,12 @@ class WorkbenchLaunchTest {
         val chapterCards = cards.filter { it.lemma in forms }
         ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
             awaitBooks(scenario, 27)
+            onView(withText("JHN 3:16")).check(matches(isDisplayed()))
             onView(withId(R.id.audio_verse_close)).check(matches(isDisplayed()))
             onView(withId(R.id.audio_verse_close)).perform(click())
+            onView(withId(R.id.audio_workbench_chapter)).perform(click())
+            onView(withText("Chapter 1 ✓")).check(matches(isDisplayed()))
+            pressBack()
             onView(withId(R.id.audio_workbench_coverage))
                 .check(matches(withText("0 of ${chapterCards.size} recorded")))
             onView(withId(R.id.audio_workbench_list)).check { view, _ ->
@@ -123,6 +127,7 @@ class WorkbenchLaunchTest {
 
     @Test
     fun savesAnOrderForABundledVerse() {
+        createLegacyProject()
         val context = ApplicationProvider.getApplicationContext<Context>()
         val verse = context.assets.open("books/JHN.json").bufferedReader().use {
             MaculaVerseJson.parse(it.readText()).first { item -> item.reference == "JHN 1:1" }
@@ -206,7 +211,6 @@ class WorkbenchLaunchTest {
             assertEquals(expectedSurfaceOrder, savedOrder.map { verse.words[it].surface })
             assertTrue(skipped.unspokenKey in saved.unspoken)
             onView(withId(R.id.audio_choose_verse)).perform(click())
-            onView(withText("Chapter 1")).perform(click())
             onView(withContentDescription(verse.words.joinToString(" ") { it.surface })).perform(click())
             onView(withId(R.id.audio_verse_more)).perform(click())
             onView(withText(R.string.audio_download_verse)).perform(click())
@@ -261,6 +265,7 @@ class WorkbenchLaunchTest {
     @Test
     fun recordingPlaybackCanStopAndReturnsToPlayWhenComplete() {
         check(directory.mkdirs())
+        File(directory, "project-name.txt").writeText("Project001")
         File(directory, "recording-plan.json").writeText(
             """{"cards":[{"book":"JHN","lemma":"λόγος","gloss":"word","occurrences":1}]}"""
         )
@@ -293,7 +298,6 @@ class WorkbenchLaunchTest {
             clip.writeBytes(VerseAudio.encodeWav(FloatArray(10 * VerseAudio.SAMPLE_RATE) { 0.1f }))
             fun openChapter() {
                 onView(withId(R.id.audio_choose_verse)).perform(click())
-                onView(withText("Chapter 1")).perform(click())
             }
             openChapter()
             onView(withContentDescription(R.string.audio_play_chapter)).perform(click())
@@ -306,6 +310,7 @@ class WorkbenchLaunchTest {
 
     @Test
     fun verseRecordingShowsReviewBeforeStoppingAndCanKeepTheOldTake() {
+        createLegacyProject()
         val context = grantRecordingPermission()
         val repository = AudioProjectRepository(directory)
         val surface = context.assets.open("books/JHN.json").bufferedReader().use {
@@ -331,6 +336,70 @@ class WorkbenchLaunchTest {
         }
     }
 
+    @Test
+    fun verseTakeRequiresConfirmationBeforeReplacingExistingClip() {
+        val context = grantRecordingPermission()
+        val verse = context.assets.open("books/JHN.json").bufferedReader().use {
+            MaculaVerseJson.parse(it.readText()).first { it.reference == "JHN 3:16" }
+        }
+        val words = verse.words.filter { !it.disabled(emptySet()) }
+        val first = words.first()
+        ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
+            awaitBooks(scenario, 27)
+            val clip = AudioProjectRepository(directory).clipFile(first.surface)
+            check(clip.parentFile!!.mkdirs() || clip.parentFile!!.isDirectory)
+            val original = VerseAudio.encodeWav(FloatArray(16000) { 0.1f })
+            clip.writeBytes(original)
+            onView(withText("Add verse recording")).perform(click())
+            onView(withText("Record verse")).perform(scrollTo(), click())
+            Thread.sleep(1000)
+            onView(withText("Stop recording")).perform(scrollTo(), click())
+            val deadline = System.currentTimeMillis() + 15_000
+            var ready = false
+            while (!ready && System.currentTimeMillis() < deadline) {
+                scenario.onActivity { activity ->
+                    val views = ArrayList<View>()
+                    activity.window.decorView.findViewsWithText(views, "Save clip and next", View.FIND_VIEWS_WITH_TEXT)
+                    ready = views.any { it is Button && it.isEnabled }
+                }
+                if (!ready) Thread.sleep(50)
+            }
+            assertTrue("Verse take was not decoded", ready)
+            onView(withText("Save clip and next")).perform(scrollTo(), click())
+            onView(withText(android.R.string.cancel)).perform(click())
+            assertArrayEquals(original, clip.readBytes())
+            onView(withText("Keep existing clip and next")).perform(scrollTo(), click())
+            onView(withText("1 / ${words.size} clips reviewed"))
+                .perform(scrollTo())
+                .check(matches(isDisplayed()))
+            onView(withText("Preview selection")).perform(scrollTo(), click())
+            onView(withText("Save clip and next")).perform(scrollTo(), click())
+            val saved = AudioProjectRepository(directory).clipFile(words[1].surface)
+            val saveDeadline = System.currentTimeMillis() + 15_000
+            while (!saved.isFile && System.currentTimeMillis() < saveDeadline) Thread.sleep(50)
+            assertTrue("The reviewed word clip was not saved", saved.isFile && saved.length() > 0)
+            var advanced = false
+            while (!advanced && System.currentTimeMillis() < saveDeadline) {
+                scenario.onActivity { activity ->
+                    val views = ArrayList<View>()
+                    activity.window.decorView.findViewsWithText(
+                        views, "2 / ${words.size} clips reviewed", View.FIND_VIEWS_WITH_TEXT
+                    )
+                    advanced = views.isNotEmpty()
+                }
+                if (!advanced) Thread.sleep(50)
+            }
+            assertTrue("The review did not advance", advanced)
+            assertEquals("RIFF", saved.inputStream().use { input ->
+                ByteArray(4).also { assertEquals(4, input.read(it)) }.toString(Charsets.US_ASCII)
+            })
+            assertTrue("Saved word cannot be decoded", AndroidAudioDecoder().decode(saved).isNotEmpty())
+            pressBack()
+            onView(withText("Discard")).perform(click())
+            assertArrayEquals(original, clip.readBytes())
+        }
+    }
+
     private fun grantRecordingPermission(): Context {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val result = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(
@@ -342,6 +411,11 @@ class WorkbenchLaunchTest {
             ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
         )
         return context
+    }
+
+    private fun createLegacyProject() {
+        check(directory.mkdirs())
+        File(directory, "project-name.txt").writeText("Project001")
     }
 
     @Test
@@ -437,7 +511,7 @@ class WorkbenchLaunchTest {
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             scenario.onActivity { activity ->
                 loaded = activity.findViewById<Spinner>(R.id.audio_workbench_books).adapter?.count == count &&
-                    activity.findViewById<NumberPicker>(R.id.audio_workbench_chapter).maxValue > 0
+                    activity.findViewById<Button>(R.id.audio_workbench_chapter).isEnabled
             }
             if (!loaded) Thread.sleep(50)
         }

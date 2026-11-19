@@ -21,6 +21,26 @@ class AndroidAudioEncoderTest {
     fun encodesAacM4a() = verify(VerseExportFormat.AAC, MediaFormat.MIMETYPE_AUDIO_AAC)
 
     @Test
+    fun rejectsShortAacInsteadOfProducingSilentAudio() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        for (size in listOf(160, 800, 1024, 2047)) {
+            val file = File.createTempFile("short-word-", ".m4a", context.cacheDir)
+            val samples = FloatArray(size) {
+                (0.5 * sin(2 * PI * 440 * it / VerseAudio.SAMPLE_RATE)).toFloat()
+            }
+            try {
+                val error = runCatching { AndroidAudioEncoder().encode(samples, file, VerseExportFormat.AAC) }
+                    .exceptionOrNull()
+                assertTrue("Short AAC should be rejected", error is IllegalArgumentException)
+                assertTrue(error?.message.orEmpty().contains("WAV"))
+                assertEquals(0L, file.length())
+            } finally {
+                file.delete()
+            }
+        }
+    }
+
+    @Test
     @SdkSuppress(minSdkVersion = 29)
     fun encodesOpusOgg() = verify(VerseExportFormat.OPUS, MediaFormat.MIMETYPE_AUDIO_OPUS)
 
