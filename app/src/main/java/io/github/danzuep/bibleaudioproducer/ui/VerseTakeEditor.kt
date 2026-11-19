@@ -44,11 +44,12 @@ internal class VerseTakeEditor(
     private var draft: File? = null
     private var preview: File? = null
     private var samples = FloatArray(0)
-    private var boundaries = emptyList<Int>()
+    private var boundaries = mutableListOf<Int>()
     private val reviewed = mutableSetOf<Int>()
     private var recording = false
     private var working = false
     private var closed = false
+    private var discardConfirmed = false
     private var index = 0
     private var updating = false
     private lateinit var record: Button
@@ -63,6 +64,8 @@ internal class VerseTakeEditor(
     private lateinit var keep: Button
     private lateinit var finish: Button
     private lateinit var previewButton: Button
+    private lateinit var previewWhole: Button
+    private lateinit var previewExisting: Button
 
     fun view(): View {
         val root = LinearLayout(activity).apply {
@@ -127,6 +130,12 @@ internal class VerseTakeEditor(
         configureSeek(endSeek, end)
         previewButton = button("Preview selection") { previewSelection() }
         content.addView(previewButton)
+        previewWhole = button("Preview whole verse") { previewSamples(0, samples.size) }
+        content.addView(previewWhole)
+        previewExisting = button("Preview existing clip") {
+            player.play(listOf(repository.clipFile(words[index].surface)))
+        }
+        content.addView(previewExisting)
         save = button("Save clip and next") { saveSelection() }
         content.addView(save)
         keep = button("Keep existing clip and next") {
@@ -134,7 +143,10 @@ internal class VerseTakeEditor(
         }
         content.addView(keep)
         finish = button("Finish verse") {
-            if (reviewed.size == words.size) onComplete()
+            if (reviewed.size == words.size) {
+                discardConfirmed = true
+                onComplete()
+            }
         }
         content.addView(finish)
         root.addView(ScrollView(activity).apply { addView(content) },
@@ -165,7 +177,7 @@ internal class VerseTakeEditor(
                         activity.runOnUiThread {
                             if (!closed) {
                                 samples = decoded
-                                boundaries = suggested
+                                boundaries = suggested.toMutableList()
                                 reviewed.clear()
                                 index = 0
                                 waveform.showLevels(RecordingWaveform.peaks(decoded))
@@ -194,7 +206,7 @@ internal class VerseTakeEditor(
             recorder.start(file)
             recording = true
             samples = FloatArray(0)
-            boundaries = emptyList()
+            boundaries.clear()
             reviewed.clear()
             waveform.showLevels(emptyList())
             refresh()
@@ -214,6 +226,8 @@ internal class VerseTakeEditor(
         startSeek.isEnabled = ready
         endSeek.isEnabled = ready
         previewButton.isEnabled = ready
+        previewWhole.isEnabled = ready
+        previewExisting.isEnabled = ready && repository.clipFile(words[index].surface).isFile
         save.isEnabled = ready
         keep.isEnabled = ready && repository.clipFile(words[index].surface).isFile
         finish.isEnabled = ready && reviewed.size == words.size
@@ -233,19 +247,20 @@ internal class VerseTakeEditor(
         startSeek.progress = (boundaries[index].toLong() * 10000 / samples.size).toInt()
         endSeek.progress = (boundaries[index + 1].toLong() * 10000 / samples.size).toInt()
         keep.isEnabled = repository.clipFile(words[index].surface).isFile
+        previewExisting.isEnabled = keep.isEnabled
     }
 
     private fun selection(): Pair<Int, Int>? {
         val from = start.text.toString().toDoubleOrNull()
         val to = end.text.toString().toDoubleOrNull()
         if (from == null || to == null || !from.isFinite() || !to.isFinite() ||
-            from < 0 || to > samples.size.toDouble() / VerseAudio.SAMPLE_RATE || from >= to
+            from < 0 || to > (samples.size + 1.0) / VerseAudio.SAMPLE_RATE || from >= to
         ) {
             toast("Enter valid start and end times within the recording.")
             return null
         }
         val first = (from * VerseAudio.SAMPLE_RATE).roundToInt()
-        val last = (to * VerseAudio.SAMPLE_RATE).roundToInt()
+        val last = (to * VerseAudio.SAMPLE_RATE).roundToInt().coerceAtMost(samples.size)
         if (last <= first) {
             toast("The selection is too short.")
             return null
@@ -255,6 +270,10 @@ internal class VerseTakeEditor(
 
     private fun previewSelection() {
         val (first, last) = selection() ?: return
+        previewSamples(first, last)
+    }
+
+    private fun previewSamples(first: Int, last: Int) {
         try {
             player.stop()
             preview?.delete()
@@ -281,18 +300,24 @@ internal class VerseTakeEditor(
             refresh()
             val part = samples.copyOfRange(first, last)
             io.execute {
+                var encoded = false
                 try {
                     check(candidate.parentFile?.let { it.mkdirs() || it.isDirectory } == true)
                     AndroidAudioEncoder().encode(part, candidate, VerseExportFormat.AAC)
+                    encoded = true
                     repository.commitRecording(word.surface)
                     activity.runOnUiThread {
                         if (!closed) {
+                            if (index + 2 < boundaries.size && last > boundaries[index] && last < boundaries[index + 2]) {
+                                boundaries[index + 1] = last
+                            }
                             working = false
                             advance()
                         }
                     }
                 } catch (e: Exception) {
                     // Keep the candidate if committing failed so that the take can be recovered.
+                    if (!encoded) candidate.delete()
                     activity.runOnUiThread {
                         if (!closed) { working = false; toast(e.message ?: "Unable to save clip."); refresh() }
                     }
@@ -315,16 +340,32 @@ internal class VerseTakeEditor(
 
     fun close(): Boolean {
         if (working) return false
+        if (!discardConfirmed && (recording || samples.isNotEmpty())) {
+            AlertDialog.Builder(activity)
+                .setMessage("Discard the verse take? Saved clips will be kept.")
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton("Discard") { _, _ ->
+                    discardConfirmed = true
+                    onBack()
+                }.show()
+            return false
+        }
+        dispose()
+        return true
+    }
+
+    fun dispose() {
         closed = true
         if (recording) {
             recording = false
             runCatching { recorder.stop() }
         }
         player.stop()
-        draft?.delete()
-        preview?.delete()
+        io.execute {
+            draft?.delete()
+            preview?.delete()
+        }
         io.shutdown()
-        return true
     }
 
     fun stopForBackground() {
@@ -337,7 +378,7 @@ internal class VerseTakeEditor(
         refresh()
     }
 
-    private fun seconds(sample: Int) = String.format(Locale.US, "%.4f", sample.toDouble() / VerseAudio.SAMPLE_RATE)
+    private fun seconds(sample: Int) = String.format(Locale.US, "%.6f", sample.toDouble() / VerseAudio.SAMPLE_RATE)
     private fun toast(message: String) = Toast.makeText(activity, message, Toast.LENGTH_LONG).show()
     private fun dp(value: Int) = (value * activity.resources.displayMetrics.density).toInt()
 }

@@ -110,12 +110,14 @@ class AudioProjectRepository(private val root: File) {
         }.orEmpty()
         val unspoken = state.getAsJsonArray("unspoken")?.map { it.asString }?.toSet().orEmpty()
         val neuralOff = state.getAsJsonArray("neuralOff")?.map { it.asString }?.toSet().orEmpty()
+        val fullVerseReferences = state.getAsJsonArray("fullVerseReferences")?.map { it.asString }?.toSet().orEmpty()
         val neuralStrength = state.get("neuralStrength")?.asString
             ?.let { runCatching { io.github.danzuep.bibleaudioproducer.audio.NeuralStrength.valueOf(it) }.getOrNull() }
             ?: io.github.danzuep.bibleaudioproducer.audio.NeuralStrength.STANDARD
         return AudioProjectState(
             rules, orders, unspoken, wordOrders,
-            state.get("neuralAudio")?.asBoolean ?: false, neuralOff, neuralStrength
+            state.get("neuralAudio")?.asBoolean ?: false, neuralOff, neuralStrength, fullVerseReferences,
+            state.get("defaultWordOrder")?.takeUnless { it.isJsonNull }?.asString
         )
     }
 
@@ -243,7 +245,8 @@ class AudioProjectRepository(private val root: File) {
             language = language.trim(), clips = clipEntries, rules = state.rules,
             seedOrders = state.seedOrders, wordOrders = state.wordOrders,
             unspoken = state.unspoken.toList(), neuralAudio = state.neuralAudio,
-            neuralOff = state.neuralOff.toList(), neuralStrength = state.neuralStrength.name
+            neuralOff = state.neuralOff.toList(), neuralStrength = state.neuralStrength.name,
+            fullVerseReferences = state.fullVerseReferences.toList(), defaultWordOrder = state.defaultWordOrder
         )
         ZipOutputStream(output.buffered()).use { zip ->
             zip.putNextEntry(ZipEntry("manifest.json"))
@@ -284,6 +287,8 @@ private data class ExportManifest(
     @SerializedName("neural_audio") val neuralAudio: Boolean = false,
     @SerializedName("neural_off") val neuralOff: List<String> = emptyList(),
     @SerializedName("neural_strength") val neuralStrength: String = "STANDARD",
+    @SerializedName("full_verse_references") val fullVerseReferences: List<String> = emptyList(),
+    @SerializedName("default_word_order") val defaultWordOrder: String? = null,
     val clips: List<ExportClip>
 )
 

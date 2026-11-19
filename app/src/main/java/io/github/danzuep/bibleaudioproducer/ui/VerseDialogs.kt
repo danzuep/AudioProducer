@@ -56,7 +56,10 @@ internal class VerseDialogs(
         fun speakGreek(text: String)
         fun stopPlayback()
         fun hasRecordingPermission(): Boolean
-        fun completeVerse(verse: AudioVerse, order: List<Int>, unspoken: Set<String>, neuralOff: Set<String>)
+        fun completeVerse(
+            verse: AudioVerse, order: List<Int>, unspoken: Set<String>, neuralOff: Set<String>,
+            mode: WordOrderMode
+        )
     }
 
     private val refreshers = mutableListOf<() -> Unit>()
@@ -64,11 +67,17 @@ internal class VerseDialogs(
 
     fun stopForBackground() = takeEditor?.stopForBackground()
 
+    fun dispose() {
+        takeEditor?.dispose()
+        takeEditor = null
+    }
+
     fun refreshControls() = refreshers.toList().forEach { it() }
 
     private data class Page(val view: View, val refresh: () -> Unit, val close: () -> Boolean)
     private val pages = mutableListOf<Page>()
     private var previousVisibility = emptyMap<View, Int>()
+    val hasPages: Boolean get() = pages.isNotEmpty()
 
     private fun push(view: View, refresh: () -> Unit, close: () -> Boolean) {
         val container = activity.findViewById<FrameLayout>(R.id.audio_navigation_panel)
@@ -83,6 +92,7 @@ internal class VerseDialogs(
         container.removeAllViews()
         container.addView(view)
         pages.add(Page(view, refresh, close))
+        activity.invalidateOptionsMenu()
         refreshers.clear()
         refreshers.add(refresh)
         refresh()
@@ -92,6 +102,7 @@ internal class VerseDialogs(
         if (pages.isEmpty()) return false
         if (!pages.last().close()) return true
         pages.removeAt(pages.lastIndex)
+        activity.invalidateOptionsMenu()
         val container = activity.findViewById<FrameLayout>(R.id.audio_navigation_panel)
         container.removeAllViews()
         refreshers.clear()
@@ -262,7 +273,7 @@ internal class VerseDialogs(
             val chapterRecorded = verses.any { verse ->
                 VerseWorkflow.spokenWords(
                     verse.words, state.rules, state.seedOrders[verse.reference], state.unspoken,
-                    state.wordOrders[verse.reference]
+                    state.wordOrders[verse.reference], verse.reference in state.fullVerseReferences
                 ).any { repository.playableClip(it) != null }
             }
             val chapterPlayable = chapterRecorded || !actions.speechFailed
@@ -277,7 +288,7 @@ internal class VerseDialogs(
             verseButtons.forEach { (verse, button) ->
                 val recorded = VerseWorkflow.spokenWords(
                     verse.words, state.rules, state.seedOrders[verse.reference], state.unspoken,
-                    state.wordOrders[verse.reference]
+                    state.wordOrders[verse.reference], verse.reference in state.fullVerseReferences
                 ).any { repository.playableClip(it) != null }
                 val playable = recorded || !actions.speechFailed
                 button.isEnabled = playable
@@ -299,12 +310,19 @@ internal class VerseDialogs(
 
     fun openVerse(verse: AudioVerse) {
         if (actions.busy) return
-        var order = VerseWorkflow.orderedWordIndices(
+        val defaultMode = actions.state.defaultWordOrder
+            ?.let { name -> runCatching { WordOrderMode.valueOf(name) }.getOrNull() }
+            ?.takeIf { it != WordOrderMode.CUSTOM }
+        val hasSavedOrder = verse.reference in actions.state.wordOrders || verse.reference in actions.state.seedOrders
+        var order = if (!hasSavedOrder && defaultMode != null) {
+            VerseWorkflow.modeOrder(verse.words, defaultMode).toMutableList()
+        } else VerseWorkflow.orderedWordIndices(
             verse.words, actions.state.rules, actions.state.wordOrders[verse.reference],
             actions.state.seedOrders[verse.reference]
         ).toMutableList()
         val unspoken = actions.state.unspoken.toMutableSet()
-        var changed = false
+        var changed = !hasSavedOrder && defaultMode != null
+        var selectedMode = if (!hasSavedOrder) defaultMode else null
         var neuralChanged = false
         val neuralOff = actions.state.neuralOff.toMutableSet()
         var smoothOverride: Boolean? =
@@ -366,14 +384,16 @@ internal class VerseDialogs(
         var selecting = false
         val orderMode = Spinner(activity).apply {
             adapter = ArrayAdapter(activity, android.R.layout.simple_spinner_dropdown_item, modeLabels)
-            val current = modes.firstOrNull {
+            val current = selectedMode ?: modes.firstOrNull {
                 it != WordOrderMode.CUSTOM && VerseWorkflow.modeOrder(verse.words, it) == order
             } ?: WordOrderMode.CUSTOM
+            selectedMode = current
             setSelection(current.ordinal)
             onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
                 override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                     val mode = modes[position]
                     if (selecting || mode == WordOrderMode.CUSTOM) return
+                    selectedMode = mode
                     val next = VerseWorkflow.modeOrder(verse.words, mode)
                     if (next != order) {
                         order = next.toMutableList()
@@ -401,7 +421,7 @@ internal class VerseDialogs(
         root.addView(MaterialButton(activity).apply {
             text = "Add verse recording"
             setOnClickListener {
-                val spoken = order.map(verse.words::get).filter { !it.proper && !it.disabled(unspoken) }
+                val spoken = order.map(verse.words::get).filter { !it.disabled(unspoken) }
                 if (spoken.isEmpty()) return@setOnClickListener
                 actions.stopPlayback()
                 lateinit var editor: VerseTakeEditor
@@ -411,7 +431,10 @@ internal class VerseDialogs(
                         changed = false
                         neuralChanged = false
                         back()
-                        actions.completeVerse(verse, order.toList(), unspoken.toSet(), neuralOff.toSet())
+                        actions.completeVerse(
+                            verse, order.toList(), unspoken.toSet(), neuralOff.toSet(),
+                            selectedMode ?: WordOrderMode.CUSTOM
+                        )
                     })
                 takeEditor = editor
                 push(editor.view(), {}) {
@@ -498,6 +521,7 @@ internal class VerseDialogs(
                                         selecting = true
                                         orderMode.setSelection(WordOrderMode.CUSTOM.ordinal)
                                         selecting = false
+                                        selectedMode = WordOrderMode.CUSTOM
                                         changed = true
                                         renderWords()
                                     }
@@ -535,7 +559,8 @@ internal class VerseDialogs(
             }
             if (recordingStateChanged) renderWords()
             val recorded = VerseWorkflow.spokenWords(
-                verse.words, actions.state.rules, actions.state.seedOrders[verse.reference], unspoken, order
+                verse.words, actions.state.rules, actions.state.seedOrders[verse.reference], unspoken, order,
+                verse.reference in actions.state.fullVerseReferences
             ).any { repository.playableClip(it) != null }
             val playable = recorded || !actions.speechFailed
             play.isEnabled = playable

@@ -60,6 +60,7 @@ import io.github.danzuep.bibleaudioproducer.workbench.AudioVerse
 import io.github.danzuep.bibleaudioproducer.workbench.AudioProjectState
 import io.github.danzuep.bibleaudioproducer.workbench.VerseWorkflow
 import io.github.danzuep.bibleaudioproducer.workbench.VerseWord
+import io.github.danzuep.bibleaudioproducer.workbench.WordOrderMode
 import io.github.danzuep.bibleaudioproducer.workbench.RecordingPlan
 import java.io.File
 import java.util.concurrent.Executors
@@ -114,8 +115,9 @@ class WorkbenchActivity : AppCompatActivity() {
             override fun stopPlayback() = this@WorkbenchActivity.stopPlayback()
             override fun hasRecordingPermission() = this@WorkbenchActivity.hasRecordingPermission()
             override fun completeVerse(
-                verse: AudioVerse, order: List<Int>, unspoken: Set<String>, neuralOff: Set<String>
-            ) = this@WorkbenchActivity.completeVerse(verse, order, unspoken, neuralOff)
+                verse: AudioVerse, order: List<Int>, unspoken: Set<String>, neuralOff: Set<String>,
+                mode: WordOrderMode
+            ) = this@WorkbenchActivity.completeVerse(verse, order, unspoken, neuralOff, mode)
         })
     }
     private var cards = emptyList<RecordingCard>()
@@ -346,6 +348,11 @@ class WorkbenchActivity : AppCompatActivity() {
         return true
     }
 
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        menu.findItem(R.id.audio_menu_settings)?.isVisible = !verseDialogs.hasPages
+        return super.onPrepareOptionsMenu(menu)
+    }
+
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         if (item.itemId == R.id.audio_menu_settings) {
             showStep(if (step == Step.SETTINGS) {
@@ -371,6 +378,7 @@ class WorkbenchActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        verseDialogs.dispose()
         reviewDialog?.dismiss()
         reviewDialog = null
         refreshTakeReview = null
@@ -650,12 +658,18 @@ class WorkbenchActivity : AppCompatActivity() {
         order: List<Int>?,
         unspoken: Set<String>,
         neuralOff: Set<String>,
+        fullVerse: Boolean = false,
+        mode: WordOrderMode? = null,
         onSaved: (() -> Unit)? = null
     ) {
         busy = true
         val orders = if (order == null) projectState.wordOrders - reference
             else projectState.wordOrders + (reference to order)
-        val updated = projectState.copy(wordOrders = orders, unspoken = unspoken, neuralOff = neuralOff)
+        val updated = projectState.copy(wordOrders = orders, unspoken = unspoken, neuralOff = neuralOff,
+            fullVerseReferences = if (fullVerse) projectState.fullVerseReferences + reference
+                else projectState.fullVerseReferences,
+            defaultWordOrder = if (fullVerse) mode?.takeIf { it != WordOrderMode.CUSTOM }?.name
+                else projectState.defaultWordOrder)
         val targetRepository = repository
         io.execute {
             try {
@@ -669,28 +683,6 @@ class WorkbenchActivity : AppCompatActivity() {
                     onSaved?.invoke()
                 }
 
-                private fun completeVerse(
-                    verse: AudioVerse, order: List<Int>, unspoken: Set<String>, neuralOff: Set<String>
-                ) {
-                    val projectId = activeProjectId ?: return
-                    saveVerseState(verse.reference, order, unspoken, neuralOff) {
-                        if (activeProjectId != projectId) return@saveVerseState
-                        val marker = File(projectDirectory(projectId), "verse-onboarding")
-                        val book = verse.reference.substringBefore(' ')
-                        val all = versesFor(book)
-                        val next = if (verse.reference == "JHN 3:16" && marker.isFile) {
-                            if (!marker.delete()) {
-                                Toast.makeText(this, R.string.audio_order_failed, Toast.LENGTH_LONG).show()
-                                return@saveVerseState
-                            }
-                            all.firstOrNull { it.reference == "JHN 1:1" }
-                        } else {
-                            val index = all.indexOfFirst { it.reference == verse.reference }
-                            all.getOrNull(index + 1).takeIf { index >= 0 }
-                        }
-                        next?.let(verseDialogs::openVerse)
-                    }
-                }
             } catch (exception: Exception) {
                 runOnUiThread {
                     busy = false
@@ -699,6 +691,29 @@ class WorkbenchActivity : AppCompatActivity() {
                     ).show()
                 }
             }
+        }
+    }
+
+    private fun completeVerse(
+        verse: AudioVerse, order: List<Int>, unspoken: Set<String>, neuralOff: Set<String>, mode: WordOrderMode
+    ) {
+        val projectId = activeProjectId ?: return
+        saveVerseState(verse.reference, order, unspoken, neuralOff, fullVerse = true, mode = mode) {
+            if (activeProjectId != projectId) return@saveVerseState
+            val marker = File(projectDirectory(projectId), "verse-onboarding")
+            val book = verse.reference.substringBefore(' ')
+            val all = versesFor(book)
+            val next = if (verse.reference == "JHN 3:16" && marker.isFile) {
+                if (!marker.delete()) {
+                    Toast.makeText(this, R.string.audio_order_failed, Toast.LENGTH_LONG).show()
+                    return@saveVerseState
+                }
+                all.firstOrNull { it.reference == "JHN 1:1" }
+            } else {
+                val index = all.indexOfFirst { it.reference == verse.reference }
+                all.getOrNull(index + 1).takeIf { index >= 0 }
+            }
+            next?.let(verseDialogs::openVerse)
         }
     }
 
@@ -712,7 +727,7 @@ class WorkbenchActivity : AppCompatActivity() {
         stopPlayback()
         val spoken = VerseWorkflow.spokenWords(
             verse.words, projectState.rules, projectState.seedOrders[verse.reference], projectState.unspoken,
-            projectState.wordOrders[verse.reference]
+            projectState.wordOrders[verse.reference], verse.reference in projectState.fullVerseReferences
         )
         val words = spoken.filter { repository.playableClip(it) != null }
         if (words.isEmpty()) {
@@ -738,7 +753,7 @@ class WorkbenchActivity : AppCompatActivity() {
         val spokenGroups = verses.map { verse ->
             verse.reference to VerseWorkflow.spokenWords(
                 verse.words, projectState.rules, projectState.seedOrders[verse.reference], projectState.unspoken,
-                projectState.wordOrders[verse.reference]
+                projectState.wordOrders[verse.reference], verse.reference in projectState.fullVerseReferences
             )
         }
         val groups = spokenGroups.map { (reference, words) ->
@@ -869,7 +884,7 @@ class WorkbenchActivity : AppCompatActivity() {
         }
         val words = VerseWorkflow.spokenWords(
             verse.words, projectState.rules, projectState.seedOrders[verse.reference], projectState.unspoken,
-            projectState.wordOrders[verse.reference]
+            projectState.wordOrders[verse.reference], verse.reference in projectState.fullVerseReferences
         )
         val recorded = words.filter { repository.clipFile(it.surface).isFile }
         if (recorded.isEmpty()) {

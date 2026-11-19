@@ -8,6 +8,13 @@ class VerseWorkflowTest {
         VerseWord(surface, lemma, pos, "", grammaticalCase, "", surface)
 
     @Test
+    fun fullVersePlaybackIncludesProperNamesWithoutChangingLegacyPlayback() {
+        val words = listOf(word("Jesus", "Jesus", "proper_noun"), word("said", "say", "verb"))
+        assertEquals(listOf("said"), VerseWorkflow.spokenWords(words, emptyMap(), null, emptySet()).map { it.surface })
+        assertEquals(words, VerseWorkflow.spokenWords(words, emptyMap(), null, emptySet(), includeProper = true))
+    }
+
+    @Test
     fun wordsWithoutAnyGlossAreDisabledButStillInOriginalText() {
         val words = listOf(
             word("ὁ", "ὁ", "det", "nominative").copy(gloss = ""),

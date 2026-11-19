@@ -187,9 +187,10 @@ object VerseWorkflow {
 
     fun spokenWords(
         words: List<VerseWord>, rules: Map<String, GrammarRule>,
-        explicit: List<Int>?, unspoken: Set<String>, wordOrder: List<Int>? = null
+        explicit: List<Int>?, unspoken: Set<String>, wordOrder: List<Int>? = null,
+        includeProper: Boolean = false
     ): List<VerseWord> = orderedWordIndices(words, rules, wordOrder, explicit).map(words::get)
-        .filter { !it.proper && !it.disabled(unspoken) }
+        .filter { (includeProper || !it.proper) && !it.disabled(unspoken) }
 
     fun originalText(verse: AudioVerse) = verse.words.joinToString(" ") { it.surface }
 
