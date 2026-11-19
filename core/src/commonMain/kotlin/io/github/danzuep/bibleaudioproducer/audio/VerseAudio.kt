@@ -35,7 +35,7 @@ object VerseAudio {
             val endFrame = last / window
             for (frame in startFrame..endFrame) {
                 if (frame !in energies.indices) continue
-                val distance = kotlin.math.abs(frame * window - target).toDouble() / radius.coerceAtLeast(1)
+                val distance = kotlin.math.abs(frame.toLong() * window - target).toDouble() / radius.coerceAtLeast(1)
                 val score = energies[frame] + distance * 1e-8
                 if (score < bestScore) {
                     bestScore = score
