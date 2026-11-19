@@ -376,6 +376,7 @@ internal class AndroidGreekTts(
             val spoken = if (voice.language() == "it") ClassicalGreekG2p.italianRespelling(text) else text
             fileCallbacks[id] = { ok -> done(file.takeIf { ok && it.length() > 0 }) }
             val params = android.os.Bundle()
+            usedFileSynthesis = true
             if (engine.synthesizeToFile(spoken, params, file, id) == TextToSpeech.ERROR) {
                 fileCallbacks.remove(id)
                 done(null)
@@ -423,10 +424,13 @@ internal class AndroidGreekTts(
 
     private var engineShutDown = false
 
+    // Unbinding Pico after synthesizeToFile segfaults the engine process and steals window focus.
+    private var usedFileSynthesis = false
+
 
     private fun shutdownWhenIdle() {
         main.post {
-            if (closed && fileCallbacks.isEmpty() && !engineShutDown) {
+            if (closed && fileCallbacks.isEmpty() && !engineShutDown && !usedFileSynthesis) {
                 engineShutDown = true
                 engine.shutdown()
             }
