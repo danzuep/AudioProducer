@@ -6,7 +6,7 @@
     <string name="audio_project_name_title">Project name</string>
     <string name="audio_project_name_hint">Project name (optional)</string>
     <string name="audio_project_recordings">%1$d recordings</string>
-    <string name="audio_choose_verse">Choose chapter and verse</string>
+    <string name="audio_choose_verse">Show verses</string>
     <string name="audio_project_create_failed">Unable to create the project.</string>
     <string name="audio_project_load_failed">Unable to load this project.</string>
     <string name="audio_verse_drag_hint">Hold a word, drag it into place, then release. Tap for word details.</string>

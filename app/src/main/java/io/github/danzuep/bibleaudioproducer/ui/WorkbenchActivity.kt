@@ -21,7 +21,6 @@ import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.NumberPicker
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
@@ -113,6 +112,10 @@ class WorkbenchActivity : AppCompatActivity() {
             override fun playRecording(card: RecordingCard) = this@WorkbenchActivity.playRecording(card)
             override fun speakGreek(text: String) = this@WorkbenchActivity.speakGreek(text)
             override fun stopPlayback() = this@WorkbenchActivity.stopPlayback()
+            override fun hasRecordingPermission() = this@WorkbenchActivity.hasRecordingPermission()
+            override fun completeVerse(
+                verse: AudioVerse, order: List<Int>, unspoken: Set<String>, neuralOff: Set<String>
+            ) = this@WorkbenchActivity.completeVerse(verse, order, unspoken, neuralOff)
         })
     }
     private var cards = emptyList<RecordingCard>()
@@ -159,7 +162,7 @@ class WorkbenchActivity : AppCompatActivity() {
 
     private lateinit var language: EditText
     private lateinit var books: Spinner
-    private lateinit var chapters: NumberPicker
+    private lateinit var chapters: Button
     private lateinit var search: EditText
     private lateinit var coverage: TextView
     private lateinit var empty: TextView
@@ -222,17 +225,20 @@ class WorkbenchActivity : AppCompatActivity() {
         }
         val toolbar = findViewById<Toolbar>(R.id.audio_workbench_toolbar)
         setSupportActionBar(toolbar)
-        toolbar.setNavigationOnClickListener { showProjects() }
+        toolbar.setNavigationOnClickListener { if (!verseDialogs.back()) showProjects() }
 
         language = findViewById(R.id.audio_workbench_language)
         books = findViewById(R.id.audio_workbench_books)
-        chapters = findViewById<NumberPicker>(R.id.audio_workbench_chapter).apply {
+        chapters = findViewById<Button>(R.id.audio_workbench_chapter).apply {
             isEnabled = false
-            setOnValueChangedListener { _, _, chapter ->
-                stopPlayback()
-                selectedChapter = chapter
-                resetCardPosition()
-                updateRows()
+            setOnClickListener {
+                verseDialogs.showChapterPicker(bookVerses, selectedChapter) { chapter ->
+                    stopPlayback()
+                    selectedChapter = chapter
+                    text = getString(R.string.audio_chapter, chapter)
+                    resetCardPosition()
+                    updateRows()
+                }
             }
         }
         search = findViewById(R.id.audio_workbench_search)
@@ -358,6 +364,7 @@ class WorkbenchActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
+        verseDialogs.stopForBackground()
         stopRecording(allowReview = false)
         stopPlayback()
         super.onStop()
@@ -491,6 +498,7 @@ class WorkbenchActivity : AppCompatActivity() {
             File(directory, PROJECT_NAME_FILE).writeText(name?.takeIf { it.isNotBlank() } ?: "Project${
                 number.toString().padStart(3, '0')
             }")
+            File(directory, "verse-onboarding").writeText("JHN 3:16")
             renderProjects()
             if (open) selectProject(ProjectInfo(id, File(directory, PROJECT_NAME_FILE).readText().trim()))
         } catch (exception: Exception) {
@@ -527,8 +535,11 @@ class WorkbenchActivity : AppCompatActivity() {
                 }
                 val loadedState = projectRepository.loadState()
                 val hasAudio = projectRepository.recordedCards(loaded).isNotEmpty()
-                val initialVerse = if (hasAudio) null else
-                    versesFor("JHN").firstOrNull { it.reference == "JHN 1:1" }
+                val onboarding = File(projectDirectory(selectedId), "verse-onboarding").isFile
+                val initialReference = if (onboarding) "JHN 3:16" else if (!hasAudio) "JHN 1:1" else null
+                val initialVerse = initialReference?.let { reference ->
+                    versesFor("JHN").firstOrNull { it.reference == reference }
+                }
                 runOnUiThread {
                     if (activeProjectId != selectedId) return@runOnUiThread
                     cards = loaded
@@ -606,13 +617,10 @@ class WorkbenchActivity : AppCompatActivity() {
                 runOnUiThread {
                     if (selectedBook == book && activeProjectId == selectedProject) {
                         bookVerses = verses
-                        val first = verses.minOfOrNull { it.chapter } ?: 1
-                        chapters.minValue = first
-                        chapters.maxValue = verses.maxOfOrNull { it.chapter } ?: first
-                        chapters.wrapSelectorWheel = false
-                        chapters.value = selectedChapter.coerceIn(chapters.minValue, chapters.maxValue)
-                        selectedChapter = chapters.value
-                        chapters.isEnabled = chapters.maxValue > chapters.minValue
+                        val available = verses.map { it.chapter }.distinct()
+                        if (selectedChapter !in available) selectedChapter = available.firstOrNull() ?: 1
+                        chapters.text = getString(R.string.audio_chapter, selectedChapter)
+                        chapters.isEnabled = available.isNotEmpty()
                         updateRows()
                     }
                 }
@@ -634,14 +642,15 @@ class WorkbenchActivity : AppCompatActivity() {
         search.clearFocus()
         (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager)
             .hideSoftInputFromWindow(search.windowToken, 0)
-        verseDialogs.showChapters(bookVerses)
+        verseDialogs.showVerses(bookVerses, selectedChapter)
     }
 
     private fun saveVerseState(
         reference: String,
         order: List<Int>?,
         unspoken: Set<String>,
-        neuralOff: Set<String>
+        neuralOff: Set<String>,
+        onSaved: (() -> Unit)? = null
     ) {
         busy = true
         val orders = if (order == null) projectState.wordOrders - reference
@@ -657,6 +666,30 @@ class WorkbenchActivity : AppCompatActivity() {
                     refreshAudioSettingControls()
                     updateRows()
                     Toast.makeText(this, R.string.audio_order_saved, Toast.LENGTH_SHORT).show()
+                    onSaved?.invoke()
+                }
+
+                private fun completeVerse(
+                    verse: AudioVerse, order: List<Int>, unspoken: Set<String>, neuralOff: Set<String>
+                ) {
+                    val projectId = activeProjectId ?: return
+                    saveVerseState(verse.reference, order, unspoken, neuralOff) {
+                        if (activeProjectId != projectId) return@saveVerseState
+                        val marker = File(projectDirectory(projectId), "verse-onboarding")
+                        val book = verse.reference.substringBefore(' ')
+                        val all = versesFor(book)
+                        val next = if (verse.reference == "JHN 3:16" && marker.isFile) {
+                            if (!marker.delete()) {
+                                Toast.makeText(this, R.string.audio_order_failed, Toast.LENGTH_LONG).show()
+                                return@saveVerseState
+                            }
+                            all.firstOrNull { it.reference == "JHN 1:1" }
+                        } else {
+                            val index = all.indexOfFirst { it.reference == verse.reference }
+                            all.getOrNull(index + 1).takeIf { index >= 0 }
+                        }
+                        next?.let(verseDialogs::openVerse)
+                    }
                 }
             } catch (exception: Exception) {
                 runOnUiThread {
@@ -1120,7 +1153,7 @@ class WorkbenchActivity : AppCompatActivity() {
         bookVerses = emptyList()
         selectedChapter = 1
         chapters.isEnabled = false
-        chapters.value = chapters.minValue
+        chapters.text = getString(R.string.audio_chapter, selectedChapter)
         resetCardPosition()
         updateRows()
         loadBook(book)
@@ -1806,6 +1839,7 @@ class WorkbenchActivity : AppCompatActivity() {
 
     @Deprecated("Use project navigation.")
     override fun onBackPressed() {
+        if (verseDialogs.back()) return
         when (step) {
             Step.SETTINGS -> showStep(if (activeProjectId == null) Step.PROJECTS else Step.BOOKS)
             Step.BOOKS -> showProjects()

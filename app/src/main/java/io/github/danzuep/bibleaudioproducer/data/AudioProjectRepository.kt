@@ -48,6 +48,16 @@ class AudioProjectRepository(private val root: File) {
         return File(clipsDirectory, "${clip.nameWithoutExtension}.tmp.m4a")
     }
 
+    internal fun newVerseDraft(): File {
+        check(root.mkdirs() || root.isDirectory)
+        return File.createTempFile("verse-draft-", ".m4a", root)
+    }
+
+    internal fun newVersePreview(): File {
+        check(root.mkdirs() || root.isDirectory)
+        return File.createTempFile("verse-preview-", ".wav", root)
+    }
+
     fun commitRecording(greekForm: String) {
         val candidate = recordingCandidateFile(greekForm)
         require(candidate.isFile && candidate.length() > 0) { "The new recording is unavailable or empty." }

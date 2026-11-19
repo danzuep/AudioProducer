@@ -11,6 +11,43 @@ import kotlin.math.sqrt
 object VerseAudio {
     const val SAMPLE_RATE = 16000
 
+    /** Suggest contiguous word boundaries near quiet points; the suggestions always require review. */
+    fun suggestBoundaries(samples: FloatArray, wordCount: Int): List<Int> {
+        require(wordCount > 0 && samples.size >= wordCount) { "Recording is too short to split." }
+        require(samples.all { it.isFinite() }) { "The recording contains invalid audio samples." }
+        val window = (SAMPLE_RATE / 100).coerceAtMost(samples.size)
+        val energies = DoubleArray((samples.size + window - 1) / window) { frame ->
+            val start = frame * window
+            val end = minOf(start + window, samples.size)
+            (start until end).sumOf { samples[it].toDouble() * samples[it] } / (end - start)
+        }
+        val boundaries = mutableListOf(0)
+        for (i in 1 until wordCount) {
+            val target = samples.size.toLong() * i / wordCount
+            val radius = samples.size / wordCount / 3
+            val minimum = boundaries.last() + 1
+            val maximum = samples.size - (wordCount - i)
+            val first = maxOf(minimum, (target - radius).toInt())
+            val last = minOf(maximum, (target + radius).toInt())
+            var best = target.toInt().coerceIn(minimum, maximum)
+            var bestScore = Double.POSITIVE_INFINITY
+            val startFrame = (first + window - 1) / window
+            val endFrame = last / window
+            for (frame in startFrame..endFrame) {
+                if (frame !in energies.indices) continue
+                val distance = kotlin.math.abs(frame * window - target).toDouble() / radius.coerceAtLeast(1)
+                val score = energies[frame] + distance * 1e-8
+                if (score < bestScore) {
+                    bestScore = score
+                    best = frame * window
+                }
+            }
+            boundaries.add(best)
+        }
+        boundaries.add(samples.size)
+        return boundaries
+    }
+
     fun assemble(clips: List<FloatArray>): FloatArray {
         require(clips.isNotEmpty()) { "No recordings are available for this verse." }
         val parts = clips.map { trimSilence(normalize(it)) }

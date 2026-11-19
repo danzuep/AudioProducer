@@ -79,16 +79,12 @@
                     android:layout_height="48dp"
                     android:layout_weight="1"
                     android:contentDescription="@string/audio_workbench_choose_book" />
-                <TextView
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/audio_workbench_chapter"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:labelFor="@+id/audio_workbench_chapter"
+                    android:layout_height="48dp"
                     android:text="@string/audio_chapter_filter" />
-                <NumberPicker
-                    android:id="@id/audio_workbench_chapter"
-                    android:layout_width="64dp"
-                    android:layout_height="88dp"
-                    android:descendantFocusability="blocksDescendants" />
             </LinearLayout>
             <EditText
                 android:id="@+id/audio_workbench_search"
@@ -242,5 +238,12 @@
             android:layout_height="wrap_content"
             android:text="@string/audio_attribution" />
     </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/audio_navigation_panel"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:visibility="gone" />
 
 </LinearLayout>
