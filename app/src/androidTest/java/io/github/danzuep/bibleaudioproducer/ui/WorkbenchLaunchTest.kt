@@ -334,6 +334,66 @@ class WorkbenchLaunchTest {
         }
     }
 
+    @Test
+    fun verseTakeRequiresConfirmationBeforeReplacingExistingClip() {
+        val context = grantRecordingPermission()
+        val verse = context.assets.open("books/JHN.json").bufferedReader().use {
+            MaculaVerseJson.parse(it.readText()).first { it.reference == "JHN 3:16" }
+        }
+        val words = verse.words.filter { !it.disabled(emptySet()) }
+        val first = words.first()
+        ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
+            awaitBooks(scenario, 27)
+            val clip = AudioProjectRepository(directory).clipFile(first.surface)
+            check(clip.parentFile!!.mkdirs() || clip.parentFile!!.isDirectory)
+            val original = VerseAudio.encodeWav(FloatArray(16000) { 0.1f })
+            clip.writeBytes(original)
+            onView(withText("Add verse recording")).perform(click())
+            onView(withText("Record verse")).perform(scrollTo(), click())
+            Thread.sleep(1000)
+            onView(withText("Stop recording")).perform(scrollTo(), click())
+            val deadline = System.currentTimeMillis() + 15_000
+            var ready = false
+            while (!ready && System.currentTimeMillis() < deadline) {
+                scenario.onActivity { activity ->
+                    val views = ArrayList<View>()
+                    activity.window.decorView.findViewsWithText(views, "Save clip and next", View.FIND_VIEWS_WITH_TEXT)
+                    ready = views.any { it is Button && it.isEnabled }
+                }
+                if (!ready) Thread.sleep(50)
+            }
+            assertTrue("Verse take was not decoded", ready)
+            onView(withText("Save clip and next")).perform(scrollTo(), click())
+            onView(withText(android.R.string.cancel)).perform(click())
+            assertArrayEquals(original, clip.readBytes())
+            onView(withText("Keep existing clip and next")).perform(scrollTo(), click())
+            onView(withText("1 / ${words.size} clips reviewed"))
+                .perform(scrollTo())
+                .check(matches(isDisplayed()))
+            onView(withText("Preview selection")).perform(scrollTo(), click())
+            onView(withText("Save clip and next")).perform(scrollTo(), click())
+            val saved = AudioProjectRepository(directory).clipFile(words[1].surface)
+            val saveDeadline = System.currentTimeMillis() + 15_000
+            while (!saved.isFile && System.currentTimeMillis() < saveDeadline) Thread.sleep(50)
+            assertTrue("The reviewed word clip was not saved", saved.isFile && saved.length() > 0)
+            var advanced = false
+            while (!advanced && System.currentTimeMillis() < saveDeadline) {
+                scenario.onActivity { activity ->
+                    val views = ArrayList<View>()
+                    activity.window.decorView.findViewsWithText(
+                        views, "2 / ${words.size} clips reviewed", View.FIND_VIEWS_WITH_TEXT
+                    )
+                    advanced = views.isNotEmpty()
+                }
+                if (!advanced) Thread.sleep(50)
+            }
+            assertTrue("The review did not advance", advanced)
+            pressBack()
+            onView(withText("Discard")).perform(click())
+            assertArrayEquals(original, clip.readBytes())
+        }
+    }
+
     private fun grantRecordingPermission(): Context {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val result = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(

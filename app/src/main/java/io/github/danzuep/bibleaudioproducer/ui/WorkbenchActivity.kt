@@ -703,16 +703,15 @@ class WorkbenchActivity : AppCompatActivity() {
             val marker = File(projectDirectory(projectId), "verse-onboarding")
             val book = verse.reference.substringBefore(' ')
             val all = versesFor(book)
-            val next = if (verse.reference == "JHN 3:16" && marker.isFile) {
+            val onboarding = verse.reference == "JHN 3:16" && marker.isFile
+            val nextReference = VerseWorkflow.nextReference(all.map { it.reference }, verse.reference, onboarding)
+            if (onboarding) {
                 if (!marker.delete()) {
                     Toast.makeText(this, R.string.audio_order_failed, Toast.LENGTH_LONG).show()
                     return@saveVerseState
                 }
-                all.firstOrNull { it.reference == "JHN 1:1" }
-            } else {
-                val index = all.indexOfFirst { it.reference == verse.reference }
-                all.getOrNull(index + 1).takeIf { index >= 0 }
             }
+            val next = all.firstOrNull { it.reference == nextReference }
             next?.let(verseDialogs::openVerse)
         }
     }

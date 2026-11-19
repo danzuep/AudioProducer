@@ -8,6 +8,15 @@ class VerseWorkflowTest {
         VerseWord(surface, lemma, pos, "", grammaticalCase, "", surface)
 
     @Test
+    fun onboardingStartsJohnThenAdvancesInVerseOrder() {
+        val references = listOf("JHN 1:1", "JHN 1:2", "JHN 3:16")
+        assertEquals("JHN 1:1", VerseWorkflow.nextReference(references, "JHN 3:16", true))
+        assertEquals("JHN 1:2", VerseWorkflow.nextReference(references, "JHN 1:1", false))
+        assertEquals(null, VerseWorkflow.nextReference(references, "missing", false))
+        assertEquals(null, VerseWorkflow.nextReference(references, "JHN 3:16", false))
+    }
+
+    @Test
     fun fullVersePlaybackIncludesProperNamesWithoutChangingLegacyPlayback() {
         val words = listOf(word("Jesus", "Jesus", "proper_noun"), word("said", "say", "verb"))
         assertEquals(listOf("said"), VerseWorkflow.spokenWords(words, emptyMap(), null, emptySet()).map { it.surface })

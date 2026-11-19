@@ -325,7 +325,9 @@ internal class VerseTakeEditor(
             }
         }
         if (repository.clipFile(word.surface).isFile) {
-            AlertDialog.Builder(activity).setMessage("Replace the existing recording for ${word.surface}?")
+            AlertDialog.Builder(activity).setMessage(
+                "Replace the existing recording for ${word.surface}? This form is shared across occurrences and verses."
+            )
                 .setNegativeButton(android.R.string.cancel, null)
                 .setPositiveButton("Replace") { _, _ -> save() }.show()
         } else save()
@@ -369,6 +371,7 @@ internal class VerseTakeEditor(
     }
 
     fun stopForBackground() {
+        player.stop()
         if (!recording) return
         recording = false
         runCatching { recorder.stop() }
