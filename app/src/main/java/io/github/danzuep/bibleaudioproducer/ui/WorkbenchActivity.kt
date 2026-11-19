@@ -77,6 +77,7 @@ class WorkbenchActivity : AppCompatActivity() {
     private val speechCredentials by lazy { SpeechCredentials(preferences) }
     private var androidGreekTts: AndroidGreekTts? = null
     private var speechGeneration = 0
+    @Volatile private var speechFailed = false
     private val audioPlayer by lazy {
         AndroidAudioPlayer {
             playingTake = null
@@ -93,6 +94,7 @@ class WorkbenchActivity : AppCompatActivity() {
         VerseDialogs(this, { repository }, object : VerseDialogs.Actions {
             override val state get() = projectState
             override val busy get() = this@WorkbenchActivity.busy
+            override val speechFailed get() = this@WorkbenchActivity.speechFailed
             override fun playVerse(verse: AudioVerse, smoothOverride: Boolean?) =
                 this@WorkbenchActivity.playVerse(verse, smoothOverride)
             override fun isPlayingVerse(verse: AudioVerse) = playingVerseReference == verse.reference
@@ -366,6 +368,7 @@ class WorkbenchActivity : AppCompatActivity() {
         reviewDialog = null
         refreshTakeReview = null
         liveTakeWaveform = null
+        playbackRenderGeneration++
         androidGreekTts?.shutdown()
         io.shutdown()
         super.onDestroy()
@@ -678,18 +681,15 @@ class WorkbenchActivity : AppCompatActivity() {
             verse.words, projectState.rules, projectState.seedOrders[verse.reference], projectState.unspoken,
             projectState.wordOrders[verse.reference]
         )
-        val words = spoken.filter { repository.clipFile(it.surface).isFile }
+        val words = spoken.filter { repository.playableClip(it) != null }
         if (words.isEmpty()) {
-            Toast.makeText(this, R.string.audio_word_not_recorded, Toast.LENGTH_SHORT).show()
+            speakGreek(listOf(VerseWorkflow.originalText(verse)))
             return
-        }
-        if (words.size != spoken.size) {
-            Toast.makeText(this, R.string.audio_playback_missing_words, Toast.LENGTH_SHORT).show()
         }
         if (pendingTake() == null) {
             playingVerseReference = verse.reference
             updateRows()
-            renderAndPlay(listOf(verse.reference to words), mapOf(verse.reference to smoothOverride))
+            renderAndPlay(listOf(verse.reference to spoken), mapOf(verse.reference to smoothOverride))
         }
     }
 
@@ -709,20 +709,17 @@ class WorkbenchActivity : AppCompatActivity() {
             )
         }
         val groups = spokenGroups.map { (reference, words) ->
-            reference to words.filter { repository.clipFile(it.surface).isFile }
+            reference to words.filter { repository.playableClip(it) != null }
         }
         val recorded = groups.flatMap { it.second }
         if (recorded.isEmpty()) {
-            Toast.makeText(this, R.string.audio_word_not_recorded, Toast.LENGTH_SHORT).show()
+            speakGreek(verses.map(VerseWorkflow::originalText))
             return
-        }
-        if (recorded.size != spokenGroups.sumOf { it.second.size }) {
-            Toast.makeText(this, R.string.audio_playback_missing_words, Toast.LENGTH_SHORT).show()
         }
         if (pendingTake() == null) {
             playingChapterKey = key
             updateRows()
-            renderAndPlay(groups.filter { it.second.isNotEmpty() })
+            renderAndPlay(spokenGroups.filter { it.second.isNotEmpty() })
         }
     }
 
@@ -763,9 +760,11 @@ class WorkbenchActivity : AppCompatActivity() {
                 var sampleCount = 0L
                 val maxPlaybackSamples = VerseAudio.SAMPLE_RATE * if (groups.size > 1) 600L else 180L
                 val renderedVerses = groups.map { (reference, words) ->
-                    val clips = words.map { word ->
+                    val clips = words.mapNotNull { word ->
+                        check(renderGeneration == playbackRenderGeneration) { "Playback was stopped." }
                         val surface = word.surface
-                        decoded.getOrPut(surface) { decoder.decode(targetRepository.clipFile(surface)) }.also {
+                        val source = targetRepository.playableClip(word) ?: greekClip(surface, renderGeneration)
+                        source?.let { decoded.getOrPut(source.path) { decoder.decode(it) } }?.also {
                             sampleCount += it.size
                             require(sampleCount <= maxPlaybackSamples) {
                                 getString(R.string.audio_playback_too_long)
@@ -1358,6 +1357,12 @@ class WorkbenchActivity : AppCompatActivity() {
         if (word != null) {
             addWordLabel(listOf(word.gloss, word.mandarin).filter(String::isNotBlank).joinToString(" · "), 14f)
         }
+        root.addView(TextView(this).apply {
+            setText(R.string.audio_review_select_hint)
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setPadding(0, dp(8), 0, dp(8))
+        })
         var candidateLoaded = false
         lateinit var dialog: AlertDialog
         fun choose(useNew: Boolean) {
@@ -1416,10 +1421,12 @@ class WorkbenchActivity : AppCompatActivity() {
             .setView(root)
             .setCancelable(false)
             .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.audio_review_use, null)
             .create()
         reviewDialog = dialog
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener { choose(false) }
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { choose(true) }
         }
         fun loadWaveform(file: File, waveform: RecordingWaveform) {
             io.execute {
@@ -1505,7 +1512,41 @@ class WorkbenchActivity : AppCompatActivity() {
         }
     }
 
-    private fun speakGreek(text: String) {
+    // Blocks the calling background thread; returns null when text-to-speech is unavailable.
+    private fun greekClip(text: String, generation: Int): File? {
+        val key = try { speechCredentials.key() } catch (exception: Exception) { null }
+        val clip = if (key == null) {
+            null
+        } else if (key.isBlank()) {
+            val latch = java.util.concurrent.CountDownLatch(1)
+            var result: File? = null
+            runOnUiThread {
+                if (isFinishing || isDestroyed) latch.countDown()
+                else getAndroidGreekTts().synthesize(text, cacheDir) { result = it; latch.countDown() }
+            }
+            if (latch.await(30, java.util.concurrent.TimeUnit.SECONDS)) result else null
+        } else {
+            val file = File(cacheDir, "tts-az-${speechCredentials.region().hashCode()}-${text.hashCode()}.mp3")
+            try {
+                if (file.length() == 0L) AzureGreekSpeech().synthesize(text, speechCredentials.region(), key, file)
+                file
+            } catch (exception: Exception) {
+                null
+            }
+        }
+        if (generation == playbackRenderGeneration) setSpeechFailed(clip == null)
+        return clip
+    }
+
+    private fun setSpeechFailed(failed: Boolean) {
+        if (speechFailed == failed) return
+        speechFailed = failed
+        runOnUiThread { if (!isFinishing && !isDestroyed) verseDialogs.refreshControls() }
+    }
+
+    private fun speakGreek(text: String) = speakGreek(listOf(text))
+
+    private fun speakGreek(texts: List<String>) {
         if (busy) return
         stopRecording()
         if (pendingTake() != null) return
@@ -1514,25 +1555,30 @@ class WorkbenchActivity : AppCompatActivity() {
             speechCredentials.key()
         } catch (exception: Exception) {
             Toast.makeText(this, exception.message ?: getString(R.string.audio_speech_setup_failed), Toast.LENGTH_LONG).show()
+            setSpeechFailed(true)
             return
         }
         if (key.isBlank()) {
             Toast.makeText(this, R.string.audio_speech_fallback_notice, Toast.LENGTH_LONG).show()
-            getAndroidGreekTts().speak(text)
+            getAndroidGreekTts().speak(texts)
             return
         }
         val region = speechCredentials.region()
         val generation = ++speechGeneration
         io.execute {
-            val audioFile = File(cacheDir, "greek-speech.mp3")
+            val audioFiles = texts.indices.map { File(cacheDir, "greek-speech-$it.mp3") }
             try {
-                AzureGreekSpeech().synthesize(text, region, key, audioFile)
+                texts.forEachIndexed { index, text ->
+                    AzureGreekSpeech().synthesize(text, region, key, audioFiles[index])
+                }
                 runOnUiThread {
                     if (generation == speechGeneration && !isFinishing && !isDestroyed) {
-                        audioPlayer.play(listOf(audioFile))
+                        setSpeechFailed(false)
+                        audioPlayer.play(audioFiles)
                     }
                 }
             } catch (exception: Exception) {
+                setSpeechFailed(true)
                 runOnUiThread {
                     if (generation == speechGeneration && !isFinishing && !isDestroyed) {
                         Toast.makeText(
@@ -1574,6 +1620,7 @@ class WorkbenchActivity : AppCompatActivity() {
             dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
                 try {
                     speechCredentials.clearKey()
+                    setSpeechFailed(false)
                     Toast.makeText(this, R.string.audio_speech_device_voice_enabled, Toast.LENGTH_LONG).show()
                     dialog.dismiss()
                 } catch (exception: Exception) {
@@ -1583,6 +1630,7 @@ class WorkbenchActivity : AppCompatActivity() {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 try {
                     speechCredentials.save(region.text.toString().trim(), key.text.toString().trim())
+                    setSpeechFailed(false)
                     Toast.makeText(this, R.string.audio_speech_saved, Toast.LENGTH_LONG).show()
                     dialog.dismiss()
                 } catch (exception: Exception) {
@@ -1675,12 +1723,14 @@ class WorkbenchActivity : AppCompatActivity() {
         androidGreekTts ?: AndroidGreekTts(
             this,
             preferences.getString(DEVICE_TTS_VOICE_KEY, null),
+            onDone = { setSpeechFailed(false) },
             onVoiceChanged = {
                 runOnUiThread {
                     if (!isFinishing && !isDestroyed) refreshAudioSettingControls()
                 }
             }
         ) { message ->
+            setSpeechFailed(true)
             runOnUiThread {
                 if (!isFinishing && !isDestroyed) {
                     Toast.makeText(this, message, Toast.LENGTH_LONG).show()
@@ -1712,6 +1762,7 @@ class WorkbenchActivity : AppCompatActivity() {
                             Toast.makeText(this, R.string.audio_tts_voice_save_failed, Toast.LENGTH_LONG).show()
                             return@setSingleChoiceItems
                         }
+                        setSpeechFailed(false)
                         refreshAudioSettingControls()
                         Toast.makeText(this, R.string.audio_tts_voice_selected, Toast.LENGTH_SHORT).show()
                         dialog.dismiss()

@@ -295,10 +295,11 @@ internal class AndroidGreekTts(
 ) {
     private var ready = false
     private var failed = false
-    private var pendingText: String? = null
+    private var pendingTexts: List<String>? = null
     private var voices = emptyList<Voice>()
     private var selectedVoice: Voice? = null
     private val voiceCallbacks = mutableListOf<(List<Voice>) -> Unit>()
+    private val fileCallbacks = java.util.concurrent.ConcurrentHashMap<String, (Boolean) -> Unit>()
     private var closed = false
     private val main = android.os.Handler(android.os.Looper.getMainLooper())
 
@@ -309,9 +310,15 @@ internal class AndroidGreekTts(
     init {
         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) = Unit
-            override fun onDone(utteranceId: String?) = this@AndroidGreekTts.onDone()
+            override fun onDone(utteranceId: String?) {
+                val callback = utteranceId?.let(fileCallbacks::remove)
+                if (callback != null) callback(true) else this@AndroidGreekTts.onDone()
+                shutdownWhenIdle()
+            }
             override fun onError(utteranceId: String?) {
-                onError("Android speech synthesis failed.")
+                val callback = utteranceId?.let(fileCallbacks::remove)
+                if (callback != null) callback(false) else onError("Android speech synthesis failed.")
+                shutdownWhenIdle()
             }
         })
     }
@@ -338,8 +345,8 @@ internal class AndroidGreekTts(
         voiceCallbacks.clear()
         callbacks.forEach { it(if (ready) voices else emptyList()) }
         if (error != null) onError(error)
-        if (ready) pendingText?.let(::speakNow)
-        pendingText = null
+        if (ready) pendingTexts?.let(::speakNow)
+        pendingTexts = null
     }
 
     private fun Voice.language() = when (locale.language) {
@@ -348,11 +355,32 @@ internal class AndroidGreekTts(
         else -> null
     }
 
-    fun speak(text: String) {
+    fun speak(text: String) = speak(listOf(text))
+
+    fun speak(texts: List<String>) {
         when {
-            ready -> speakNow(text)
+            ready -> speakNow(texts)
             failed -> onError("Install a Greek or Italian Android TTS voice to use device speech.")
-            else -> pendingText = text
+            else -> pendingTexts = texts
+        }
+    }
+
+    // Renders the text to a cached WAV so it can be mixed with recordings; calls back on a TTS thread.
+    fun synthesize(text: String, directory: File, done: (File?) -> Unit) {
+        availableVoices { available ->
+            val voice = selectedVoice
+            if (closed || available.isEmpty() || voice == null) return@availableVoices done(null)
+            val file = File(directory, "tts-${voice.name.hashCode()}-${text.hashCode()}.wav")
+            if (file.length() > 0) return@availableVoices done(file)
+            val id = "greek-file-${System.nanoTime()}"
+            val spoken = if (voice.language() == "it") ClassicalGreekG2p.italianRespelling(text) else text
+            fileCallbacks[id] = { ok -> done(file.takeIf { ok && it.length() > 0 }) }
+            val params = android.os.Bundle()
+            usedFileSynthesis = true
+            if (engine.synthesizeToFile(spoken, params, file, id) == TextToSpeech.ERROR) {
+                fileCallbacks.remove(id)
+                done(null)
+            }
         }
     }
 
@@ -374,30 +402,55 @@ internal class AndroidGreekTts(
 
     fun shutdown() {
         closed = true
-        pendingText = null
+        pendingTexts = null
         voiceCallbacks.clear()
-        engine.shutdown()
+        if (fileCallbacks.isEmpty()) {
+            if (ready) engine.stop()
+            shutdownWhenIdle()
+        } else {
+            main.postDelayed({
+                fileCallbacks.values.toList().forEach { it(false) }
+                fileCallbacks.clear()
+                shutdownWhenIdle()
+            }, 10_000)
+        }
     }
 
     fun stop() {
-        pendingText = null
-        if (ready) engine.stop()
+        pendingTexts = null
+        // Stopping the Pico engine mid-synthesis can crash it, so let file requests finish.
+        if (ready && fileCallbacks.isEmpty()) engine.stop()
     }
 
-    private fun speakNow(text: String) {
-        val voice = selectedVoice
-        val spokenText = if (voice?.language() == "it") {
-            ClassicalGreekG2p.italianRespelling(text)
-        } else {
-            text
+    private var engineShutDown = false
+
+    // Unbinding Pico after synthesizeToFile segfaults the engine process and steals window focus.
+    private var usedFileSynthesis = false
+
+
+    private fun shutdownWhenIdle() {
+        main.post {
+            if (closed && fileCallbacks.isEmpty() && !engineShutDown && !usedFileSynthesis) {
+                engineShutDown = true
+                engine.shutdown()
+            }
         }
-        val result = engine.speak(
-            spokenText,
-            TextToSpeech.QUEUE_FLUSH,
-            null,
-            "greek-${System.nanoTime()}"
-        )
-        if (result == TextToSpeech.ERROR) onError("Android speech synthesis failed.")
+    }
+
+    private fun speakNow(texts: List<String>) {
+        val italian = selectedVoice?.language() == "it"
+        texts.forEachIndexed { index, text ->
+            val result = engine.speak(
+                if (italian) ClassicalGreekG2p.italianRespelling(text) else text,
+                if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD,
+                null,
+                "greek-${System.nanoTime()}"
+            )
+            if (result == TextToSpeech.ERROR) {
+                onError("Android speech synthesis failed.")
+                return
+            }
+        }
     }
 }
 

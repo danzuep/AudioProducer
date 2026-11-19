@@ -16,6 +16,20 @@ data class VerseWord(
 ) {
     val proper: Boolean get() = type == "proper" || pos == "proper_noun"
     val unspokenKey: String get() = surface.ifEmpty { lemma }
+    val glossless: Boolean get() = gloss.isBlank() && mandarin.isBlank()
+
+    // Glossless words are disabled unless explicitly restored, which is recorded as a "+" marked key.
+    fun disabled(unspoken: Set<String>) = when {
+        unspokenKey in unspoken -> true
+        "+$unspokenKey" in unspoken -> false
+        else -> glossless
+    }
+
+    fun withDisabled(unspoken: MutableSet<String>, disabled: Boolean) {
+        unspoken.remove(unspokenKey)
+        unspoken.remove("+$unspokenKey")
+        if (disabled) unspoken.add(unspokenKey) else if (glossless) unspoken.add("+$unspokenKey")
+    }
 }
 
 data class AudioVerse(val reference: String, val words: List<VerseWord>) {
@@ -160,7 +174,9 @@ object VerseWorkflow {
         words: List<VerseWord>, rules: Map<String, GrammarRule>,
         explicit: List<Int>?, unspoken: Set<String>, wordOrder: List<Int>? = null
     ): List<VerseWord> = orderedWordIndices(words, rules, wordOrder, explicit).map(words::get)
-        .filter { !it.proper && it.unspokenKey !in unspoken }
+        .filter { !it.proper && !it.disabled(unspoken) }
+
+    fun originalText(verse: AudioVerse) = verse.words.joinToString(" ") { it.surface }
 
     fun orderedWordIndices(
         words: List<VerseWord>, rules: Map<String, GrammarRule>,

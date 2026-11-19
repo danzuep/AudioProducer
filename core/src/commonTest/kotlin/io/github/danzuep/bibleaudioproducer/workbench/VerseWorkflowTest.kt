@@ -8,6 +8,21 @@ class VerseWorkflowTest {
         VerseWord(surface, lemma, pos, "", grammaticalCase, "", surface)
 
     @Test
+    fun wordsWithoutAnyGlossAreDisabledButStillInOriginalText() {
+        val words = listOf(
+            word("ὁ", "ὁ", "det", "nominative").copy(gloss = ""),
+            word("λόγος", "λόγος", "noun", "nominative"),
+            word("τό", "ὁ", "det").copy(gloss = "", mandarin = "这")
+        )
+        assertEquals(listOf("λόγος", "τό"), VerseWorkflow.spokenWords(words, emptyMap(), null, emptySet()).map { it.surface })
+        val restored = mutableSetOf<String>().also { words[0].withDisabled(it, false) }
+        assertEquals(false, words[0].disabled(restored))
+        words[0].withDisabled(restored, true)
+        assertEquals(true, words[0].disabled(restored))
+        assertEquals("ὁ λόγος τό", VerseWorkflow.originalText(AudioVerse("John 1:1", words)))
+    }
+
+    @Test
     fun learnsChunkOrderAndRespectsPerFormOmissions() {
         val words = listOf(
             word("ὁ", "ὁ", "det", "nominative"),
