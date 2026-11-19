@@ -16,11 +16,9 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioDecoder
-import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioEncoder
 import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioPlayer
 import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioRecorder
 import io.github.danzuep.bibleaudioproducer.audio.VerseAudio
-import io.github.danzuep.bibleaudioproducer.audio.VerseExportFormat
 import io.github.danzuep.bibleaudioproducer.data.AudioProjectRepository
 import io.github.danzuep.bibleaudioproducer.workbench.VerseWord
 import java.io.File
@@ -300,12 +298,12 @@ internal class VerseTakeEditor(
             refresh()
             val part = samples.copyOfRange(first, last)
             io.execute {
-                var encoded = false
+                var written = false
                 try {
                     check(candidate.parentFile?.let { it.mkdirs() || it.isDirectory } == true)
-                    AndroidAudioEncoder().encode(part, candidate, VerseExportFormat.AAC)
-                    encoded = true
-                    repository.commitRecording(word.surface)
+                    candidate.writeBytes(VerseAudio.encodeWav(part))
+                    written = true
+                    repository.commitRecording(word.surface, "audio/wav")
                     activity.runOnUiThread {
                         if (!closed) {
                             if (index + 2 < boundaries.size && last > boundaries[index] && last < boundaries[index + 2]) {
@@ -317,7 +315,7 @@ internal class VerseTakeEditor(
                     }
                 } catch (e: Exception) {
                     // Keep the candidate if committing failed so that the take can be recovered.
-                    if (!encoded) candidate.delete()
+                    if (!written) candidate.delete()
                     activity.runOnUiThread {
                         if (!closed) { working = false; toast(e.message ?: "Unable to save clip."); refresh() }
                     }

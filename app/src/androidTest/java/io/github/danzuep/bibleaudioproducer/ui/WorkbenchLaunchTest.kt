@@ -44,6 +44,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import io.github.danzuep.bibleaudioproducer.R
 import io.github.danzuep.bibleaudioproducer.audio.VerseAudio
+import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioDecoder
 import io.github.danzuep.bibleaudioproducer.data.RecordingPlanJson
 import io.github.danzuep.bibleaudioproducer.data.AudioProjectRepository
 import io.github.danzuep.bibleaudioproducer.data.MaculaVerseJson
@@ -389,6 +390,10 @@ class WorkbenchLaunchTest {
                 if (!advanced) Thread.sleep(50)
             }
             assertTrue("The review did not advance", advanced)
+            assertEquals("RIFF", saved.inputStream().use { input ->
+                ByteArray(4).also { assertEquals(4, input.read(it)) }.toString(Charsets.US_ASCII)
+            })
+            assertTrue("Saved word cannot be decoded", AndroidAudioDecoder().decode(saved).isNotEmpty())
             pressBack()
             onView(withText("Discard")).perform(click())
             assertArrayEquals(original, clip.readBytes())

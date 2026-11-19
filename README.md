@@ -24,7 +24,8 @@ recording**. Record the whole verse in that order. The app suggests boundaries a
 points; select each word, adjust the start and end with the sliders or typed seconds,
 preview it, and save it or keep its existing clip. Suggestions are approximate and must
 be reviewed. Disabled words are omitted; restore them in word details before recording
-if needed. Each saved clip is keyed by Greek surface form, so repeated forms share a
+if needed. Verse clips are saved as lossless WAV audio, including very short selections.
+Each saved clip is keyed by Greek surface form, so repeated forms share a
 recording: replacing any existing clip requires confirmation. Back discards the unsaved
 verse take but keeps clips already saved. Once every word is reviewed, **Finish verse**
 saves the order and advances from John 3:16 to John 1:1, then through the following

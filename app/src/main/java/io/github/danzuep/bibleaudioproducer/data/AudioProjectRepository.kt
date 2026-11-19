@@ -58,7 +58,8 @@ class AudioProjectRepository(private val root: File) {
         return File.createTempFile("verse-preview-", ".wav", root)
     }
 
-    fun commitRecording(greekForm: String) {
+    fun commitRecording(greekForm: String, mime: String = "audio/mp4") {
+        require(mime == "audio/mp4" || mime == "audio/wav") { "Unsupported recording format." }
         val candidate = recordingCandidateFile(greekForm)
         require(candidate.isFile && candidate.length() > 0) { "The new recording is unavailable or empty." }
         val current = clipFile(greekForm)
@@ -76,7 +77,7 @@ class AudioProjectRepository(private val root: File) {
         try {
             check(candidate.renameTo(current)) { "Unable to save the new recording." }
             try {
-                recordingSaved(greekForm)
+                recordingSaved(greekForm, mime)
             } catch (exception: Exception) {
                 val candidateRestored = current.renameTo(candidate)
                 val previousRestored = backup == null || (candidateRestored && backup.renameTo(current))
@@ -123,9 +124,9 @@ class AudioProjectRepository(private val root: File) {
 
     fun saveState(state: AudioProjectState) = writeJson(stateFile, state)
 
-    fun recordingSaved(greekForm: String) {
+    fun recordingSaved(greekForm: String, mime: String = "audio/mp4") {
         val metadata = loadMetadata().toMutableMap()
-        metadata[greekForm] = "audio/mp4"
+        metadata[greekForm] = mime
         writeJson(metadataFile, metadata)
     }
 

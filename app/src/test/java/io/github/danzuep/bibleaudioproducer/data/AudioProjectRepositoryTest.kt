@@ -142,6 +142,33 @@ class AudioProjectRepositoryTest {
     }
 
     @Test
+    fun exportsCommittedVerseClipWithItsWavMimeAndBytes() {
+        val directory = Files.createTempDirectory("audio-verse-export-test").toFile()
+        try {
+            val repository = AudioProjectRepository(directory)
+            val candidate = repository.recordingCandidateFile("λόγος")
+            check(candidate.parentFile!!.mkdirs())
+            val bytes = byteArrayOf(82, 73, 70, 70, 1, 2, 3)
+            candidate.writeBytes(bytes)
+            repository.commitRecording("λόγος", "audio/wav")
+            val output = ByteArrayOutputStream()
+            repository.writeExport(listOf(RecordingCard("JHN", "λόγος", "word", 1)), "Example", output)
+            val entries = mutableMapOf<String, ByteArray>()
+            ZipInputStream(output.toByteArray().inputStream()).use { zip ->
+                while (true) {
+                    val entry = zip.nextEntry ?: break
+                    entries[entry.name] = zip.readBytes()
+                }
+            }
+            val manifest = entries.getValue("manifest.json").toString(Charsets.UTF_8)
+            assertTrue(manifest.contains("\"mime\": \"audio/wav\""))
+            assertEquals(bytes.toList(), entries.getValue("clips/1.wav").toList())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun importUsesSurfaceForm() {
         val directory = Files.createTempDirectory("audio-surface-import-test").toFile()
         try {
