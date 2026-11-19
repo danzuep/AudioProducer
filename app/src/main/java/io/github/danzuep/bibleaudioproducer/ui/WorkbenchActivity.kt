@@ -681,7 +681,7 @@ class WorkbenchActivity : AppCompatActivity() {
             verse.words, projectState.rules, projectState.seedOrders[verse.reference], projectState.unspoken,
             projectState.wordOrders[verse.reference]
         )
-        val words = spoken.filter { repository.clipFile(it.surface).isFile }
+        val words = spoken.filter { repository.playableClip(it) != null }
         if (words.isEmpty()) {
             speakGreek(listOf(VerseWorkflow.originalText(verse)))
             return
@@ -709,7 +709,7 @@ class WorkbenchActivity : AppCompatActivity() {
             )
         }
         val groups = spokenGroups.map { (reference, words) ->
-            reference to words.filter { repository.clipFile(it.surface).isFile }
+            reference to words.filter { repository.playableClip(it) != null }
         }
         val recorded = groups.flatMap { it.second }
         if (recorded.isEmpty()) {
@@ -763,9 +763,8 @@ class WorkbenchActivity : AppCompatActivity() {
                     val clips = words.mapNotNull { word ->
                         check(renderGeneration == playbackRenderGeneration) { "Playback was stopped." }
                         val surface = word.surface
-                        val recording = targetRepository.clipFile(surface)
-                        val source = if (recording.isFile) recording else greekClip(surface, renderGeneration)
-                        source?.let { decoded.getOrPut(surface) { decoder.decode(it) } }?.also {
+                        val source = targetRepository.playableClip(word) ?: greekClip(surface, renderGeneration)
+                        source?.let { decoded.getOrPut(source.path) { decoder.decode(it) } }?.also {
                             sampleCount += it.size
                             require(sampleCount <= maxPlaybackSamples) {
                                 getString(R.string.audio_playback_too_long)
@@ -1358,6 +1357,12 @@ class WorkbenchActivity : AppCompatActivity() {
         if (word != null) {
             addWordLabel(listOf(word.gloss, word.mandarin).filter(String::isNotBlank).joinToString(" · "), 14f)
         }
+        root.addView(TextView(this).apply {
+            setText(R.string.audio_review_select_hint)
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setPadding(0, dp(8), 0, dp(8))
+        })
         var candidateLoaded = false
         lateinit var dialog: AlertDialog
         fun choose(useNew: Boolean) {
@@ -1416,10 +1421,12 @@ class WorkbenchActivity : AppCompatActivity() {
             .setView(root)
             .setCancelable(false)
             .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.audio_review_use, null)
             .create()
         reviewDialog = dialog
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener { choose(false) }
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { choose(true) }
         }
         fun loadWaveform(file: File, waveform: RecordingWaveform) {
             io.execute {

@@ -7,6 +7,7 @@ import io.github.danzuep.bibleaudioproducer.workbench.RecordingCard
 import io.github.danzuep.bibleaudioproducer.workbench.AudioArchiveImport
 import io.github.danzuep.bibleaudioproducer.workbench.AudioProjectState
 import io.github.danzuep.bibleaudioproducer.workbench.GrammarRule
+import io.github.danzuep.bibleaudioproducer.workbench.VerseWord
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
@@ -30,6 +31,10 @@ class AudioProjectRepository(private val root: File) {
         }
         planFile.writeText(GsonBuilder().create().toJson(mapOf("cards" to savedCards)))
     }
+
+    // A recording of the exact form wins; otherwise the lemma's recording is reused.
+    fun playableClip(word: VerseWord): File? =
+        clipFile(word.surface).takeIf { it.isFile } ?: clipFile(word.lemma).takeIf { it.isFile }
 
     fun clipFile(greekForm: String): File {
         val safeName = greekForm.toByteArray(Charsets.UTF_8)

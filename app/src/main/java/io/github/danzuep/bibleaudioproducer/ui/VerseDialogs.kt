@@ -195,7 +195,7 @@ internal class VerseDialogs(
                 VerseWorkflow.spokenWords(
                     verse.words, state.rules, state.seedOrders[verse.reference], state.unspoken,
                     state.wordOrders[verse.reference]
-                ).any { repository.clipFile(it.surface).isFile }
+                ).any { repository.playableClip(it) != null }
             }
             val chapterPlayable = chapterRecorded || !actions.speechFailed
             chapterPlay.isEnabled = chapterPlayable
@@ -210,7 +210,7 @@ internal class VerseDialogs(
                 val recorded = VerseWorkflow.spokenWords(
                     verse.words, state.rules, state.seedOrders[verse.reference], state.unspoken,
                     state.wordOrders[verse.reference]
-                ).any { repository.clipFile(it.surface).isFile }
+                ).any { repository.playableClip(it) != null }
                 val playable = recorded || !actions.speechFailed
                 button.isEnabled = playable
                 button.alpha = if (playable) 1f else 0.45f
@@ -433,7 +433,7 @@ internal class VerseDialogs(
             if (recordingStateChanged) renderWords()
             val recorded = VerseWorkflow.spokenWords(
                 verse.words, actions.state.rules, actions.state.seedOrders[verse.reference], unspoken, order
-            ).any { repository.clipFile(it.surface).isFile }
+            ).any { repository.playableClip(it) != null }
             val playable = recorded || !actions.speechFailed
             play.isEnabled = playable
             play.setText(if (actions.isPlayingVerse(verse)) R.string.audio_stop_symbol else R.string.audio_play_symbol)

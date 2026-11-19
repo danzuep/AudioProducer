@@ -122,6 +122,7 @@
     <string name="audio_review_play_old">Play current take</string>
     <string name="audio_review_stop_old">Stop current take</string>
     <string name="audio_review_waveform_failed">Could not display the take waveform.</string>
+    <string name="audio_review_select_hint">Tap a waveform to select that take.</string>
     <string name="audio_review_keep">Keep current</string>
     <string name="audio_review_use">Use new</string>
     <string name="audio_review_failed">Unable to finish reviewing this recording.</string>
