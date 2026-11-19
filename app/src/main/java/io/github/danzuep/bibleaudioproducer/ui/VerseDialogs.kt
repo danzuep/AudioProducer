@@ -5,7 +5,11 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.Spinner
+import io.github.danzuep.bibleaudioproducer.workbench.WordOrderMode
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -297,15 +301,33 @@ internal class VerseDialogs(
             gravity = Gravity.CENTER_VERTICAL
             orientation = LinearLayout.HORIZONTAL
         }
-        val reset = MaterialButton(activity).apply {
-            setText(R.string.audio_reset_order)
-            setOnClickListener {
-                val original = verse.words.indices.toList()
-                if (order != original) {
-                    order = original.toMutableList()
-                    changed = true
-                    renderWords()
+        val modes = WordOrderMode.values()
+        val modeLabels = listOf(
+            R.string.audio_word_order_greek, R.string.audio_word_order_english,
+            R.string.audio_word_order_german,
+            R.string.audio_word_order_mandarin, R.string.audio_word_order_japanese,
+            R.string.audio_word_order_arabic, R.string.audio_word_order_custom
+        ).map(activity::getString)
+        var selecting = false
+        val orderMode = Spinner(activity).apply {
+            adapter = ArrayAdapter(activity, android.R.layout.simple_spinner_dropdown_item, modeLabels)
+            val current = modes.firstOrNull {
+                it != WordOrderMode.CUSTOM && VerseWorkflow.modeOrder(verse.words, it) == order
+            } ?: WordOrderMode.CUSTOM
+            setSelection(current.ordinal)
+            onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                    val mode = modes[position]
+                    if (selecting || mode == WordOrderMode.CUSTOM) return
+                    val next = VerseWorkflow.modeOrder(verse.words, mode)
+                    if (next != order) {
+                        order = next.toMutableList()
+                        changed = true
+                        renderWords()
+                    }
                 }
+
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
             }
         }
         val neural = MaterialCheckBox(activity).apply {
@@ -318,7 +340,7 @@ internal class VerseDialogs(
                 smoothOverride = checked
             }
         }
-        controls.addView(reset)
+        controls.addView(orderMode)
         controls.addView(neural, LinearLayout.LayoutParams(0, dp(48), 1f))
         root.addView(controls)
 
@@ -394,6 +416,9 @@ internal class VerseDialogs(
                                     } else -1
                                     if (target >= 0 && target != orderIndex) {
                                         order.add(target, order.removeAt(orderIndex))
+                                        selecting = true
+                                        orderMode.setSelection(WordOrderMode.CUSTOM.ordinal)
+                                        selecting = false
                                         changed = true
                                         renderWords()
                                     }

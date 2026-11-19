@@ -109,7 +109,13 @@
     <string name="audio_move_later">Move later</string>
     <string name="audio_speak_word">Speak %1$s</string>
     <string name="audio_save_order">Save order</string>
-    <string name="audio_reset_order">Reset Greek order</string>
+    <string name="audio_word_order_greek">Greek order</string>
+    <string name="audio_word_order_english">English (SVO)</string>
+    <string name="audio_word_order_german">German (V2)</string>
+    <string name="audio_word_order_mandarin">Mandarin (S-Adv-V-O)</string>
+    <string name="audio_word_order_japanese">Japanese (SOV)</string>
+    <string name="audio_word_order_arabic">Arabic (VSO)</string>
+    <string name="audio_word_order_custom">Custom</string>
     <string name="audio_order_saved">Verse order saved.</string>
     <string name="audio_order_failed">Unable to save verse order.</string>
     <string name="audio_record_stop">Record / stop</string>

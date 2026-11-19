@@ -39,6 +39,21 @@ data class AudioVerse(val reference: String, val words: List<VerseWord>) {
 data class GrammarChunk(val slot: String, val words: List<VerseWord>)
 data class GrammarRule(val keep: Int = 0, val flip: Int = 0)
 
+enum class WordOrderMode(
+    val slots: List<String>?,
+    val headFinal: Boolean = false,
+    val postpositions: Boolean = false,
+    val verbSecond: Boolean = false
+) {
+    GREEK(null),
+    ENGLISH_SVO(listOf("CONJ", "S", "V", "IO", "O", "ADV")),
+    GERMAN_V2(listOf("CONJ", "S", "V", "IO", "O", "ADV"), verbSecond = true),
+    MANDARIN_SADVVO(listOf("CONJ", "S", "ADV", "V", "IO", "O"), headFinal = true),
+    JAPANESE_SOV(listOf("S", "ADV", "IO", "O", "V", "CONJ"), headFinal = true, postpositions = true),
+    ARABIC_VSO(listOf("CONJ", "V", "S", "O", "IO", "ADV")),
+    CUSTOM(null)
+}
+
 object VerseWorkflow {
     private val nominal = setOf("noun", "pron", "det", "adj", "num")
     private val heads = setOf("noun", "pron", "num")
@@ -191,6 +206,51 @@ object VerseWorkflow {
             }
         }
         return order(chunks, rules, chunkOrder).flatMap { chunkWordIndices[it] }
+    }
+
+    // Chunks without a clause role (participles, etc.) stay attached to the preceding role group.
+    // Head-final modes also put genitive phrases and noun modifiers before their head noun.
+    fun modeOrder(words: List<VerseWord>, mode: WordOrderMode): List<Int> {
+        val slots = mode.slots ?: return words.indices.toList()
+        val chunks = chunks(words)
+        val remaining = words.indices.toMutableList()
+        val chunkIndices = chunks.map { chunk ->
+            val indices = chunk.words.map { word -> remaining.first { words[it] == word }.also { remaining.remove(it) } }
+            val adposition = indices.firstOrNull()?.takeIf { mode.postpositions && words[it].pos == "prep" }
+            var body = if (adposition != null) indices.drop(1) else indices
+            if (mode.headFinal) body = body.filter { words[it].pos !in heads } + body.filter { words[it].pos in heads }
+            if (adposition != null) body + adposition else body
+        }
+        val clauseIds = clauses(chunks)
+        return clauseIds.distinct().flatMap { clause ->
+            val groups = mutableListOf<Pair<String?, MutableList<Int>>>()
+            chunks.indices.filter { clauseIds[it] == clause }.forEach { i ->
+                val role = when (val slot = chunks[i].slot) {
+                    "CONJ", "V", "ADV" -> slot
+                    "PP" -> "ADV"
+                    "NP.nom" -> "S"
+                    "NP.acc" -> "O"
+                    "NP.dat" -> "IO"
+                    else -> null
+                }
+                when {
+                    role != null || groups.isEmpty() -> groups.add(role to chunkIndices[i].toMutableList())
+                    mode.headFinal && chunks[i].slot == "NP.gen" -> groups.last().second.addAll(0, chunkIndices[i])
+                    else -> groups.last().second.addAll(chunkIndices[i])
+                }
+            }
+            var sorted = groups.sortedBy { (role, _) -> slots.indexOf(role).let { if (it < 0) slots.size else it } }
+            if (mode.verbSecond) {
+                val lead = sorted.firstOrNull { it.first != "CONJ" && it.first != "V" }
+                if (lead != null) {
+                    val rest = sorted - lead
+                    val front = rest.filter { it.first == "CONJ" }
+                    val verbs = rest.filter { it.first == "V" }
+                    sorted = front + lead + verbs + (rest - front.toSet() - verbs.toSet())
+                }
+            }
+            sorted.flatMap { it.second }
+        }
     }
 
     private fun validOrder(order: List<Int>, count: Int) =
