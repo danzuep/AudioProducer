@@ -21,18 +21,19 @@ class AndroidAudioEncoderTest {
     fun encodesAacM4a() = verify(VerseExportFormat.AAC, MediaFormat.MIMETYPE_AUDIO_AAC)
 
     @Test
-    fun encodesShortWordClipsWithoutDroppingAudio() {
+    fun rejectsShortAacInsteadOfProducingSilentAudio() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        for (size in listOf(160, 800, 1024)) {
+        for (size in listOf(160, 800, 1024, 2047)) {
             val file = File.createTempFile("short-word-", ".m4a", context.cacheDir)
             val samples = FloatArray(size) {
                 (0.5 * sin(2 * PI * 440 * it / VerseAudio.SAMPLE_RATE)).toFloat()
             }
             try {
-                AndroidAudioEncoder().encode(samples, file, VerseExportFormat.AAC)
-                val decoded = AndroidAudioDecoder().decode(file)
-                assertTrue("No audio for $size samples", decoded.any { abs(it) > 0.02f })
-                assertTrue("Excessive padding for $size samples", decoded.size <= size + 4096)
+                val error = runCatching { AndroidAudioEncoder().encode(samples, file, VerseExportFormat.AAC) }
+                    .exceptionOrNull()
+                assertTrue("Short AAC should be rejected", error is IllegalArgumentException)
+                assertTrue(error?.message.orEmpty().contains("WAV"))
+                assertEquals(0L, file.length())
             } finally {
                 file.delete()
             }

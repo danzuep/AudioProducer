@@ -16,6 +16,9 @@ internal class AndroidAudioEncoder {
         require(format != VerseExportFormat.WAV && Build.VERSION.SDK_INT >= format.minSdk) {
             "This audio format is not supported on this device."
         }
+        require(format != VerseExportFormat.AAC || samples.size >= 2048) {
+            "This audio is too short for AAC encoding. Save it as WAV instead."
+        }
         val mime = when (format) {
             VerseExportFormat.AAC -> MediaFormat.MIMETYPE_AUDIO_AAC
             VerseExportFormat.OPUS -> MediaFormat.MIMETYPE_AUDIO_OPUS
@@ -38,12 +41,7 @@ internal class AndroidAudioEncoder {
             try {
                 codec.configure(audioFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
                 codec.start()
-                // Short AAC takes need silence before and after the signal so
-                // codec priming and frame buffering do not discard the word.
-                val shortAac = format == VerseExportFormat.AAC && samples.size < 2048
-                val leadingSamples = if (shortAac) 1024 else 0
-                val inputSamples = if (shortAac) samples.size + 3072 else samples.size
-                encodeTrack(codec, muxer, samples, leadingSamples, inputSamples)
+                encodeTrack(codec, muxer, samples)
             } finally {
                 muxer.release()
             }
@@ -52,9 +50,7 @@ internal class AndroidAudioEncoder {
         }
     }
 
-    private fun encodeTrack(
-        codec: MediaCodec, muxer: MediaMuxer, samples: FloatArray, leadingSamples: Int, inputSamples: Int
-    ) {
+    private fun encodeTrack(codec: MediaCodec, muxer: MediaMuxer, samples: FloatArray) {
         val info = MediaCodec.BufferInfo()
         var position = 0
         var inputEnded = false
@@ -70,10 +66,10 @@ internal class AndroidAudioEncoder {
                     val buffer = requireNotNull(codec.getInputBuffer(index))
                     buffer.clear()
                     buffer.order(ByteOrder.LITTLE_ENDIAN)
-                    val count = minOf(inputSamples - position, buffer.remaining() / 2)
-                    check(count > 0 || position == inputSamples) { "The encoder input buffer is too small." }
+                    val count = minOf(samples.size - position, buffer.remaining() / 2)
+                    check(count > 0 || position == samples.size) { "The encoder input buffer is too small." }
                     for (i in 0 until count) {
-                        val sample = samples.getOrElse(position + i - leadingSamples) { 0f }
+                        val sample = samples[position + i]
                         buffer.putShort((sample.coerceIn(-1f, 1f) * 32767).roundToInt().toShort())
                     }
                     val timestamp = position.toLong() * 1_000_000 / VerseAudio.SAMPLE_RATE

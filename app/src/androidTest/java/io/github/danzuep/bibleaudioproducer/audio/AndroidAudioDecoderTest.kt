@@ -27,5 +27,20 @@ class AndroidAudioDecoderTest {
         } finally {
             file.delete()
         }
+
+        @Test
+        fun preservesVeryShortWordClip() {
+            val context = ApplicationProvider.getApplicationContext<Context>()
+            val file = File.createTempFile("short-word-", ".wav", context.cacheDir)
+            try {
+                val samples = FloatArray(160) { (0.5 * sin(2 * PI * 440 * it / VerseAudio.SAMPLE_RATE)).toFloat() }
+                file.writeBytes(VerseAudio.encodeWav(samples))
+                val decoded = AndroidAudioDecoder().decode(file)
+                assertEquals(samples.size, decoded.size)
+                samples.indices.forEach { assertEquals(samples[it], decoded[it], 0.001f) }
+            } finally {
+                file.delete()
+            }
+        }
     }
 }

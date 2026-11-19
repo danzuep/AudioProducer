@@ -77,7 +77,8 @@ globally in Settings, choose a per-verse opt-out, and select standard or strong 
 Choose **Save verse audio** from a verse to export its recorded words in the selected
 order, with normalized levels and crossfaded joins. Choose lossless WAV, compatible
 AAC (M4A), or compact Opus (Ogg, Android 10 or later). All formats also support neural
-smoothing. The app reports how many missing words were skipped. Computer voice is not
+smoothing. Very short audio (under 128 ms) must be saved as WAV instead of AAC.
+The app reports how many missing words were skipped. Computer voice is not
 yet available.
 
 On Android 7.0 or later, **Save with neural smoothing** optionally blends an on-device

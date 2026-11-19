@@ -58,10 +58,17 @@ class AudioProjectRepository(private val root: File) {
         return File.createTempFile("verse-preview-", ".wav", root)
     }
 
-    fun commitRecording(greekForm: String, mime: String = "audio/mp4") {
-        require(mime == "audio/mp4" || mime == "audio/wav") { "Unsupported recording format." }
+    fun commitRecording(greekForm: String, mime: String? = null) {
         val candidate = recordingCandidateFile(greekForm)
         require(candidate.isFile && candidate.length() > 0) { "The new recording is unavailable or empty." }
+        val resolvedMime = mime ?: candidate.inputStream().use { input ->
+            val header = ByteArray(12)
+            if (input.read(header) == header.size &&
+                header.copyOfRange(0, 4).contentEquals("RIFF".toByteArray()) &&
+                header.copyOfRange(8, 12).contentEquals("WAVE".toByteArray())
+            ) "audio/wav" else "audio/mp4"
+        }
+        require(resolvedMime == "audio/mp4" || resolvedMime == "audio/wav") { "Unsupported recording format." }
         val current = clipFile(greekForm)
         val backup = if (current.isFile) {
             File.createTempFile("previous-take-", ".tmp", clipsDirectory).also {
@@ -77,7 +84,7 @@ class AudioProjectRepository(private val root: File) {
         try {
             check(candidate.renameTo(current)) { "Unable to save the new recording." }
             try {
-                recordingSaved(greekForm, mime)
+                recordingSaved(greekForm, resolvedMime)
             } catch (exception: Exception) {
                 val candidateRestored = current.renameTo(candidate)
                 val previousRestored = backup == null || (candidateRestored && backup.renameTo(current))
