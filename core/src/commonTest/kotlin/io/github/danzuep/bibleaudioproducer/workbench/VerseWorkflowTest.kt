@@ -68,4 +68,35 @@ class VerseWorkflowTest {
             VerseWorkflow.spokenWords(words, emptyMap(), null, emptySet(), listOf(2, 0, 1)).map { it.surface }
         )
     }
+
+    @Test
+    fun reordersClauseRolesByWordOrderMode() {
+        val words = listOf(
+            word("ἐν", "ἐν", "prep"),
+            word("ἀρχῇ", "ἀρχή", "noun", "dative"),
+            word("ἦν", "εἰμί", "verb"),
+            word("ὁ", "ὁ", "det", "nominative"),
+            word("λόγος", "λόγος", "noun", "nominative"),
+            word("τὸν", "ὁ", "det", "accusative"),
+            word("θεόν", "θεός", "noun", "accusative")
+        )
+        assertEquals(words.indices.toList(), VerseWorkflow.modeOrder(words, WordOrderMode.GREEK))
+        assertEquals(listOf(3, 4, 2, 5, 6, 0, 1), VerseWorkflow.modeOrder(words, WordOrderMode.ENGLISH_SVO))
+        assertEquals(listOf(3, 4, 1, 0, 5, 6, 2), VerseWorkflow.modeOrder(words, WordOrderMode.JAPANESE_SOV))
+        assertEquals(listOf(2, 3, 4, 5, 6, 0, 1), VerseWorkflow.modeOrder(words, WordOrderMode.ARABIC_VSO))
+        assertEquals(listOf(3, 4, 2, 5, 6, 0, 1), VerseWorkflow.modeOrder(words, WordOrderMode.GERMAN_V2))
+    }
+
+    @Test
+    fun verbSecondFrontsOneConstituentAndHeadFinalMovesGenitives() {
+        val objectFirst = listOf(word("ἔχει", "ἔχω", "verb"), word("τὸν", "ὁ", "det", "accusative"), word("θεόν", "θεός", "noun", "accusative"))
+        assertEquals(listOf(0, 1, 2), VerseWorkflow.modeOrder(objectFirst, WordOrderMode.ENGLISH_SVO))
+        assertEquals(listOf(1, 2, 0), VerseWorkflow.modeOrder(objectFirst, WordOrderMode.GERMAN_V2))
+        val genitive = listOf(
+            word("ὁ", "ὁ", "det", "nominative"), word("λόγος", "λόγος", "noun", "nominative"),
+            word("τοῦ", "ὁ", "det", "genitive"), word("θεοῦ", "θεός", "noun", "genitive"), word("ἦν", "εἰμί", "verb")
+        )
+        assertEquals(listOf(0, 1, 2, 3, 4), VerseWorkflow.modeOrder(genitive, WordOrderMode.ENGLISH_SVO))
+        assertEquals(listOf(2, 3, 0, 1, 4), VerseWorkflow.modeOrder(genitive, WordOrderMode.MANDARIN_SADVVO))
+    }
 }
