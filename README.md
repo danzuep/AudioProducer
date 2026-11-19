@@ -44,7 +44,8 @@ approximations, not full grammars of English, German, Mandarin, Japanese or Arab
 German subordinate clauses are left in source order rather than forced into V2;
 Japanese postpositions are approximated only for intact prepositional phrases.
 Other noun modifiers, negation, implicit subjects, discourse and idioms require
-human review. Where syntax is missing, malformed, discontinuous or ambiguous, the
+human review. Where syntax is missing, malformed, crosses verse boundaries,
+is discontinuous or ambiguous, the
 affected words retain their source order. Greek and Custom remain unchanged. Saved
 and manually selected orders still take precedence; drag words to correct a preset.
 

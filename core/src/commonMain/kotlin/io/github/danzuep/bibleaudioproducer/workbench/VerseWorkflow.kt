@@ -256,7 +256,7 @@ object VerseWorkflow {
             positions.zip(ordered).forEach { (position, index) -> result[position] = index }
         }
         fun visit(node: Node, inNominal: Boolean, subordinate: Boolean) {
-            val nominal = inNominal || node.category == "np"
+            val nominal = inNominal || node.category.removePrefix("!") == "np"
             val sub = subordinate || node.rule.equals("sub-CL", ignoreCase = true)
             node.children.forEach { visit(it, nominal, sub) }
             val all = members(node)
@@ -279,7 +279,10 @@ object VerseWorkflow {
                     "adv" -> "ADV"
                     else -> ""
                 }
-                Constituent(if (child.category == "cl" || !contiguous(indices)) "" else role, indices, child.category)
+                Constituent(
+                    if (child.category == "cl" || child.category.startsWith("!") || !contiguous(indices)) "" else role,
+                    indices, child.category
+                )
             }.sortedBy { it.indices.firstOrNull() ?: Int.MAX_VALUE }
 
             fun reorder(segment: List<Constituent>) {

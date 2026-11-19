@@ -123,6 +123,8 @@ class VerseWorkflowTest {
         assertEquals(words.indices.toList(), VerseWorkflow.modeOrder(words.mapIndexed { i, w ->
             if (i == 0) w.copy(syntaxPath = "invalid") else w
         }, WordOrderMode.ENGLISH_SVO))
+        val incomplete = words.map { it.copy(syntaxPath = it.syntaxPath.replace("2,np,s", "2,!np,s")) }
+        assertEquals(words.indices.toList(), VerseWorkflow.modeOrder(incomplete, WordOrderMode.ENGLISH_SVO))
     }
 
     @Test

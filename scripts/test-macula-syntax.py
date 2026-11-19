@@ -20,6 +20,12 @@ class SyntaxExtractionTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             module.extract(io.StringIO('<book><w ref="A!1"/><w ref="A!1"/></book>'))
 
+    def test_cross_verse_group_is_marked_incomplete(self):
+        xml = '<book><wg class="cl"><w ref="A!1"/><w ref="B!1"/></wg></book>'
+        paths = module.extract(io.StringIO(xml))
+        self.assertEqual("1,!cl,,", paths["A!1"])
+        self.assertEqual("1,!cl,,", paths["B!1"])
+
 
 if __name__ == "__main__":
     unittest.main()
