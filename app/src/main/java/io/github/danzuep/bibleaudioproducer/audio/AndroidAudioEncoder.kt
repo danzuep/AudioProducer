@@ -38,7 +38,10 @@ internal class AndroidAudioEncoder {
             try {
                 codec.configure(audioFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
                 codec.start()
-                encodeTrack(codec, muxer, samples)
+                // AAC-LC encoders may emit no frame for input shorter than their
+                // priming delay plus one 1024-sample frame.
+                val minimumSamples = if (format == VerseExportFormat.AAC) 2048 else 0
+                encodeTrack(codec, muxer, samples, maxOf(samples.size, minimumSamples))
             } finally {
                 muxer.release()
             }
@@ -47,7 +50,7 @@ internal class AndroidAudioEncoder {
         }
     }
 
-    private fun encodeTrack(codec: MediaCodec, muxer: MediaMuxer, samples: FloatArray) {
+    private fun encodeTrack(codec: MediaCodec, muxer: MediaMuxer, samples: FloatArray, inputSamples: Int) {
         val info = MediaCodec.BufferInfo()
         var position = 0
         var inputEnded = false
@@ -63,14 +66,15 @@ internal class AndroidAudioEncoder {
                     val buffer = requireNotNull(codec.getInputBuffer(index))
                     buffer.clear()
                     buffer.order(ByteOrder.LITTLE_ENDIAN)
-                    val count = minOf(samples.size - position, buffer.remaining() / 2)
-                    check(count > 0 || position == samples.size) { "The encoder input buffer is too small." }
+                    val count = minOf(inputSamples - position, buffer.remaining() / 2)
+                    check(count > 0 || position == inputSamples) { "The encoder input buffer is too small." }
                     for (i in 0 until count) {
-                        buffer.putShort((samples[position + i].coerceIn(-1f, 1f) * 32767).roundToInt().toShort())
+                        val sample = samples.getOrElse(position + i) { 0f }
+                        buffer.putShort((sample.coerceIn(-1f, 1f) * 32767).roundToInt().toShort())
                     }
                     val timestamp = position.toLong() * 1_000_000 / VerseAudio.SAMPLE_RATE
                     position += count
-                    inputEnded = position == samples.size
+                    inputEnded = count == 0
                     codec.queueInputBuffer(
                         index, 0, count * 2, timestamp,
                         if (inputEnded) MediaCodec.BUFFER_FLAG_END_OF_STREAM else 0

@@ -264,6 +264,7 @@ class WorkbenchLaunchTest {
     @Test
     fun recordingPlaybackCanStopAndReturnsToPlayWhenComplete() {
         check(directory.mkdirs())
+        File(directory, "project-name.txt").writeText("Project001")
         File(directory, "recording-plan.json").writeText(
             """{"cards":[{"book":"JHN","lemma":"λόγος","gloss":"word","occurrences":1}]}"""
         )
