@@ -75,6 +75,7 @@
     <string name="audio_listen">Listen and arrange verses</string>
     <string name="audio_verses_load_failed">Verse data is unavailable for this book.</string>
     <string name="audio_choose_chapter">Choose a chapter</string>
+    <string name="audio_back">Back</string>
     <string name="audio_chapter">Chapter %1$d</string>
     <string name="audio_verse_ready">Ready</string>
     <string name="audio_verse_no_words">No recordable words</string>

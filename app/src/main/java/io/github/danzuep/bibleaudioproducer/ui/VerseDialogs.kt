@@ -123,13 +123,13 @@ internal class VerseDialogs(
         }
         val chapterPlay = roundButton(R.color.workbench_primary)
         val close = Button(activity).apply {
-            text = "×"
-            contentDescription = activity.getString(android.R.string.cancel)
+            text = "←"
+            contentDescription = activity.getString(R.string.audio_back)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 28f)
         }
+        header.addView(close, LinearLayout.LayoutParams(dp(48), dp(56)))
         header.addView(title, LinearLayout.LayoutParams(0, dp(56), 1f))
         header.addView(chapterPlay)
-        header.addView(close, LinearLayout.LayoutParams(dp(48), dp(56)))
         root.addView(header)
 
         val scroll = ScrollView(activity).apply {
@@ -284,14 +284,14 @@ internal class VerseDialogs(
         }
         val close = Button(activity).apply {
             id = R.id.audio_verse_close
-            text = "×"
-            contentDescription = activity.getString(android.R.string.cancel)
+            text = "←"
+            contentDescription = activity.getString(R.string.audio_back)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 28f)
         }
+        header.addView(close, LinearLayout.LayoutParams(dp(48), dp(56)))
         header.addView(reference, LinearLayout.LayoutParams(0, dp(56), 1f))
         header.addView(play)
         header.addView(more, LinearLayout.LayoutParams(dp(48), dp(56)))
-        header.addView(close, LinearLayout.LayoutParams(dp(48), dp(56)))
         root.addView(header)
         val hint = TextView(activity).apply {
             text = activity.getString(R.string.audio_verse_drag_hint)
@@ -517,16 +517,16 @@ internal class VerseDialogs(
             }
         }
         val close = Button(activity).apply {
-            text = "×"
-            contentDescription = activity.getString(android.R.string.cancel)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 26f)
+            text = "←"
+            contentDescription = activity.getString(R.string.audio_back)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 28f)
         }
+        header.addView(close, LinearLayout.LayoutParams(dp(48), dp(56)))
         header.addView(greek, LinearLayout.LayoutParams(0, dp(56), 1f))
         header.addView(record)
         header.addView(play, LinearLayout.LayoutParams(dp(56), dp(56)).apply {
             leftMargin = dp(4)
         })
-        header.addView(close, LinearLayout.LayoutParams(dp(40), dp(56)))
         root.addView(header)
         root.addView(TextView(activity).apply {
             text = GreekTransliterator.transliterate(word.surface)
@@ -575,7 +575,7 @@ internal class VerseDialogs(
             addView(content)
         }
         root.addView(scroll, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, dp(320)
+            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
         ))
         dialog = AlertDialog.Builder(activity).setView(root).create()
         close.setOnClickListener { dialog.dismiss() }
@@ -606,6 +606,7 @@ internal class VerseDialogs(
             actions.closeRecording()
         }
         dialog.show()
+        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     }
 
     private fun wordToken(word: VerseWord, unspoken: Boolean, recorded: Boolean, fontSize: Float): View {
