@@ -1,6 +1,5 @@
 package io.github.danzuep.bibleaudioproducer.workbench
 
-// Grammar grouping and ordering follow MaculaScripta's Apache-2.0 grammar-order.js.
 data class VerseWord(
     val surface: String,
     val lemma: String,
@@ -12,7 +11,8 @@ data class VerseWord(
     val role: String = "",
     val mandarin: String = "",
     val morphology: String = "",
-    val reference: String = ""
+    val reference: String = "",
+    val syntaxPath: String = ""
 ) {
     val proper: Boolean get() = type == "proper" || pos == "proper_noun"
     val unspokenKey: String get() = surface.ifEmpty { lemma }
@@ -215,49 +215,114 @@ object VerseWorkflow {
         return order(chunks, rules, chunkOrder).flatMap { chunkWordIndices[it] }
     }
 
-    // Chunks without a clause role (participles, etc.) stay attached to the preceding role group.
-    // Head-final modes also put genitive phrases and noun modifiers before their head noun.
     fun modeOrder(words: List<VerseWord>, mode: WordOrderMode): List<Int> {
-        val slots = mode.slots ?: return words.indices.toList()
-        val chunks = chunks(words)
-        val remaining = words.indices.toMutableList()
-        val chunkIndices = chunks.map { chunk ->
-            val indices = chunk.words.map { word -> remaining.first { words[it] == word }.also { remaining.remove(it) } }
-            val adposition = indices.firstOrNull()?.takeIf { mode.postpositions && words[it].pos == "prep" }
-            var body = if (adposition != null) indices.drop(1) else indices
-            if (mode.headFinal) body = body.filter { words[it].pos !in heads } + body.filter { words[it].pos in heads }
-            if (adposition != null) body + adposition else body
-        }
-        val clauseIds = clauses(chunks)
-        return clauseIds.distinct().flatMap { clause ->
-            val groups = mutableListOf<Pair<String?, MutableList<Int>>>()
-            chunks.indices.filter { clauseIds[it] == clause }.forEach { i ->
-                val role = when (val slot = chunks[i].slot) {
-                    "CONJ", "V", "ADV" -> slot
-                    "PP" -> "ADV"
-                    "NP.nom" -> "S"
-                    "NP.acc" -> "O"
-                    "NP.dat" -> "IO"
-                    else -> null
-                }
-                when {
-                    role != null || groups.isEmpty() -> groups.add(role to chunkIndices[i].toMutableList())
-                    mode.headFinal && chunks[i].slot == "NP.gen" -> groups.last().second.addAll(0, chunkIndices[i])
-                    else -> groups.last().second.addAll(chunkIndices[i])
-                }
-            }
-            var sorted = groups.sortedBy { (role, _) -> slots.indexOf(role).let { if (it < 0) slots.size else it } }
-            if (mode.verbSecond) {
-                val lead = sorted.firstOrNull { it.first != "CONJ" && it.first != "V" }
-                if (lead != null) {
-                    val rest = sorted - lead
-                    val front = rest.filter { it.first == "CONJ" }
-                    val verbs = rest.filter { it.first == "V" }
-                    sorted = front + lead + verbs + (rest - front.toSet() - verbs.toSet())
+        val original = words.indices.toList()
+        val slots = mode.slots ?: return original
+        if (words.any { it.syntaxPath.isBlank() }) return original
+
+        data class Node(
+            val id: String, val category: String, val role: String, val rule: String,
+            val children: MutableList<Node> = mutableListOf(), var word: Int? = null
+        )
+        val root = Node("", "", "", "")
+        val nodes = mutableMapOf<String, Node>()
+        for ((index, word) in words.withIndex()) {
+            var parent = root
+            for (part in word.syntaxPath.split('/')) {
+                val fields = part.split(',')
+                if (fields.size != 4 || fields[0].isBlank()) return original
+                val node = nodes[fields[0]]
+                if (node == null) {
+                    val created = Node(fields[0], fields[1], fields[2], fields[3])
+                    parent.children.add(created)
+                    nodes[fields[0]] = created
+                    parent = created
+                } else {
+                    if (node !in parent.children || node.category != fields[1] ||
+                        node.role != fields[2] || node.rule != fields[3]) return original
+                    parent = node
                 }
             }
-            sorted.flatMap { it.second }
+            parent.children.add(Node("", "", word.role, "", word = index))
         }
+
+        val result = original.toMutableList()
+        fun members(node: Node): List<Int> = node.word?.let(::listOf)
+            ?: node.children.flatMap(::members).sorted()
+        fun contiguous(indices: List<Int>) = indices.isNotEmpty() &&
+            indices.last() - indices.first() + 1 == indices.size
+        fun replace(indices: List<Int>, ordered: List<Int>) {
+            val positions = result.indices.filter { result[it] in indices }
+            positions.zip(ordered).forEach { (position, index) -> result[position] = index }
+        }
+        fun visit(node: Node, inNominal: Boolean, subordinate: Boolean) {
+            val nominal = inNominal || node.category == "np"
+            val sub = subordinate || node.rule.equals("sub-CL", ignoreCase = true)
+            node.children.forEach { visit(it, nominal, sub) }
+            val all = members(node)
+            if (mode.postpositions && node.category == "pp" && contiguous(all) &&
+                words[all.first()].pos == "prep" && all.size > 1
+            ) {
+                val current = result.filter { it in all }
+                replace(all, current.filter { it != all.first() } + all.first())
+            }
+            if (node.category != "cl" || nominal || (mode.verbSecond && sub)) return
+
+            data class Constituent(val role: String, val indices: List<Int>, val category: String)
+            val parts = node.children.map { child ->
+                val indices = members(child)
+                val role = when (child.role.lowercase()) {
+                    "s" -> "S"
+                    "v", "vc" -> "V"
+                    "o", "p" -> "O"
+                    "io" -> "IO"
+                    "adv" -> "ADV"
+                    else -> ""
+                }
+                Constituent(if (child.category == "cl" || !contiguous(indices)) "" else role, indices, child.category)
+            }.sortedBy { it.indices.firstOrNull() ?: Int.MAX_VALUE }
+
+            fun reorder(segment: List<Constituent>) {
+                if (segment.count { it.role == "V" } != 1 || segment.size < 2) return
+                val merged = mutableListOf<Constituent>()
+                for (part in segment) {
+                    if (part.role == "V" && merged.lastOrNull()?.role == "ADV") {
+                        val modifier = merged.removeAt(merged.lastIndex)
+                        merged.add(Constituent("V", modifier.indices + part.indices, ""))
+                    } else merged.add(part)
+                }
+                val leading = merged.firstOrNull()?.takeIf {
+                    it.category == "pp" && it.role in setOf("O", "ADV")
+                }
+                val rest = if (leading == null) merged else merged.drop(1)
+                var sorted = rest.sortedBy { slots.indexOf(it.role).let { rank -> if (rank < 0) slots.size else rank } }
+                if (mode.verbSecond) {
+                    val lead = leading ?: sorted.firstOrNull { it.role != "V" }
+                    if (lead != null) {
+                        sorted = listOf(lead) + sorted.filter { it.role == "V" } +
+                            sorted.filter { it !== lead && it.role != "V" }
+                    }
+                } else if (leading != null) {
+                    sorted = listOf(leading) + sorted
+                }
+                val indexes = segment.flatMap { it.indices }
+                val reordered = sorted.flatMap { part -> result.filter { it in part.indices } }
+                replace(indexes, reordered)
+            }
+            val segment = mutableListOf<Constituent>()
+            for (part in parts) {
+                if (part.role.isEmpty() || (segment.isNotEmpty() &&
+                    segment.last().indices.last() + 1 != part.indices.first())
+                ) {
+                    reorder(segment)
+                    segment.clear()
+                }
+                if (part.role.isNotEmpty()) segment.add(part)
+            }
+            reorder(segment)
+        }
+        visit(root, false, false)
+        return result
     }
 
     private fun validOrder(order: List<Int>, count: Int) =

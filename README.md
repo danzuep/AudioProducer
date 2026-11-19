@@ -32,6 +32,22 @@ saves the order and advances from John 3:16 to John 1:1, then through the follow
 verses. The selected preset is used for subsequent verses unless they already have a
 saved order; a custom order is specific to its verse.
 
+Word-order presets are starting points, not translations. The bundled Greek data uses
+[MACULA's pinned syntax trees](https://github.com/Clear-Bible/macula-greek/tree/8423afe47b9e8f24b7772e808af45c7159a6fe7e/SBLGNT/lowfat)
+to keep phrases and nested clauses together and distinguish subjects from predicates.
+For example, the English preset uses the ordering relationships in the
+[Berean Standard Bible, John 1:1 and 3:16](https://github.com/usfm-bible/examples.bsb/blob/50a493b1a6a7828f15833f95920bed81c69fb710/44JHNBSB.usfm)
+as a grammar reference, not as a word-for-word target. Translations add, omit and
+change words, so they cannot generally be obtained by permuting Greek tokens.
+All presets benefit from the same phrase and clause boundaries, but their orders are
+approximations, not full grammars of English, German, Mandarin, Japanese or Arabic.
+German subordinate clauses are left in source order rather than forced into V2;
+Japanese postpositions are approximated only for intact prepositional phrases.
+Other noun modifiers, negation, implicit subjects, discourse and idioms require
+human review. Where syntax is missing, malformed, discontinuous or ambiguous, the
+affected words retain their source order. Greek and Custom remain unchanged. Saved
+and manually selected orders still take precedence; drag words to correct a preset.
+
 The chapter verse list and verse text show pronunciation above each Greek word and
 English and Chinese glosses below where available. Recorded forms are marked
 green and disabled forms grey. The chapter list can play or save each verse, and its header

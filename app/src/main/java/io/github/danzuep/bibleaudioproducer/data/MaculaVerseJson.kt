@@ -24,7 +24,8 @@ internal object MaculaVerseJson {
                 grammaticalCase = row[7].asString, mood = row[8].asString,
                 gloss = row[6].asString, role = row[5].asString,
                 mandarin = row[9].asString, morphology = row[10].asString,
-                reference = row[0].asString
+                reference = row[0].asString,
+                syntaxPath = if (row.size() > 11) row[11].asString else ""
             ))
         }
         if (reference.isNotEmpty()) verses.add(AudioVerse(reference, words))
