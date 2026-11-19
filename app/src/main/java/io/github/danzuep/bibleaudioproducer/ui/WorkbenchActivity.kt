@@ -368,6 +368,7 @@ class WorkbenchActivity : AppCompatActivity() {
         reviewDialog = null
         refreshTakeReview = null
         liveTakeWaveform = null
+        playbackRenderGeneration++
         androidGreekTts?.shutdown()
         io.shutdown()
         super.onDestroy()
@@ -760,9 +761,10 @@ class WorkbenchActivity : AppCompatActivity() {
                 val maxPlaybackSamples = VerseAudio.SAMPLE_RATE * if (groups.size > 1) 600L else 180L
                 val renderedVerses = groups.map { (reference, words) ->
                     val clips = words.mapNotNull { word ->
+                        check(renderGeneration == playbackRenderGeneration) { "Playback was stopped." }
                         val surface = word.surface
                         val recording = targetRepository.clipFile(surface)
-                        val source = if (recording.isFile) recording else greekClip(surface)
+                        val source = if (recording.isFile) recording else greekClip(surface, renderGeneration)
                         source?.let { decoded.getOrPut(surface) { decoder.decode(it) } }?.also {
                             sampleCount += it.size
                             require(sampleCount <= maxPlaybackSamples) {
@@ -1504,7 +1506,7 @@ class WorkbenchActivity : AppCompatActivity() {
     }
 
     // Blocks the calling background thread; returns null when text-to-speech is unavailable.
-    private fun greekClip(text: String): File? {
+    private fun greekClip(text: String, generation: Int): File? {
         val key = try { speechCredentials.key() } catch (exception: Exception) { null }
         val clip = if (key == null) {
             null
@@ -1525,7 +1527,7 @@ class WorkbenchActivity : AppCompatActivity() {
                 null
             }
         }
-        setSpeechFailed(clip == null)
+        if (generation == playbackRenderGeneration) setSpeechFailed(clip == null)
         return clip
     }
 

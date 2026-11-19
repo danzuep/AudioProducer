@@ -401,12 +401,21 @@ internal class AndroidGreekTts(
         closed = true
         pendingTexts = null
         voiceCallbacks.clear()
+        if (ready) engine.stop()
+        releaseFileRequests()
         engine.shutdown()
     }
 
     fun stop() {
         pendingTexts = null
         if (ready) engine.stop()
+        releaseFileRequests()
+    }
+
+    private fun releaseFileRequests() {
+        val callbacks = fileCallbacks.values.toList()
+        fileCallbacks.clear()
+        callbacks.forEach { it(false) }
     }
 
     private fun speakNow(texts: List<String>) {
