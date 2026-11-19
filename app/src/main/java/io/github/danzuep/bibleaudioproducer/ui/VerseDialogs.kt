@@ -5,7 +5,6 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import android.view.ViewConfiguration
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -13,9 +12,6 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import android.util.TypedValue
-import android.text.SpannableStringBuilder
-import android.text.Spanned
-import android.text.style.ForegroundColorSpan
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -32,14 +28,15 @@ import io.github.danzuep.bibleaudioproducer.workbench.RecordingCard
 import io.github.danzuep.bibleaudioproducer.workbench.VerseWord
 import io.github.danzuep.bibleaudioproducer.workbench.VerseWorkflow
 import android.os.Build
-import kotlin.math.hypot
 import kotlin.math.max
 
 internal class VerseDialogs(
     private val activity: AppCompatActivity,
-    private val repository: AudioProjectRepository,
+    private val currentRepository: () -> AudioProjectRepository,
     private val actions: Actions
 ) {
+    private val repository get() = currentRepository()
+
     interface Actions {
         val state: AudioProjectState
         val busy: Boolean
@@ -49,15 +46,11 @@ internal class VerseDialogs(
         fun isPlayingChapter(chapter: Int): Boolean
         fun downloadVerse(verse: AudioVerse, strength: NeuralStrength?, format: VerseExportFormat)
         fun saveVerseState(reference: String, order: List<Int>?, unspoken: Set<String>, neuralOff: Set<String>)
-        fun toggleRecording(card: RecordingCard)
-        fun pressRecording(card: RecordingCard)
-        fun releaseRecording(card: RecordingCard)
-        fun cancelRecording(card: RecordingCard)
-        fun isRecording(card: RecordingCard): Boolean
+        fun recordWord(word: VerseWord)
         fun isPlaying(card: RecordingCard): Boolean
         fun playRecording(card: RecordingCard)
         fun speakGreek(text: String)
-        fun closeRecording()
+        fun stopPlayback()
     }
 
     private val refreshers = mutableListOf<() -> Unit>()
@@ -143,20 +136,26 @@ internal class VerseDialogs(
         ))
 
         val verseButtons = mutableListOf<Pair<AudioVerse, MaterialButton>>()
+        val wordLabels = mutableListOf<Pair<VerseWord, TextView>>()
         verses.forEach { verse ->
             val row = LinearLayout(activity).apply {
                 gravity = Gravity.CENTER_VERTICAL
                 orientation = LinearLayout.HORIZONTAL
                 setPadding(0, dp(6), 0, dp(6))
             }
-            val wordText = TextView(activity).apply {
-                textSize = 18f
-                setPadding(dp(4), dp(4), dp(8), dp(2))
+            val wordText = VerseFlowLayout(activity).apply {
                 isClickable = true
                 isFocusable = true
+                contentDescription = verse.words.joinToString(" ") { it.surface }
                 setOnClickListener {
+                    actions.stopPlayback()
                     chapterDialog?.dismiss()
                     openVerse(verse)
+                }
+                verse.words.forEach { word ->
+                    val greek = greekLabel(word, 18f)
+                    wordLabels += word to greek
+                    addView(wordStack(word, greek).apply { setPadding(dp(4), dp(4), dp(4), dp(4)) })
                 }
             }
             val textColumn = LinearLayout(activity).apply {
@@ -167,12 +166,6 @@ internal class VerseDialogs(
                     setTextColor(ContextCompat.getColor(activity, R.color.workbench_secondary))
                 })
                 addView(wordText)
-                addView(TextView(activity).apply {
-                    text = verse.words.joinToString(" ") { GreekTransliterator.transliterate(it.surface) }
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-                    setTextColor(ContextCompat.getColor(activity, R.color.workbench_secondary))
-                    setPadding(dp(4), 0, dp(8), 0)
-                })
             }
             row.addView(textColumn, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             val play = roundButton(R.color.workbench_primary).apply {
@@ -191,7 +184,6 @@ internal class VerseDialogs(
             }
             row.addView(download, LinearLayout.LayoutParams(dp(44), dp(48)))
             rows.addView(row)
-            verseLabels(verse, wordText)
         }
         val dialog = AlertDialog.Builder(activity).setView(root).create()
         chapterDialog = dialog
@@ -228,17 +220,18 @@ internal class VerseDialogs(
                     verse.reference
                 )
             }
-            verses.forEach { verse ->
-                rows.getChildAt(verses.indexOf(verse))?.let { row ->
-                    val text = (row as LinearLayout).getChildAt(0) as LinearLayout
-                    verseLabels(verse, text.getChildAt(1) as TextView)
-                }
+            wordLabels.forEach { (word, label) ->
+                label.setTextColor(wordColor(word.unspokenKey in state.unspoken, repository.clipFile(word.surface).isFile))
             }
         }
         refreshers.clear()
         refreshers.add(refresh)
         refresh()
-        dialog.setOnDismissListener { refreshers.remove(refresh) }
+        dialog.setOnDismissListener {
+            refreshers.remove(refresh)
+            if (chapterDialog === dialog) chapterDialog = null
+            actions.stopPlayback()
+        }
         dialog.show()
         dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     }
@@ -251,7 +244,6 @@ internal class VerseDialogs(
         ).toMutableList()
         val unspoken = actions.state.unspoken.toMutableSet()
         var changed = false
-        var dragMode = false
         var neuralChanged = false
         val neuralOff = actions.state.neuralOff.toMutableSet()
         var smoothOverride: Boolean? =
@@ -344,77 +336,75 @@ internal class VerseDialogs(
                     28f
                 )
                 token.setOnClickListener {
-                    if (dragMode) {
-                        dragMode = false
-                        hint.setText(R.string.audio_verse_drag_hint)
-                    } else {
-                        showWordDetails(word, word.unspokenKey in unspoken) { disabled ->
-                            if (disabled) unspoken.add(word.unspokenKey)
-                            else unspoken.remove(word.unspokenKey)
-                            changed = true
-                            renderWords()
-                        }
+                    showWordDetails(word, word.unspokenKey in unspoken) { disabled ->
+                        if (disabled) unspoken.add(word.unspokenKey)
+                        else unspoken.remove(word.unspokenKey)
+                        changed = true
+                        renderWords()
                     }
                 }
-                token.setOnLongClickListener {
-                    dragMode = !dragMode
-                    hint.setText(if (dragMode) R.string.audio_verse_drag_enabled else R.string.audio_verse_drag_hint)
-                    true
-                }
-                token.setOnTouchListener(object : View.OnTouchListener {
+                val drag = object : View.OnTouchListener {
                     private var downX = 0f
                     private var downY = 0f
+                    private var touching = false
                     private var dragging = false
-                    private val touchSlop = ViewConfiguration.get(activity).scaledTouchSlop
+
+                    fun lift(): Boolean {
+                        if (!touching) return false
+                        dragging = true
+                        token.translationZ = dp(8).toFloat()
+                        token.alpha = 0.85f
+                        flow.requestDisallowInterceptTouchEvent(true)
+                        return true
+                    }
 
                     override fun onTouch(view: View, event: MotionEvent): Boolean {
-                        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-                            downX = event.rawX
-                            downY = event.rawY
-                            dragging = false
-                            if (dragMode) view.parent?.requestDisallowInterceptTouchEvent(true)
-                            return false
-                        }
                         when (event.actionMasked) {
-                            MotionEvent.ACTION_MOVE -> {
-                                if (dragMode && !dragging &&
-                                    hypot(event.rawX - downX, event.rawY - downY) > touchSlop
-                                ) {
-                                    dragging = true
-                                    view.parent?.requestDisallowInterceptTouchEvent(true)
-                                }
-                                if (dragging) {
-                                    view.alpha = 0.65f
-                                    return true
-                                }
+                            MotionEvent.ACTION_DOWN -> {
+                                downX = event.rawX
+                                downY = event.rawY
+                                touching = true
                             }
-                            MotionEvent.ACTION_UP -> {
-                                if (dragging) {
-                                    view.alpha = 1f
-                                    view.parent?.requestDisallowInterceptTouchEvent(false)
-                                    val target = flow.indexAt(event.rawX, event.rawY)
+                            MotionEvent.ACTION_MOVE -> if (dragging) {
+                                view.translationX = event.rawX - downX
+                                view.translationY = event.rawY - downY
+                                return true
+                            }
+                            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                                touching = false
+                                if (!dragging) return false
+                                dragging = false
+                                view.isPressed = false
+                                view.alpha = 1f
+                                view.translationX = 0f
+                                view.translationY = 0f
+                                view.translationZ = 0f
+                                flow.requestDisallowInterceptTouchEvent(false)
+                                if (event.actionMasked == MotionEvent.ACTION_UP) {
+                                    val bounds = android.graphics.Rect()
+                                    scroll.getGlobalVisibleRect(bounds)
+                                    val location = IntArray(2)
+                                    val windowLocation = IntArray(2)
+                                    scroll.getLocationOnScreen(location)
+                                    scroll.getLocationInWindow(windowLocation)
+                                    bounds.offset(location[0] - windowLocation[0], location[1] - windowLocation[1])
+                                    val target = if (bounds.contains(event.rawX.toInt(), event.rawY.toInt())) {
+                                        flow.indexAt(event.rawX, event.rawY)
+                                    } else -1
                                     if (target >= 0 && target != orderIndex) {
-                                        val moved = order.removeAt(orderIndex)
-                                        val destination = if (target > orderIndex) target - 1 else target
-                                        order.add(destination.coerceIn(0, order.size), moved)
+                                        order.add(target, order.removeAt(orderIndex))
                                         changed = true
                                         renderWords()
                                     }
-                                    return true
                                 }
-                                view.parent?.requestDisallowInterceptTouchEvent(false)
-                            }
-                            MotionEvent.ACTION_CANCEL -> {
-                                if (dragging) {
-                                    view.alpha = 1f
-                                }
-                                view.parent?.requestDisallowInterceptTouchEvent(false)
-                                if (dragging) return true
+                                return true
                             }
                         }
                         return false
                     }
-                })
+                }
+                token.setOnTouchListener(drag)
+                token.setOnLongClickListener { drag.lift() }
                 flow.addView(token)
             }
             scroll.post { scroll.scrollTo(0, oldScroll) }
@@ -467,7 +457,7 @@ internal class VerseDialogs(
                     neuralOff
                 )
             }
-            actions.closeRecording()
+            actions.stopPlayback()
             verseDialog = null
         }
         dialog.show()
@@ -491,9 +481,7 @@ internal class VerseDialogs(
             gravity = Gravity.CENTER_VERTICAL
             orientation = LinearLayout.HORIZONTAL
         }
-        val greek = TextView(activity).apply {
-            text = word.surface
-            textSize = 28f
+        val greek = greekLabel(word, 28f).apply {
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         }
         val record = roundButton(if (repository.clipFile(word.surface).isFile) {
@@ -501,12 +489,7 @@ internal class VerseDialogs(
         } else {
             R.color.workbench_record
         }).apply {
-            setRecordingGesture(
-                onPress = { actions.pressRecording(card) },
-                onRelease = { actions.releaseRecording(card) },
-                onCancel = { actions.cancelRecording(card) },
-                onAccessibleClick = { actions.toggleRecording(card) }
-            )
+            setOnClickListener { actions.recordWord(word) }
         }
         val play = roundButton(R.color.workbench_primary).apply {
             isEnabled = repository.clipFile(word.surface).isFile
@@ -522,17 +505,12 @@ internal class VerseDialogs(
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 28f)
         }
         header.addView(close, LinearLayout.LayoutParams(dp(48), dp(56)))
-        header.addView(greek, LinearLayout.LayoutParams(0, dp(56), 1f))
+        header.addView(wordStack(word, greek), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         header.addView(record)
         header.addView(play, LinearLayout.LayoutParams(dp(56), dp(56)).apply {
             leftMargin = dp(4)
         })
         root.addView(header)
-        root.addView(TextView(activity).apply {
-            text = GreekTransliterator.transliterate(word.surface)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-            setTextColor(ContextCompat.getColor(activity, R.color.workbench_secondary))
-        })
         lateinit var dialog: AlertDialog
         root.addView(MaterialButton(activity).apply {
             setText(if (disabled) R.string.audio_word_restore else R.string.audio_word_disable)
@@ -580,7 +558,6 @@ internal class VerseDialogs(
         dialog = AlertDialog.Builder(activity).setView(root).create()
         close.setOnClickListener { dialog.dismiss() }
         val refresh = {
-            val recording = actions.isRecording(card)
             val recorded = repository.clipFile(word.surface).isFile
             record.backgroundTintList = ColorStateList.valueOf(
                 ContextCompat.getColor(
@@ -588,10 +565,8 @@ internal class VerseDialogs(
                     if (recorded) R.color.workbench_muted else R.color.workbench_record
                 )
             )
-            record.setText(if (recording) R.string.audio_stop_symbol else R.string.audio_record_symbol)
-            record.contentDescription = activity.getString(
-                if (recording) R.string.audio_recording_active else R.string.audio_word_record, word.surface
-            )
+            record.setText(R.string.audio_record_symbol)
+            record.contentDescription = activity.getString(R.string.audio_word_record, word.surface)
             play.isEnabled = recorded || actions.isPlaying(card)
             play.alpha = if (play.isEnabled) 1f else 0.4f
             play.setText(if (actions.isPlaying(card)) R.string.audio_stop_symbol else R.string.audio_play_symbol)
@@ -603,7 +578,7 @@ internal class VerseDialogs(
         refresh()
         dialog.setOnDismissListener {
             refreshers.remove(refresh)
-            actions.closeRecording()
+            actions.stopPlayback()
         }
         dialog.show()
         dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
@@ -619,37 +594,8 @@ internal class VerseDialogs(
                 word.surface
             )
         }
-        val stack = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-        }
-        stack.addView(TextView(activity).apply {
-            text = word.surface
-            gravity = Gravity.CENTER
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSize)
-            setTextColor(
-                ContextCompat.getColor(
-                    activity,
-                    when {
-                        unspoken -> R.color.workbench_unspoken
-                        recorded -> R.color.workbench_recorded
-                        else -> R.color.workbench_primary_dark
-                    }
-                )
-            )
-        })
-        stack.addView(TextView(activity).apply {
-            text = GreekTransliterator.transliterate(word.surface)
-            gravity = Gravity.CENTER
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            setTextColor(
-                ContextCompat.getColor(
-                    activity,
-                    if (unspoken) R.color.workbench_unspoken else R.color.workbench_secondary
-                )
-            )
-        })
-        token.addView(stack, FrameLayout.LayoutParams(
+        val greek = greekLabel(word, fontSize).apply { setTextColor(wordColor(unspoken, recorded)) }
+        token.addView(wordStack(word, greek), FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT,
             Gravity.CENTER
@@ -657,24 +603,32 @@ internal class VerseDialogs(
         return token
     }
 
-    private fun verseLabels(verse: AudioVerse, textView: TextView) {
-        val state = actions.state
-        val text = SpannableStringBuilder()
-        verse.words.forEachIndexed { index, word ->
-            if (index > 0) text.append(' ')
-            val start = text.length
-            text.append(word.surface)
-            val color = when {
-                word.unspokenKey in state.unspoken -> R.color.workbench_unspoken
-                repository.clipFile(word.surface).isFile -> R.color.workbench_recorded
-                else -> R.color.workbench_primary_dark
-            }
-            text.setSpan(
-                ForegroundColorSpan(ContextCompat.getColor(activity, color)),
-                start, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
+    private fun greekLabel(word: VerseWord, fontSize: Float) = TextView(activity).apply {
+        text = word.surface
+        gravity = Gravity.CENTER
+        textSize = fontSize
+    }
+
+    private fun wordColor(unspoken: Boolean, recorded: Boolean) = ContextCompat.getColor(activity, when {
+        unspoken -> R.color.workbench_unspoken
+        recorded -> R.color.workbench_recorded
+        else -> R.color.workbench_primary_dark
+    })
+
+    private fun wordStack(word: VerseWord, greek: TextView) = LinearLayout(activity).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_HORIZONTAL
+        val gloss = listOf(word.gloss, word.mandarin).filter(String::isNotBlank).joinToString(" · ")
+        fun annotation(label: String) = TextView(activity).apply {
+            text = label
+            gravity = Gravity.CENTER
+            maxWidth = dp(140)
+            textSize = 12f
+            setTextColor(ContextCompat.getColor(activity, R.color.workbench_secondary))
         }
-        textView.text = text
+        addView(annotation(GreekTransliterator.transliterate(word.surface)))
+        addView(greek)
+        if (gloss.isNotEmpty()) addView(annotation(gloss))
     }
 
     private fun roundButton(color: Int): MaterialButton {
@@ -754,11 +708,18 @@ private class VerseFlowLayout(
         getLocationOnScreen(location)
         val x = rawX - location[0]
         val y = rawY - location[1]
+        var closestIndex = -1
+        var closestDistance = Float.POSITIVE_INFINITY
         for (index in 0 until childCount) {
             val child = getChildAt(index)
-            if (x >= child.left && x <= child.right && y >= child.top && y <= child.bottom) return index
+            if (y < child.top || y > child.bottom) continue
+            val distance = max(child.left - x, x - child.right).coerceAtLeast(0f)
+            if (distance < closestDistance) {
+                closestIndex = index
+                closestDistance = distance
+            }
         }
-        return -1
+        return closestIndex
     }
 
     override fun generateDefaultLayoutParams(): LayoutParams =

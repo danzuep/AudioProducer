@@ -20,15 +20,15 @@
             android:layout_weight="1"
             android:orientation="vertical">
             <TextView
-                android:id="@+id/audio_workbench_lemma"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textAppearance="?attr/textAppearanceHeadline6" />
-            <TextView
                 android:id="@+id/audio_workbench_transliteration"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:textAppearance="?attr/textAppearanceCaption" />
+            <TextView
+                android:id="@+id/audio_workbench_lemma"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textAppearance="?attr/textAppearanceHeadline6" />
             <TextView
                 android:id="@+id/audio_workbench_gloss"
                 android:layout_width="match_parent"
