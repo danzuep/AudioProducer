@@ -277,30 +277,30 @@ class WorkbenchLaunchTest {
             awaitPlayDescription(scenario, "Stop λόγος")
             awaitPlayDescription(scenario, "Play λόγος")
         }
+    }
 
-        @Test
-        fun closingChapterStopsPlayback() {
-            val context = ApplicationProvider.getApplicationContext<Context>()
-            val surface = context.assets.open("books/JHN.json").bufferedReader().use {
-                MaculaVerseJson.parse(it.readText()).first().words.first { word -> !word.proper }.surface
+    @Test
+    fun closingChapterStopsPlayback() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val surface = context.assets.open("books/JHN.json").bufferedReader().use {
+            MaculaVerseJson.parse(it.readText()).first().words.first { word -> !word.proper }.surface
+        }
+        ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
+            awaitBooks(scenario, 27)
+            onView(withId(R.id.audio_verse_close)).perform(click())
+            val clip = AudioProjectRepository(directory).clipFile(surface)
+            check(clip.parentFile!!.mkdirs() || clip.parentFile!!.isDirectory)
+            clip.writeBytes(VerseAudio.encodeWav(FloatArray(10 * VerseAudio.SAMPLE_RATE) { 0.1f }))
+            fun openChapter() {
+                onView(withId(R.id.audio_choose_verse)).perform(click())
+                onView(withText("Chapter 1")).perform(click())
             }
-            ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
-                awaitBooks(scenario, 27)
-                onView(withId(R.id.audio_verse_close)).perform(click())
-                val clip = AudioProjectRepository(directory).clipFile(surface)
-                check(clip.parentFile!!.mkdirs() || clip.parentFile!!.isDirectory)
-                clip.writeBytes(VerseAudio.encodeWav(FloatArray(10 * VerseAudio.SAMPLE_RATE) { 0.1f }))
-                fun openChapter() {
-                    onView(withId(R.id.audio_choose_verse)).perform(click())
-                    onView(withText("Chapter 1")).perform(click())
-                }
-                openChapter()
-                onView(withContentDescription(R.string.audio_play_chapter)).perform(click())
-                onView(withContentDescription(R.string.audio_stop_chapter)).check(matches(isDisplayed()))
-                pressBack()
-                openChapter()
-                onView(withContentDescription(R.string.audio_play_chapter)).check(matches(isEnabled()))
-            }
+            openChapter()
+            onView(withContentDescription(R.string.audio_play_chapter)).perform(click())
+            onView(withContentDescription(R.string.audio_stop_chapter)).check(matches(isDisplayed()))
+            pressBack()
+            openChapter()
+            onView(withContentDescription(R.string.audio_play_chapter)).check(matches(isEnabled()))
         }
     }
 
