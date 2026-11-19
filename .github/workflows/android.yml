@@ -65,12 +65,19 @@ jobs:
           echo "201abdf7e3128ef6c8b11e491dc6edac024e62417aca44cc541591402c8d3f10  $RUNNER_TEMP/tts-speecht5.zip" | sha256sum --check
           unzip -p "$RUNNER_TEMP/tts-speecht5.zip" tts-speecht5/Xenova/speecht5_hifigan/onnx/model.onnx > "$RUNNER_TEMP/neural-model.onnx"
           echo "26408d9b8b3e83e66a3ef614a5621b84cacdcabd81b3a6a2fa984eb788566e6c  $RUNNER_TEMP/neural-model.onnx" | sha256sum --check
+      - name: Prepare offline Greek TTS engine
+        if: matrix.api-level == 35
+        run: |
+          curl --fail --location --silent --show-error --retry 3 \
+            https://github.com/espeak-ng/espeak-ng/releases/download/1.52.0/espeak-1.52.0-signed.apk \
+            -o "$RUNNER_TEMP/espeak.apk"
+          echo "741b46abf84d843f9b0cce80136f60ffee9b9fe591601b9701aa2a9ff99c9ddf  $RUNNER_TEMP/espeak.apk" | sha256sum --check
       - uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
           api-level: ${{ matrix.api-level }}
           arch: x86_64
           disable-animations: true
-          script: bash scripts/run-android-device-tests.sh ${{ inputs.test_neural && matrix.api-level == 35 }}
+          script: bash scripts/run-android-device-tests.sh ${{ inputs.test_neural && matrix.api-level == 35 }} ${{ matrix.api-level == 35 }}
       - uses: actions/upload-artifact@v7.0.2
         if: failure()
         with:

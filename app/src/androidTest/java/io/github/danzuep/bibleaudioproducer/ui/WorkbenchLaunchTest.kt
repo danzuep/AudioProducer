@@ -9,12 +9,14 @@ import android.os.Build
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewConfiguration
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.Espresso.closeSoftKeyboard
+import androidx.test.espresso.Espresso.pressBack
 import androidx.test.espresso.action.ViewActions.replaceText
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.action.ViewActions.scrollTo
@@ -24,7 +26,6 @@ import androidx.test.espresso.matcher.ViewMatchers.isEnabled
 import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.espresso.matcher.ViewMatchers.withContentDescription
-import androidx.test.espresso.action.ViewActions.longClick
 import androidx.test.espresso.UiController
 import androidx.test.espresso.ViewAction
 import androidx.test.espresso.matcher.ViewMatchers.isAssignableFrom
@@ -32,6 +33,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.core.content.ContextCompat
 import androidx.appcompat.widget.Toolbar
+import androidx.recyclerview.widget.RecyclerView
+import android.widget.NumberPicker
 import android.widget.Spinner
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -77,11 +80,22 @@ class WorkbenchLaunchTest {
         assertEquals(4917, cards.size)
         assertEquals(27, cards.map { it.book }.distinct().size)
         assertEquals("JHN", cards.first().book)
+        val chapterReferences = context.assets.open("books/JHN.json").bufferedReader().use {
+            MaculaVerseJson.parse(it.readText()).filter { it.chapter == 1 }
+        }
+        val forms = chapterReferences.flatMap { it.words }.filterNot { it.proper }
+            .flatMap { listOf(it.lemma, it.surface).distinct() }.groupingBy { it }.eachCount()
+        val chapterCards = cards.filter { it.lemma in forms }
         ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
             awaitBooks(scenario, 27)
             onView(withId(R.id.audio_verse_close)).check(matches(isDisplayed()))
             onView(withId(R.id.audio_verse_close)).perform(click())
-            onView(withId(R.id.audio_workbench_coverage)).check(matches(withText("0 of 952 recorded")))
+            onView(withId(R.id.audio_workbench_coverage))
+                .check(matches(withText("0 of ${chapterCards.size} recorded")))
+            onView(withId(R.id.audio_workbench_list)).check { view, _ ->
+                val rows = ((view as RecyclerView).adapter as RecordingCardAdapter).currentList
+                assertEquals(chapterCards.maxBy { forms.getValue(it.lemma) }.lemma, rows.first().card.lemma)
+            }
             openSettings(scenario)
             onView(withId(R.id.audio_workbench_export)).check(matches(isEnabled()))
         }
@@ -91,7 +105,7 @@ class WorkbenchLaunchTest {
     fun savedPlanOpensAndSearchShowsEmptyResults() {
         check(directory.mkdirs())
         File(directory, "recording-plan.json").writeText(
-            """{"cards":[{"book":"JHN","lemma":"λογος","gloss":"word","occurrences":1}]}"""
+            """{"cards":[{"book":"JHN","lemma":"λόγος","gloss":"word","occurrences":1}]}"""
         )
         ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
             awaitBooks(scenario, 1)
@@ -120,9 +134,6 @@ class WorkbenchLaunchTest {
         ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
             awaitBooks(scenario, 27)
             onView(withText(skipped.surface)).check(matches(isDisplayed()))
-            onView(withContentDescription(context.getString(R.string.audio_word_unspoken, skipped.surface)))
-                .perform(longClick())
-            onView(withText(R.string.audio_verse_drag_enabled)).check(matches(isDisplayed()))
             onView(withText(skipped.surface)).perform(object : ViewAction {
                 override fun getDescription() = "Drag the word to the opposite end of the verse"
 
@@ -140,20 +151,19 @@ class WorkbenchLaunchTest {
                     check(targetIndex != sourceIndex)
                     val expected = (0 until flow.childCount).map { index ->
                         val stack = (flow.getChildAt(index) as FrameLayout).getChildAt(0) as ViewGroup
-                        (stack.getChildAt(0) as TextView).text.toString()
+                        (stack.getChildAt(1) as TextView).text.toString()
                     }.toMutableList()
                     val moved = expected.removeAt(sourceIndex)
-                    val destination = if (targetIndex > sourceIndex) targetIndex - 1 else targetIndex
-                    expected.add(destination, moved)
+                    expected.add(targetIndex, moved)
                     expectedSurfaceOrder = expected
                     val start = IntArray(2)
                     val end = IntArray(2)
                     token.getLocationOnScreen(start)
                     flow.getChildAt(targetIndex).getLocationOnScreen(end)
                     val downTime = SystemClock.uptimeMillis()
-                    fun inject(action: Int, x: Int, y: Int, elapsed: Long) {
+                    fun inject(action: Int, x: Int, y: Int) {
                         val event = MotionEvent.obtain(
-                            downTime, downTime + elapsed, action, x.toFloat(), y.toFloat(), 0
+                            downTime, SystemClock.uptimeMillis(), action, x.toFloat(), y.toFloat(), 0
                         )
                         try {
                             uiController.injectMotionEvent(event)
@@ -164,25 +174,24 @@ class WorkbenchLaunchTest {
                     inject(
                         MotionEvent.ACTION_DOWN,
                         start[0] + token.width / 2,
-                        start[1] + token.height / 2,
-                        0
+                        start[1] + token.height / 2
+                    )
+                    uiController.loopMainThreadForAtLeast(
+                        (ViewConfiguration.getLongPressTimeout() + ViewConfiguration.getTapTimeout() + 100).toLong()
                     )
                     inject(
                         MotionEvent.ACTION_MOVE,
                         end[0] + flow.getChildAt(targetIndex).width / 2,
-                        end[1] + flow.getChildAt(targetIndex).height / 2,
-                        100
+                        end[1] + flow.getChildAt(targetIndex).height / 2
                     )
+                    assertTrue("The held card did not follow the finger", token.translationX != 0f || token.translationY != 0f)
                     inject(
                         MotionEvent.ACTION_UP,
                         end[0] + flow.getChildAt(targetIndex).width / 2,
-                        end[1] + flow.getChildAt(targetIndex).height / 2,
-                        150
+                        end[1] + flow.getChildAt(targetIndex).height / 2
                     )
                 }
             })
-            onView(withContentDescription(context.getString(R.string.audio_word_unspoken, skipped.surface)))
-                .perform(click())
             onView(withContentDescription(context.getString(R.string.audio_word_unspoken, skipped.surface)))
                 .perform(click())
             onView(withText(R.string.audio_word_disable)).perform(click())
@@ -198,7 +207,7 @@ class WorkbenchLaunchTest {
             assertTrue(skipped.unspokenKey in saved.unspoken)
             onView(withId(R.id.audio_choose_verse)).perform(click())
             onView(withText("Chapter 1")).perform(click())
-            onView(withText(verse.words.joinToString(" ") { it.surface })).perform(click())
+            onView(withContentDescription(verse.words.joinToString(" ") { it.surface })).perform(click())
             onView(withId(R.id.audio_verse_more)).perform(click())
             onView(withText(R.string.audio_download_verse)).perform(click())
             onView(withText(R.string.audio_format_wav)).check(matches(isDisplayed()))
@@ -229,14 +238,14 @@ class WorkbenchLaunchTest {
         prepareTake()
         ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
             onView(withText(R.string.audio_review_title)).check(matches(isDisplayed()))
-            onView(withText(R.string.audio_review_keep)).perform(click())
+            onView(withContentDescription(R.string.audio_review_keep)).perform(click())
             awaitBooks(scenario, 27)
             assertEquals(listOf(1), current.readBytes().map { it.toInt() })
         }
 
         prepareTake()
         ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
-            onView(withText(R.string.audio_review_use)).perform(click())
+            onView(withContentDescription(R.string.audio_review_use)).perform(click())
             awaitBooks(scenario, 27)
             val deadline = System.currentTimeMillis() + 15_000
             val preferences = context.getSharedPreferences("audio-project", Context.MODE_PRIVATE)
@@ -253,25 +262,76 @@ class WorkbenchLaunchTest {
     fun recordingPlaybackCanStopAndReturnsToPlayWhenComplete() {
         check(directory.mkdirs())
         File(directory, "recording-plan.json").writeText(
-            """{"cards":[{"book":"JHN","lemma":"λογος","gloss":"word","occurrences":1}]}"""
+            """{"cards":[{"book":"JHN","lemma":"λόγος","gloss":"word","occurrences":1}]}"""
         )
-        val clip = AudioProjectRepository(directory).clipFile("λογος")
+        val clip = AudioProjectRepository(directory).clipFile("λόγος")
         check(clip.parentFile!!.mkdirs())
         clip.writeBytes(VerseAudio.encodeWav(FloatArray(16000) { 0.1f }))
         ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
             awaitBooks(scenario, 1)
             onView(withId(R.id.audio_workbench_play)).perform(click())
-            awaitPlayDescription(scenario, "Stop λογος")
+            awaitPlayDescription(scenario, "Stop λόγος")
             onView(withId(R.id.audio_workbench_play)).perform(click())
-            awaitPlayDescription(scenario, "Play λογος")
+            awaitPlayDescription(scenario, "Play λόγος")
             onView(withId(R.id.audio_workbench_play)).perform(click())
-            awaitPlayDescription(scenario, "Stop λογος")
-            awaitPlayDescription(scenario, "Play λογος")
+            awaitPlayDescription(scenario, "Stop λόγος")
+            awaitPlayDescription(scenario, "Play λόγος")
+        }
+
+        @Test
+        fun closingChapterStopsPlayback() {
+            val context = ApplicationProvider.getApplicationContext<Context>()
+            val surface = context.assets.open("books/JHN.json").bufferedReader().use {
+                MaculaVerseJson.parse(it.readText()).first().words.first { word -> !word.proper }.surface
+            }
+            ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
+                awaitBooks(scenario, 27)
+                onView(withId(R.id.audio_verse_close)).perform(click())
+                val clip = AudioProjectRepository(directory).clipFile(surface)
+                check(clip.parentFile!!.mkdirs() || clip.parentFile!!.isDirectory)
+                clip.writeBytes(VerseAudio.encodeWav(FloatArray(10 * VerseAudio.SAMPLE_RATE) { 0.1f }))
+                fun openChapter() {
+                    onView(withId(R.id.audio_choose_verse)).perform(click())
+                    onView(withText("Chapter 1")).perform(click())
+                }
+                openChapter()
+                onView(withContentDescription(R.string.audio_play_chapter)).perform(click())
+                onView(withContentDescription(R.string.audio_stop_chapter)).check(matches(isDisplayed()))
+                pressBack()
+                openChapter()
+                onView(withContentDescription(R.string.audio_play_chapter)).check(matches(isEnabled()))
+            }
         }
     }
 
     @Test
-    fun holdShowsWaveformSavesOnReleaseAndPreservesTakeOnCancel() {
+    fun verseRecordingShowsReviewBeforeStoppingAndCanKeepTheOldTake() {
+        val context = grantRecordingPermission()
+        val repository = AudioProjectRepository(directory)
+        val surface = context.assets.open("books/JHN.json").bufferedReader().use {
+            val words = MaculaVerseJson.parse(it.readText()).first { verse -> verse.reference == "JHN 1:1" }.words
+            words.first { word -> words.count { it.surface == word.surface } == 1 }.surface
+        }
+        ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
+            awaitBooks(scenario, 27)
+            onView(withContentDescription(context.getString(R.string.audio_word_unspoken, surface))).perform(click())
+            val current = repository.clipFile(surface)
+            check(current.parentFile!!.mkdirs() || current.parentFile!!.isDirectory)
+            val original = VerseAudio.encodeWav(FloatArray(16000) { 0.1f })
+            current.writeBytes(original)
+            onView(withContentDescription(context.getString(R.string.audio_word_record, surface))).perform(click())
+            onView(withText(R.string.audio_review_new_waveform)).check(matches(isDisplayed()))
+            onView(withText(R.string.audio_review_old_waveform)).check(matches(isDisplayed()))
+            Thread.sleep(800)
+            onView(withContentDescription(R.string.audio_review_stop_recording)).perform(click())
+            onView(withContentDescription(R.string.audio_review_play_new)).check(matches(isEnabled()))
+            onView(withContentDescription(R.string.audio_review_keep)).perform(click())
+            assertArrayEquals(original, current.readBytes())
+            assertTrue(!repository.recordingCandidateFile(surface).exists())
+        }
+    }
+
+    private fun grantRecordingPermission(): Context {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val result = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(
             "pm grant ${context.packageName} ${Manifest.permission.RECORD_AUDIO}"
@@ -281,9 +341,15 @@ class WorkbenchLaunchTest {
             PackageManager.PERMISSION_GRANTED,
             ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
         )
+        return context
+    }
+
+    @Test
+    fun holdShowsWaveformSavesOnReleaseAndPreservesTakeOnCancel() {
+        grantRecordingPermission()
         check(directory.mkdirs())
         File(directory, "recording-plan.json").writeText(
-            """{"cards":[{"book":"JHN","lemma":"λογος","gloss":"word","occurrences":1}]}"""
+            """{"cards":[{"book":"JHN","lemma":"λόγος","gloss":"word","occurrences":1}]}"""
         )
         val repository = AudioProjectRepository(directory)
         ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
@@ -312,14 +378,14 @@ class WorkbenchLaunchTest {
             assertTrue("Recording waveform did not appear", showing)
             Thread.sleep(800)
             touch(MotionEvent.ACTION_UP)
-            val clip = repository.clipFile("λογος")
+            val clip = repository.clipFile("λόγος")
             assertTrue("Take was not saved on release", clip.isFile && clip.length() > 0)
             val original = clip.readBytes()
             touch(MotionEvent.ACTION_DOWN)
             Thread.sleep(800)
             touch(MotionEvent.ACTION_CANCEL)
             assertArrayEquals(original, clip.readBytes())
-            assertTrue(!repository.recordingCandidateFile("λογος").exists())
+            assertTrue(!repository.recordingCandidateFile("λόγος").exists())
         }
     }
 
@@ -370,7 +436,8 @@ class WorkbenchLaunchTest {
         while (!loaded && System.currentTimeMillis() < deadline) {
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             scenario.onActivity { activity ->
-                loaded = activity.findViewById<Spinner>(R.id.audio_workbench_books).adapter?.count == count
+                loaded = activity.findViewById<Spinner>(R.id.audio_workbench_books).adapter?.count == count &&
+                    activity.findViewById<NumberPicker>(R.id.audio_workbench_chapter).maxValue > 0
             }
             if (!loaded) Thread.sleep(50)
         }

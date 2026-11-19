@@ -9,8 +9,7 @@
     <string name="audio_choose_verse">Choose chapter and verse</string>
     <string name="audio_project_create_failed">Unable to create the project.</string>
     <string name="audio_project_load_failed">Unable to load this project.</string>
-    <string name="audio_verse_drag_hint">Long press a word to enable reordering. Tap or long press again to exit; tap a word for details and disable/restore it there.</string>
-    <string name="audio_verse_drag_enabled">Reorder mode on · drag words; tap or long press a word to exit</string>
+    <string name="audio_verse_drag_hint">Hold a word, drag it into place, then release. Tap for word details.</string>
     <string name="audio_word_details">Word details</string>
     <string name="audio_word_record">Record word</string>
     <string name="audio_word_play">Play word</string>
@@ -76,6 +75,7 @@
     <string name="audio_verses_load_failed">Verse data is unavailable for this book.</string>
     <string name="audio_choose_chapter">Choose a chapter</string>
     <string name="audio_chapter">Chapter %1$d</string>
+    <string name="audio_chapter_filter">Chapter</string>
     <string name="audio_verse_ready">Ready</string>
     <string name="audio_verse_no_words">No recordable words</string>
     <string name="audio_verse_missing">%1$d words missing</string>
@@ -113,8 +113,14 @@
     <string name="audio_order_failed">Unable to save verse order.</string>
     <string name="audio_record_stop">Record / stop</string>
     <string name="audio_review_title">Review the new take</string>
-    <string name="audio_review_message">Listen to the new recording for %1$s before replacing the current take.</string>
-    <string name="audio_review_play">Play new</string>
+    <string name="audio_review_new_waveform">New take</string>
+    <string name="audio_review_old_waveform">Current take</string>
+    <string name="audio_review_stop_recording">Stop recording</string>
+    <string name="audio_review_play_new">Play new take</string>
+    <string name="audio_review_stop_new">Stop new take</string>
+    <string name="audio_review_play_old">Play current take</string>
+    <string name="audio_review_stop_old">Stop current take</string>
+    <string name="audio_review_waveform_failed">Could not display the take waveform.</string>
     <string name="audio_review_keep">Keep current</string>
     <string name="audio_review_use">Use new</string>
     <string name="audio_review_failed">Unable to finish reviewing this recording.</string>

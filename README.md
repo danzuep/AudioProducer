@@ -9,15 +9,16 @@ launch. The first screen lists projects; a new project with no name is assigned 
 as **Project001**. Opening a project with no recordings starts at John 1:1. Select a chapter
 and verse to open its interactive original Greek text and transliteration. Tap a word to
 inspect its Macula metadata and English gloss, then record or play that Greek form.
-Long-press a word to enable reorder mode, drag words into place, then tap or long-press
-again to exit. Reset restores the original Greek order. Disable or restore a form from its
-word details.
-Closing the verse returns to the project's most-used words. Open **Settings** from the gear
+Hold a word until it lifts, drag it into place, and release to drop it. Reset restores the
+original Greek order. Disable or restore a form from its word details.
+Closing the verse returns to the recording cards. Select a book and chapter side by side;
+cards are sorted by frequency within that chapter. Open **Settings** from the gear
 icon to set the recording language, import plans or audio, export archives, or manage data.
 Imports in a different language are rejected to prevent mixing projects. Plans and
 recordings remain in private storage; export them before uninstalling.
 
-The chapter verse list and verse text show the original Greek; recorded forms are marked
+The chapter verse list and verse text show pronunciation above each Greek word and
+English and Chinese glosses below where available. Recorded forms are marked
 green and disabled forms grey. The chapter list can play or save each verse, and its header
 plays or stops the full chapter. For natural neural speech with Classical/Erasmian pronunciation, the app can map
 polytonic Greek to IPA and embed it in Azure Speech SSML. Configure an Azure Speech
@@ -25,7 +26,11 @@ subscription and region in Settings for IPA-based neural synthesis; the speech s
 receives the Greek text and generated IPA. The subscription key is encrypted with Android
 Keystore. Without a key, choose an installed Greek or Italian Android TTS voice in Settings.
 Greek voices speak the original text directly, including the Samsung Greek Classic voice
-when it is exposed by the active system TTS engine; Italian voices use a pronunciation
+when it is exposed by the active system TTS engine. On Samsung, set the engine that owns
+the downloaded voice as the preferred engine in Android's **Text-to-speech output**
+settings, then reopen the app and choose the voice in **Settings**. CI installs eSpeak NG
+and checks offline Greek synthesis on an Android emulator; it does not test Samsung's engine.
+Italian voices use a pronunciation
 respelling instead. This fallback is approximate (Android TTS
 does not standardize IPA or SSML support), depends on installed voice data, and the voice
 provider may process speech locally or over its network. The IPA transcription models
@@ -36,8 +41,13 @@ Inspired by BTT Recorder's take-review workflow, replacing an existing recording
 reviewing the new take first. The current take remains intact until the replacement is
 accepted, including if the app is interrupted during review.
 
-Hold the red record button and release to save; drag far away or cancel the gesture
-to discard the take. A live waveform shows microphone activity while recording. When
+In verse word details, tap Record to open the take dialog immediately. The live new
+waveform appears above the current take, if there is one. Stop recording to preview the
+takes with their play/stop buttons, then select a waveform to keep that take and close
+the dialog. Closing a playback window stops its audio.
+
+On recording cards, hold the red record button and release to save; drag far away or
+cancel the gesture to discard the take. A live waveform shows microphone activity. When
 using an accessibility service or keyboard, activate the button once to start and again
 to stop. After granting microphone permission, start the recording again. The play
 button changes to stop during playback. Disabled forms are skipped in playback and shown

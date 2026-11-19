@@ -19,7 +19,8 @@ data class RecordingCardRow(
     val recorded: Boolean,
     val recording: Boolean,
     val playing: Boolean,
-    val grammar: String = ""
+    val grammar: String = "",
+    val mandarin: String = ""
 )
 
 class RecordingCardAdapter(
@@ -76,7 +77,7 @@ class RecordingCardAdapter(
         fun bind(row: RecordingCardRow) {
             lemma.text = row.card.lemma
             transliteration.text = GreekTransliterator.transliterate(row.card.lemma)
-            gloss.text = row.card.gloss
+            gloss.text = listOf(row.card.gloss, row.mandarin).filter(String::isNotBlank).joinToString(" · ")
             grammar.text = row.grammar
             occurrences.text = itemView.context.getString(
                 R.string.audio_workbench_occurrences,

@@ -290,6 +290,7 @@ internal class AndroidGreekTts(
     context: android.content.Context,
     preferredVoiceName: String?,
     private val onVoiceChanged: (String?) -> Unit = {},
+    private val onDone: () -> Unit = {},
     private val onError: (String) -> Unit
 ) {
     private var ready = false
@@ -298,49 +299,53 @@ internal class AndroidGreekTts(
     private var voices = emptyList<Voice>()
     private var selectedVoice: Voice? = null
     private val voiceCallbacks = mutableListOf<(List<Voice>) -> Unit>()
-    private lateinit var engine: TextToSpeech
+    private var closed = false
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+
+    private val engine = TextToSpeech(context.applicationContext) { status ->
+        main.post { if (!closed) initialize(status, preferredVoiceName) }
+    }
 
     init {
-        engine = TextToSpeech(context.applicationContext) { status ->
-            if (status != TextToSpeech.SUCCESS) {
-                failed = true
-                voiceCallbacks.toList().forEach { it(emptyList()) }
-                voiceCallbacks.clear()
-                onError("Android speech synthesis could not be initialized.")
-            } else {
-                voices = engine.voices.orEmpty()
-                    .filter { it.locale.language in setOf("el", "it") }
-                    .sortedWith(
-                        compareBy<Voice>({ it.locale.language != "el" }, { it.isNetworkConnectionRequired })
-                            .thenByDescending { it.quality }
-                            .thenBy { it.name }
-                    )
-                val voice = voices.firstOrNull { it.name == preferredVoiceName }
-                    ?: voices.firstOrNull { it.locale.language == "el" }
-                    ?: voices.firstOrNull()
-                if (voice == null || engine.setVoice(voice) != TextToSpeech.SUCCESS) {
-                    failed = true
-                    voiceCallbacks.toList().forEach { it(emptyList()) }
-                    voiceCallbacks.clear()
-                    onError("Install a Greek or Italian Android TTS voice to use device speech.")
-                } else {
-                    selectedVoice = voice
-                    onVoiceChanged(voice.name)
-                    ready = true
-                    voiceCallbacks.toList().forEach { it(voices) }
-                    voiceCallbacks.clear()
-                    pendingText?.let(::speakNow)
-                    pendingText = null
-                }
-            }
-        }
         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) = Unit
-            override fun onDone(utteranceId: String?) = Unit
+            override fun onDone(utteranceId: String?) = this@AndroidGreekTts.onDone()
             override fun onError(utteranceId: String?) {
                 onError("Android speech synthesis failed.")
             }
         })
+    }
+
+    private fun initialize(status: Int, preferredVoiceName: String?) {
+        val error = if (status != TextToSpeech.SUCCESS) {
+            "Android speech synthesis could not be initialized."
+        } else {
+            voices = engine.voices.orEmpty()
+                .filter { it.language() != null }
+                .sortedWith(compareBy<Voice>({ it.name != preferredVoiceName }, { it.language() != "el" },
+                    { it.isNetworkConnectionRequired }).thenByDescending { it.quality }.thenBy { it.name })
+            val voice = voices.firstOrNull { engine.setVoice(it) == TextToSpeech.SUCCESS }
+            if (voice == null) "Install a Greek or Italian voice for the preferred system TTS engine."
+            else {
+                selectedVoice = voice
+                onVoiceChanged(voice.name)
+                ready = true
+                null
+            }
+        }
+        failed = error != null
+        val callbacks = voiceCallbacks.toList()
+        voiceCallbacks.clear()
+        callbacks.forEach { it(if (ready) voices else emptyList()) }
+        if (error != null) onError(error)
+        if (ready) pendingText?.let(::speakNow)
+        pendingText = null
+    }
+
+    private fun Voice.language() = when (locale.language) {
+        "el", "ell", "gre" -> "el"
+        "it", "ita" -> "it"
+        else -> null
     }
 
     fun speak(text: String) {
@@ -367,13 +372,21 @@ internal class AndroidGreekTts(
 
     fun selectedVoiceName(): String? = selectedVoice?.name
 
-    fun shutdown() = engine.shutdown()
+    fun shutdown() {
+        closed = true
+        pendingText = null
+        voiceCallbacks.clear()
+        engine.shutdown()
+    }
 
-    fun stop() = engine.stop()
+    fun stop() {
+        pendingText = null
+        if (ready) engine.stop()
+    }
 
     private fun speakNow(text: String) {
         val voice = selectedVoice
-        val spokenText = if (voice?.locale?.language == "it") {
+        val spokenText = if (voice?.language() == "it") {
             ClassicalGreekG2p.italianRespelling(text)
         } else {
             text

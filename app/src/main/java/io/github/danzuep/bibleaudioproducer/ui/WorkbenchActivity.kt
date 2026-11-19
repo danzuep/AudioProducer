@@ -9,9 +9,11 @@ import android.os.Looper
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
+import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.AdapterView
@@ -19,6 +21,7 @@ import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.NumberPicker
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
@@ -33,6 +36,7 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.switchmaterial.SwitchMaterial
 import io.github.danzuep.bibleaudioproducer.R
@@ -43,6 +47,7 @@ import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioRecorder
 import io.github.danzuep.bibleaudioproducer.audio.AndroidGreekTts
 import io.github.danzuep.bibleaudioproducer.audio.AndroidNeuralSmoother
 import io.github.danzuep.bibleaudioproducer.audio.AzureGreekSpeech
+import io.github.danzuep.bibleaudioproducer.audio.GreekTransliterator
 import io.github.danzuep.bibleaudioproducer.audio.NeuralModelStore
 import io.github.danzuep.bibleaudioproducer.audio.NeuralStrength
 import io.github.danzuep.bibleaudioproducer.audio.SpeechCredentials
@@ -74,6 +79,8 @@ class WorkbenchActivity : AppCompatActivity() {
     private var speechGeneration = 0
     private val audioPlayer by lazy {
         AndroidAudioPlayer {
+            playingTake = null
+            refreshTakeReview?.invoke()
             playingLemma = null
             playingVerseReference = null
             playingChapterKey = null
@@ -83,7 +90,7 @@ class WorkbenchActivity : AppCompatActivity() {
         }
     }
     private val verseDialogs by lazy {
-        VerseDialogs(this, repository, object : VerseDialogs.Actions {
+        VerseDialogs(this, { repository }, object : VerseDialogs.Actions {
             override val state get() = projectState
             override val busy get() = this@WorkbenchActivity.busy
             override fun playVerse(verse: AudioVerse, smoothOverride: Boolean?) =
@@ -97,25 +104,20 @@ class WorkbenchActivity : AppCompatActivity() {
             override fun saveVerseState(
                 reference: String, order: List<Int>?, unspoken: Set<String>, neuralOff: Set<String>
             ) = this@WorkbenchActivity.saveVerseState(reference, order, unspoken, neuralOff)
-            override fun toggleRecording(card: RecordingCard) = this@WorkbenchActivity.toggleRecording(card)
-            override fun pressRecording(card: RecordingCard) = pressRecord(card)
-            override fun releaseRecording(card: RecordingCard) = releaseRecord(card)
-            override fun cancelRecording(card: RecordingCard) = cancelRecord(card)
-            override fun isRecording(card: RecordingCard) = activeLemma == card.lemma
+            override fun recordWord(word: VerseWord) {
+                if (!busy && hasRecordingPermission()) startRecording(word.surface, word)
+            }
             override fun isPlaying(card: RecordingCard) = playingLemma == card.lemma
             override fun playRecording(card: RecordingCard) = this@WorkbenchActivity.playRecording(card)
             override fun speakGreek(text: String) = this@WorkbenchActivity.speakGreek(text)
-            override fun closeRecording() {
-                stopRecording()
-                stopPlayback()
-            }
+            override fun stopPlayback() = this@WorkbenchActivity.stopPlayback()
         })
     }
     private var cards = emptyList<RecordingCard>()
     private var projectState = AudioProjectState()
     private var selectedBook: String? = null
-    private var bookCards = emptyList<RecordingCard>()
     private var bookVerses = emptyList<AudioVerse>()
+    private var selectedChapter = 1
     private val verseCache = mutableMapOf<String, List<AudioVerse>>()
     private var step = Step.PROJECTS
     private var busy = false
@@ -133,7 +135,8 @@ class WorkbenchActivity : AppCompatActivity() {
         override fun run() {
             val lemma = activeLemma ?: return
             try {
-                adapter.addLevel(lemma, audioRecorder.amplitude())
+                val levels = adapter.addLevel(lemma, audioRecorder.amplitude())
+                liveTakeWaveform?.showLevels(levels)
                 waveformHandler.postDelayed(this, 100)
             } catch (exception: IllegalStateException) {
                 stopRecording()
@@ -142,6 +145,9 @@ class WorkbenchActivity : AppCompatActivity() {
         }
     }
     private var reviewDialog: AlertDialog? = null
+    private var liveTakeWaveform: RecordingWaveform? = null
+    private var playingTake: File? = null
+    private var refreshTakeReview: (() -> Unit)? = null
     private data class ProjectInfo(val id: String, val name: String)
     private data class VerseExport(
         val reference: String, val greekForms: List<String>, val missing: Int,
@@ -151,6 +157,7 @@ class WorkbenchActivity : AppCompatActivity() {
 
     private lateinit var language: EditText
     private lateinit var books: Spinner
+    private lateinit var chapters: NumberPicker
     private lateinit var search: EditText
     private lateinit var coverage: TextView
     private lateinit var empty: TextView
@@ -217,6 +224,15 @@ class WorkbenchActivity : AppCompatActivity() {
 
         language = findViewById(R.id.audio_workbench_language)
         books = findViewById(R.id.audio_workbench_books)
+        chapters = findViewById<NumberPicker>(R.id.audio_workbench_chapter).apply {
+            isEnabled = false
+            setOnValueChangedListener { _, _, chapter ->
+                stopPlayback()
+                selectedChapter = chapter
+                resetCardPosition()
+                updateRows()
+            }
+        }
         search = findViewById(R.id.audio_workbench_search)
         coverage = findViewById(R.id.audio_workbench_coverage)
         empty = findViewById(R.id.audio_workbench_empty)
@@ -246,11 +262,8 @@ class WorkbenchActivity : AppCompatActivity() {
         books.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                selectedBook = books.adapter?.getItem(position) as? String
-                bookCards = cards.filter { it.book == selectedBook }
-                bookVerses = emptyList()
-                updateRows()
-                selectedBook?.let(::loadBook)
+                val book = books.adapter?.getItem(position) as? String ?: return
+                if (selectedBook != book) selectRecordingBook(book)
             }
         }
         search.addTextChangedListener(object : TextWatcher {
@@ -349,6 +362,10 @@ class WorkbenchActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        reviewDialog?.dismiss()
+        reviewDialog = null
+        refreshTakeReview = null
+        liveTakeWaveform = null
         androidGreekTts?.shutdown()
         io.shutdown()
         super.onDestroy()
@@ -493,7 +510,6 @@ class WorkbenchActivity : AppCompatActivity() {
         projectState = AudioProjectState()
         refreshAudioSettingControls()
         selectedBook = null
-        bookCards = emptyList()
         bookVerses = emptyList()
         language.setText(preferences.getString(languageKey(project.id), ""))
         showStep(Step.BOOKS)
@@ -587,7 +603,13 @@ class WorkbenchActivity : AppCompatActivity() {
                 runOnUiThread {
                     if (selectedBook == book && activeProjectId == selectedProject) {
                         bookVerses = verses
-                        bookCards = VerseWorkflow.chapterOrder(cards.filter { it.book == book }, verses)
+                        val first = verses.minOfOrNull { it.chapter } ?: 1
+                        chapters.minValue = first
+                        chapters.maxValue = verses.maxOfOrNull { it.chapter } ?: first
+                        chapters.wrapSelectorWheel = false
+                        chapters.value = selectedChapter.coerceIn(chapters.minValue, chapters.maxValue)
+                        selectedChapter = chapters.value
+                        chapters.isEnabled = chapters.maxValue > chapters.minValue
                         updateRows()
                     }
                 }
@@ -1082,16 +1104,32 @@ class WorkbenchActivity : AppCompatActivity() {
         }
         val index = bookList.indexOf(preferred).takeIf { it >= 0 } ?: 0
         if (bookList.isNotEmpty()) {
-            selectedBook = bookList[index]
             books.setSelection(index)
-            bookCards = cards.filter { it.book == selectedBook }
-            bookVerses = emptyList()
-            loadBook(bookList[index])
+            selectRecordingBook(bookList[index])
         }
         else {
             selectedBook = null
+            bookVerses = emptyList()
+            chapters.isEnabled = false
             updateRows()
         }
+    }
+
+    private fun selectRecordingBook(book: String) {
+        stopPlayback()
+        selectedBook = book
+        bookVerses = emptyList()
+        selectedChapter = 1
+        chapters.isEnabled = false
+        chapters.value = chapters.minValue
+        resetCardPosition()
+        updateRows()
+        loadBook(book)
+    }
+
+    private fun resetCardPosition() {
+        pendingCardFocus = null
+        findViewById<RecyclerView>(R.id.audio_workbench_list).scrollToPosition(0)
     }
 
     private fun updateRows() {
@@ -1100,7 +1138,22 @@ class WorkbenchActivity : AppCompatActivity() {
             return
         }
         val currentBook = selectedBook
-        val requiredCards = bookCards.filter { it.lemma !in projectState.unspoken }
+        val chapterWords = mutableMapOf<String, MutableList<VerseWord>>()
+        bookVerses.asSequence().filter { it.chapter == selectedChapter }
+            .flatMap { it.words.asSequence() }
+            .filterNot { it.proper }
+            .forEach { word ->
+                // Bundled plans are keyed by lemma; imported plans may use surface forms.
+                chapterWords.getOrPut(word.lemma) { mutableListOf() }.add(word)
+                if (word.surface != word.lemma) {
+                    chapterWords.getOrPut(word.surface) { mutableListOf() }.add(word)
+                }
+            }
+        val requiredCards = cards.mapNotNull { card ->
+            val words = chapterWords[card.lemma] ?: return@mapNotNull null
+            if (card.lemma in projectState.unspoken || currentBook == null) null
+            else card.copy(book = currentBook, occurrences = words.size)
+        }.sortedByDescending { it.occurrences }
         val visibleCards = RecordingPlan.search(requiredCards, currentBook, search.text.toString())
         val completed = RecordingPlan.coverage(requiredCards) { repository.clipFile(it).isFile }
         coverage.text = getString(R.string.audio_workbench_coverage, completed.recorded, completed.total)
@@ -1121,10 +1174,10 @@ class WorkbenchActivity : AppCompatActivity() {
                 repository.clipFile(card.lemma).isFile,
                 activeLemma == card.lemma,
                 playingLemma == card.lemma,
-                bookVerses.asSequence().flatMap { it.words.asSequence() }
-                    .firstOrNull { it.lemma == card.lemma }
+                chapterWords[card.lemma]?.firstOrNull()
                     ?.let { listOf(it.pos, it.grammaticalCase, it.mood).filter(String::isNotBlank).joinToString(" · ") }
-                    .orEmpty()
+                    .orEmpty(),
+                chapterWords[card.lemma]?.firstNotNullOfOrNull { it.mandarin.takeIf(String::isNotBlank) }.orEmpty()
             )
         }
         adapter.submitList(rows) {
@@ -1171,13 +1224,15 @@ class WorkbenchActivity : AppCompatActivity() {
 
     private fun pressRecord(card: RecordingCard) {
         if (busy || activeLemma == card.lemma) return
+        if (hasRecordingPermission()) startRecording(card.lemma)
+    }
+
+    private fun hasRecordingPermission(): Boolean {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
             android.content.pm.PackageManager.PERMISSION_GRANTED
-        ) {
-            startRecording(card.lemma)
-        } else {
-            requestAudioPermission.launch(Manifest.permission.RECORD_AUDIO)
-        }
+        ) return true
+        requestAudioPermission.launch(Manifest.permission.RECORD_AUDIO)
+        return false
     }
 
     private fun releaseRecord(card: RecordingCard) {
@@ -1199,7 +1254,7 @@ class WorkbenchActivity : AppCompatActivity() {
         }
     }
 
-    private fun startRecording(lemma: String) {
+    private fun startRecording(lemma: String, word: VerseWord? = null) {
         if (pendingTake() != null) {
             reviewPendingTake()
             return
@@ -1222,6 +1277,7 @@ class WorkbenchActivity : AppCompatActivity() {
             activeLemma = lemma
             adapter.clearWaveform()
             updateRows()
+            if (word != null) showTakeReview(lemma, word)
             waveformHandler.post(waveformSampler)
         } catch (exception: Exception) {
             Toast.makeText(this, R.string.audio_workbench_recording_failed, Toast.LENGTH_LONG).show()
@@ -1232,6 +1288,7 @@ class WorkbenchActivity : AppCompatActivity() {
 
     private fun stopRecording(allowReview: Boolean = true) {
         val lemma = activeLemma ?: return
+        val hasLiveReview = liveTakeWaveform != null
         activeLemma = null
         waveformHandler.removeCallbacks(waveformSampler)
         try {
@@ -1241,7 +1298,9 @@ class WorkbenchActivity : AppCompatActivity() {
             ) {
                 getString(R.string.audio_review_failed)
             }
-            if (repository.clipFile(lemma).isFile) {
+            if (hasLiveReview) {
+                refreshTakeReview?.invoke()
+            } else if (repository.clipFile(lemma).isFile) {
                 if (allowReview) reviewPendingTake()
             } else {
                 repository.commitRecording(lemma)
@@ -1249,12 +1308,12 @@ class WorkbenchActivity : AppCompatActivity() {
                     getString(R.string.audio_review_failed)
                 }
                 focusNextUnrecordedCard(lemma)
-                advanceToNextBookIfComplete(lemma)
             }
         } catch (exception: Exception) {
             Toast.makeText(this, R.string.audio_workbench_recording_failed, Toast.LENGTH_LONG).show()
             if (allowReview && pendingTake() != null) reviewPendingTake()
         } finally {
+            refreshTakeReview?.invoke()
             updateRows()
         }
     }
@@ -1276,32 +1335,139 @@ class WorkbenchActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.audio_review_missing, Toast.LENGTH_LONG).show()
             return
         }
-        val dialog = AlertDialog.Builder(this)
+        showTakeReview(lemma)
+    }
+
+    private fun showTakeReview(lemma: String, word: VerseWord? = null) {
+        val candidate = repository.recordingCandidateFile(lemma)
+        val current = repository.clipFile(lemma)
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), dp(8))
+        }
+        fun addWordLabel(label: String, size: Float) {
+            if (label.isBlank()) return
+            root.addView(TextView(this).apply {
+                text = label
+                textSize = size
+                gravity = Gravity.CENTER
+            })
+        }
+        addWordLabel(GreekTransliterator.transliterate(lemma), 12f)
+        addWordLabel(lemma, 26f)
+        if (word != null) {
+            addWordLabel(listOf(word.gloss, word.mandarin).filter(String::isNotBlank).joinToString(" · "), 14f)
+        }
+        var candidateLoaded = false
+        lateinit var dialog: AlertDialog
+        fun choose(useNew: Boolean) {
+            stopPlayback()
+            if (activeLemma == lemma) {
+                if (useNew) stopRecording(allowReview = false)
+                else cancelRecord(RecordingCard("", lemma, "", 0))
+            }
+            if (pendingTake() == lemma) {
+                if (finishReview(lemma, useNew, advanceCard = word == null)) dialog.dismiss()
+            } else if (!useNew) dialog.dismiss()
+        }
+        fun addTake(file: File, label: Int, isNew: Boolean): Pair<RecordingWaveform, Button> {
+            val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+            val selection = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                isFocusable = true
+                contentDescription = getString(if (isNew) R.string.audio_review_use else R.string.audio_review_keep)
+                setOnClickListener { choose(isNew) }
+                val attrs = obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground))
+                background = attrs.getDrawable(0)
+                attrs.recycle()
+            }
+            selection.addView(TextView(this).apply { setText(label) })
+            val waveform = RecordingWaveform(this)
+            selection.addView(waveform, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
+            row.addView(selection, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            val toggle = MaterialButton(this).apply {
+                setPadding(0, 0, 0, 0)
+                setOnClickListener {
+                    val wasRecording = activeLemma == lemma
+                    if (wasRecording) stopRecording(allowReview = false)
+                    if (!isNew || !wasRecording) {
+                        val alreadyPlaying = playingTake == file
+                        stopPlayback()
+                        if (!alreadyPlaying) {
+                            playingTake = file
+                            refreshTakeReview?.invoke()
+                            audioPlayer.play(listOf(file)) {
+                                playingTake = null
+                                refreshTakeReview?.invoke()
+                            }
+                        }
+                    }
+                }
+            }
+            row.addView(toggle, LinearLayout.LayoutParams(dp(54), dp(56)))
+            root.addView(row)
+            return waveform to toggle
+        }
+        val (newWaveform, newToggle) = addTake(candidate, R.string.audio_review_new_waveform, true)
+        val oldTake = if (current.isFile) addTake(current, R.string.audio_review_old_waveform, false) else null
+        if (activeLemma == lemma) liveTakeWaveform = newWaveform
+        dialog = AlertDialog.Builder(this)
             .setTitle(R.string.audio_review_title)
-            .setMessage(getString(R.string.audio_review_message, lemma))
+            .setView(root)
             .setCancelable(false)
-            .setNegativeButton(R.string.audio_review_keep) { _, _ ->
-                finishReview(lemma, useNew = false)
-            }
-            .setPositiveButton(R.string.audio_review_use) { _, _ ->
-                finishReview(lemma, useNew = true)
-            }
-            .setNeutralButton(R.string.audio_review_play, null)
+            .setNegativeButton(android.R.string.cancel, null)
             .create()
         reviewDialog = dialog
         dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
-                audioPlayer.play(listOf(candidate))
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener { choose(false) }
+        }
+        fun loadWaveform(file: File, waveform: RecordingWaveform) {
+            io.execute {
+                try {
+                    val levels = RecordingWaveform.peaks(AndroidAudioDecoder().decode(file))
+                    runOnUiThread { if (reviewDialog === dialog) waveform.showLevels(levels) }
+                } catch (exception: Exception) {
+                    runOnUiThread {
+                        if (reviewDialog === dialog) {
+                            Toast.makeText(this, R.string.audio_review_waveform_failed, Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            }
+        }
+        refreshTakeReview = {
+            val recording = activeLemma == lemma
+            val stopping = recording || playingTake == candidate
+            newToggle.isEnabled = recording || pendingTake() == lemma
+            newToggle.setText(if (stopping) R.string.audio_stop_symbol else R.string.audio_play_symbol)
+            newToggle.contentDescription = getString(when {
+                recording -> R.string.audio_review_stop_recording
+                stopping -> R.string.audio_review_stop_new
+                else -> R.string.audio_review_play_new
+            })
+            oldTake?.second?.apply {
+                val playing = playingTake == current
+                setText(if (playing) R.string.audio_stop_symbol else R.string.audio_play_symbol)
+                contentDescription = getString(if (playing) R.string.audio_review_stop_old else R.string.audio_review_play_old)
+            }
+            if (!recording && !candidateLoaded && pendingTake() == lemma) {
+                candidateLoaded = true
+                loadWaveform(candidate, newWaveform)
             }
         }
         dialog.setOnDismissListener {
+            if (reviewDialog !== dialog) return@setOnDismissListener
             reviewDialog = null
+            liveTakeWaveform = null
+            refreshTakeReview = null
             stopPlayback()
         }
         dialog.show()
+        refreshTakeReview?.invoke()
+        oldTake?.let { loadWaveform(current, it.first) }
     }
 
-    private fun finishReview(lemma: String, useNew: Boolean) {
+    private fun finishReview(lemma: String, useNew: Boolean, advanceCard: Boolean): Boolean {
         try {
             if (useNew) {
                 repository.commitRecording(lemma)
@@ -1312,29 +1478,12 @@ class WorkbenchActivity : AppCompatActivity() {
             check(preferences.edit().remove(PENDING_TAKE_KEY).remove(PENDING_PROJECT_KEY).commit()) {
                 getString(R.string.audio_review_failed)
             }
-            if (useNew) focusNextUnrecordedCard(lemma)
+            if (useNew && advanceCard) focusNextUnrecordedCard(lemma)
             updateRows()
-            if (useNew) advanceToNextBookIfComplete(lemma)
+            return true
         } catch (exception: Exception) {
             Toast.makeText(this, exception.message ?: getString(R.string.audio_review_failed), Toast.LENGTH_LONG).show()
-            window.decorView.post { reviewPendingTake() }
-        }
-    }
-
-    private fun advanceToNextBookIfComplete(lemma: String) {
-        val book = cards.firstOrNull { it.lemma == lemma }?.book ?: return
-        val bookCards = cards.filter { it.book == book }
-        if (!RecordingPlan.coverage(bookCards) { it in projectState.unspoken || repository.clipFile(it).isFile }.complete) return
-        val nextBook = RecordingPlan.nextIncompleteBook(cards) {
-            it in projectState.unspoken || repository.clipFile(it).isFile
-        } ?: return
-        val nextIndex = RecordingPlan.books(cards).indexOf(nextBook)
-        if (nextIndex >= 0 && nextBook != selectedBook) {
-            pendingCardFocus = cards.firstOrNull {
-                it.book == nextBook && it.lemma !in projectState.unspoken && !repository.clipFile(it.lemma).isFile
-            }?.lemma
-            pendingCardFocusOffset = dp(16)
-            books.setSelection(nextIndex)
+            return false
         }
     }
 
@@ -1577,6 +1726,8 @@ class WorkbenchActivity : AppCompatActivity() {
         speechGeneration++
         playbackRenderGeneration++
         audioPlayer.stop()
+        playingTake = null
+        refreshTakeReview?.invoke()
         androidGreekTts?.stop()
         clearPlaybackTempFile()
         if (playingLemma != null || playingVerseReference != null || playingChapterKey != null) {
