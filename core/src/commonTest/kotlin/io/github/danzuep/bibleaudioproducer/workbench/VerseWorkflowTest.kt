@@ -86,12 +86,12 @@ class VerseWorkflowTest {
     }
 
     @Test
-    fun recordingCardsMapToEnabledSourceOrderWithoutCountingDisabledWords() {
+    fun recordingCardsKeepDisplayOrderAndFullSourcePositions() {
         val repeated = word("same", "same", "noun")
         val omitted = word("particle", "particle", "conj").copy(gloss = "")
         val words = listOf(repeated, omitted, repeated, word("verb", "verb", "verb"))
         val cards = VerseWorkflow.recordingWords(words, listOf(3, 2, 1, 0), emptySet())
-        assertEquals(listOf(2, 1, 0), cards.map { it.spokenIndex })
+        assertEquals(listOf(3, 2, 0), cards.map { it.originalIndex })
         assertEquals(listOf("verb", "same", "same"), cards.map { it.word.surface })
         kotlin.test.assertFailsWith<IllegalArgumentException> {
             VerseWorkflow.recordingWords(words, listOf(3, 2, 0, 0), emptySet())
@@ -185,6 +185,38 @@ class VerseWorkflowTest {
         assertEquals(listOf(1, 0, 2), VerseWorkflow.modeOrder(repeated, WordOrderMode.ENGLISH_SVO))
         val manual = listOf(0, 1)
         assertEquals(manual, VerseWorkflow.orderedWordIndices(words, emptyMap(), manual))
+    }
+
+    @Test
+    fun englishMovesRepeatedArticleAdjectiveBeforeItsNounOnlyInAnIntactPhrase() {
+        val clause = "1,cl,,V-O"
+        val outer = "$clause/2,np,o,DetNP"
+        val phrase = "$outer/3,np,,NPDetAdj"
+        val modifier = "$phrase/4,np,,DetAdj"
+        val words = listOf(
+            word("verb", "verb", "verb").copy(role = "v", syntaxPath = clause),
+            word("article", "article", "det").copy(syntaxPath = outer),
+            word("noun", "noun", "noun").copy(syntaxPath = phrase),
+            word("article", "article", "det").copy(syntaxPath = modifier),
+            word("adjective", "adjective", "adj").copy(syntaxPath = modifier)
+        )
+        assertEquals(listOf(0, 1, 3, 4, 2), VerseWorkflow.modeOrder(words, WordOrderMode.ENGLISH_SVO))
+        for (mode in WordOrderMode.entries.filter { it != WordOrderMode.ENGLISH_SVO }) {
+            val phraseOrder = VerseWorkflow.modeOrder(words, mode).filter { it in 1..4 }
+            assertEquals(listOf(1, 2, 3, 4), phraseOrder)
+        }
+        fun unchanged(changed: List<VerseWord>) =
+            assertEquals(changed.indices.toList(), VerseWorkflow.modeOrder(changed, WordOrderMode.ENGLISH_SVO))
+        unchanged(words.map { it.copy(syntaxPath = it.syntaxPath.replace("2,np", "2,!np")) })
+        unchanged(words.map { it.copy(syntaxPath = it.syntaxPath.replace("NPDetAdj", "unknown")) })
+        unchanged(words.map { it.copy(syntaxPath = it.syntaxPath.replace(",DetAdj", ",unknown")) })
+        unchanged(words.mapIndexed { i, w -> if (i == 4) w.copy(pos = "verb") else w })
+        unchanged(words + word("extra", "extra", "adj").copy(syntaxPath = modifier))
+        val interruptingClause = word("nested", "nested", "verb").copy(syntaxPath = "$outer/5,cl,,V")
+        unchanged(words.take(3) + interruptingClause + words.drop(3))
+        unchanged(words.mapIndexed { i, w ->
+            if (i == 2) w.copy(syntaxPath = "$phrase/6,np,,NpPp") else w
+        })
     }
 
     @Test

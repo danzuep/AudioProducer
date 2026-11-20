@@ -53,6 +53,11 @@ class MaculaVerseJsonTest {
         assertTrue(before(order, 3, 7))
         assertTrue(before(order, 7, 8))
         assertTrue(before(order, 13, 10))
+        // The two Greek articles are retained, even though English may need only one.
+        assertEquals(listOf(13, 9, 11, 12, 10),
+            order.map { it + 1 }.filter { it in 9..13 })
+        val greek = VerseWorkflow.modeOrder(second, WordOrderMode.GREEK)
+        assertEquals(listOf(9, 10, 11, 12), greek.map { it + 1 }.filter { it in 9..12 })
         assertTrue(before(order, 19, 20))
         assertTrue(before(order, 20, 21))
         assertTrue(before(order, 21, 22))
@@ -63,5 +68,20 @@ class MaculaVerseJsonTest {
         }
         val manual = second.indices.reversed().toList()
         assertEquals(manual, VerseWorkflow.orderedWordIndices(second, emptyMap(), manual))
+    }
+
+    @Test
+    fun johnTrueLightUsesTheSameArticularAdjectivePattern() {
+        // JHN 1:9!2–5, from the pinned MACULA John tree; IDs here identify the same nested groups.
+        val verse = MaculaVerseJson.parse(
+            """[
+              ["JHN 1:9!2","τὸ","ὁ","det","","","the","nominative","","","T-NSN","1,np,s,NP-CL/2,np,,DetNP"],
+              ["JHN 1:9!3","φῶς","φῶς","noun","common","","Light","nominative","","光","N-NSN","1,np,s,NP-CL/2,np,,DetNP/3,np,,NPDetAdj"],
+              ["JHN 1:9!4","τὸ","ὁ","det","","","-","nominative","","","T-NSN","1,np,s,NP-CL/2,np,,DetNP/3,np,,NPDetAdj/4,np,,DetAdj"],
+              ["JHN 1:9!5","ἀληθινὸν","ἀληθινός","adj","","","true","nominative","","真","A-NSN","1,np,s,NP-CL/2,np,,DetNP/3,np,,NPDetAdj/4,np,,DetAdj"]
+            ]"""
+        ).single()
+        assertEquals(listOf(0, 2, 3, 1), VerseWorkflow.modeOrder(verse.words, WordOrderMode.ENGLISH_SVO))
+        assertEquals(listOf(0, 1, 2, 3), VerseWorkflow.modeOrder(verse.words, WordOrderMode.GREEK))
     }
 }

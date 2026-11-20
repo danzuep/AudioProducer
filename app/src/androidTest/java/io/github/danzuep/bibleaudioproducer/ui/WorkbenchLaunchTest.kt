@@ -122,7 +122,7 @@ class WorkbenchLaunchTest {
                 select(R.string.audio_word_order_greek)
                 select(R.string.audio_word_order_custom)
                 onView(withText("Add verse recording")).perform(scrollTo(), click())
-                onView(withText("Cancel recording")).perform(scrollTo(), click())
+                onView(withId(R.id.audio_verse_close)).perform(click())
                 onView(withId(R.id.audio_verse_close)).perform(click())
                 waitForSave(scenario)
                 waitForDefault("ENGLISH_SVO")
@@ -674,6 +674,8 @@ class WorkbenchLaunchTest {
             check(clip.parentFile!!.mkdirs() || clip.parentFile!!.isDirectory)
             val original = VerseAudio.encodeWav(FloatArray(16000) { 0.1f })
             clip.writeBytes(original)
+            onView(withId(R.id.audio_verse_word_order)).perform(click())
+            onData(`is`(context.getString(R.string.audio_word_order_greek))).perform(click())
             onView(withText("Add verse recording")).perform(scrollTo(), click())
             onView(withId(R.id.audio_verse_close)).check(matches(isDisplayed()))
             onView(withId(R.id.audio_workbench_toolbar)).check(matches(org.hamcrest.Matchers.not(isDisplayed())))
@@ -698,7 +700,8 @@ class WorkbenchLaunchTest {
             onView(withText("1 / ${words.size} clips reviewed"))
                 .perform(scrollTo())
                 .check(matches(isDisplayed()))
-            onView(withText("Preview selection")).perform(scrollTo(), click())
+            val label = words[1].gloss.ifBlank { words[1].mandarin.ifBlank { "[translation needed]" } }
+            onView(withContentDescription("Play $label slice")).perform(scrollTo(), click())
             onView(withText("Save clip and next")).perform(scrollTo(), click())
             val saved = AudioProjectRepository(directory).clipFile(words[1].surface)
             val saveDeadline = System.currentTimeMillis() + 15_000
