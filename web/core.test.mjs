@@ -14,19 +14,49 @@ test("segmentation keeps separated speech and rejects silence", () => {
     assert.throws(() => normalizeAudio(new Float32Array(10)), /silent/);
 });
 
-test("matching keeps duplicates and missing equivalents unassigned", () => {
+test("target transcript maps phrases non-monotonically and leaves unspoken and orphan audio", () => {
     const cards = validateScript([
-        { target_text: "word", ancient_text: "λόγος" },
-        { target_text: "and", ancient_text: "καί" },
-        { target_text: "and", ancient_text: "καί" },
-        { target_text: "implied", ancient_text: "" }
+        { target_text: "the word", ancient_text: "λόγος" },
+        { target_text: "was", ancient_text: "ἦν" },
+        { target_text: "", ancient_text: "δέ" }
     ]);
-    const blobs = [0, 1, 2].map(spokenIndex => ({ spokenIndex, start: spokenIndex * 100, end: spokenIndex * 100 + 50 }));
-    const pairs = pairTranscript(cards, blobs, "καὶ λογος καί");
-    assert.equal(pairs.length, 1);
+    const blobs = [0, 1, 2, 3].map(spokenIndex => ({ spokenIndex, start: spokenIndex * 100, end: spokenIndex * 100 + 50 }));
+    const pairs = pairTranscript(cards, blobs, "Was, the word extra");
+    assert.equal(pairs.length, 2);
     assert.equal(pairs[0][0], cards[0]);
-    assert.equal(pairs[0][1], blobs[1]);
-    assert.throws(() => pairTranscript(cards, blobs, "λόγος"), /exactly one/);
+    assert.deepEqual(pairs[0][1], [blobs[1], blobs[2]]);
+    assert.equal(pairs[1][0], cards[1]);
+    assert.deepEqual(pairs[1][1], [blobs[0]]);
+    assert.throws(() => pairTranscript(cards, blobs, "was"), /exactly one/);
+});
+
+test("target transcript does not guess repeated, overlapping, or already assigned matches", () => {
+    const blobs = [0, 1, 2].map(spokenIndex => ({ spokenIndex }));
+    const cards = validateScript([
+        { target_text: "love", ancient_text: "λόγος" },
+        { target_text: "LOVE", ancient_text: "ἦν" },
+        { target_text: "heart", ancient_text: "" }
+    ]);
+    assert.deepEqual(pairTranscript(cards, blobs, "love heart love"), [[cards[2], [blobs[1]]]]);
+    cards[2].spans = [blobs[1]];
+    assert.deepEqual(pairTranscript(cards, blobs, "love heart love"), []);
+    const overlapping = validateScript([
+        { target_text: "the", ancient_text: "ὁ" },
+        { target_text: "the word", ancient_text: "λόγος" }
+    ]);
+    assert.deepEqual(pairTranscript(overlapping, blobs.slice(0, 2), "the word"), []);
+});
+
+test("target matching preserves meaningful accents and supports non-Latin scripts", () => {
+    const blobs = [{ spokenIndex: 0 }, { spokenIndex: 1 }];
+    const cards = validateScript([
+        { target_text: "café", ancient_text: "καφές" },
+        { target_text: "سلام", ancient_text: "שלום" }
+    ]);
+    assert.deepEqual(pairTranscript(cards, blobs, "سَلَام cafe"), []);
+    assert.deepEqual(pairTranscript(cards, blobs, "سلام cafe\u0301!"), [
+        [cards[0], [blobs[1]]], [cards[1], [blobs[0]]]
+    ]);
 });
 
 test("index mapping is non-monotonic and refuses duplicate index assignments", () => {

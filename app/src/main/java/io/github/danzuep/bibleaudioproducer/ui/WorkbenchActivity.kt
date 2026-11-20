@@ -793,15 +793,13 @@ class WorkbenchActivity : AppCompatActivity() {
         )
         val words = spoken.filter { repository.playableClip(it) != null }
         if (words.isEmpty()) {
-            speakGreek(listOf(VerseWorkflow.originalText(verse))) {
-                playingVerseReference = verse.reference
-            }
+            Toast.makeText(this, R.string.audio_word_not_recorded, Toast.LENGTH_LONG).show()
             return
         }
         if (pendingTake() == null) {
             playingVerseReference = verse.reference
             updateRows()
-            renderAndPlay(listOf(verse.reference to spoken), mapOf(verse.reference to smoothOverride))
+            renderAndPlay(listOf(verse.reference to words), mapOf(verse.reference to smoothOverride))
         }
     }
 
@@ -825,15 +823,13 @@ class WorkbenchActivity : AppCompatActivity() {
         }
         val recorded = groups.flatMap { it.second }
         if (recorded.isEmpty()) {
-            speakGreek(verses.map(VerseWorkflow::originalText)) {
-                playingChapterKey = key
-            }
+            Toast.makeText(this, R.string.audio_word_not_recorded, Toast.LENGTH_LONG).show()
             return
         }
         if (pendingTake() == null) {
             playingChapterKey = key
             updateRows()
-            renderAndPlay(spokenGroups.filter { it.second.isNotEmpty() })
+            renderAndPlay(groups.filter { it.second.isNotEmpty() })
         }
     }
 
@@ -874,11 +870,12 @@ class WorkbenchActivity : AppCompatActivity() {
                 var sampleCount = 0L
                 val maxPlaybackSamples = VerseAudio.SAMPLE_RATE * if (groups.size > 1) 600L else 180L
                 val renderedVerses = groups.map { (reference, words) ->
-                    val clips = words.mapNotNull { word ->
+                    val clips = words.map { word ->
                         check(renderGeneration == playbackRenderGeneration) { "Playback was stopped." }
-                        val surface = word.surface
-                        val source = targetRepository.playableClip(word) ?: greekClip(surface, renderGeneration)
-                        source?.let { decoded.getOrPut(source.path) { decoder.decode(it) } }?.also {
+                        val source = checkNotNull(targetRepository.playableClip(word)) {
+                            getString(R.string.audio_word_not_recorded)
+                        }
+                        decoded.getOrPut(source.path) { decoder.decode(source) }.also {
                             sampleCount += it.size
                             require(sampleCount <= maxPlaybackSamples) {
                                 getString(R.string.audio_playback_too_long)
@@ -1651,32 +1648,6 @@ class WorkbenchActivity : AppCompatActivity() {
                 updateRows()
             }
         }
-    }
-
-    // Blocks the calling background thread; returns null when text-to-speech is unavailable.
-    private fun greekClip(text: String, generation: Int): File? {
-        val key = try { speechCredentials.key() } catch (exception: Exception) { null }
-        val clip = if (key == null) {
-            null
-        } else if (key.isBlank()) {
-            val latch = java.util.concurrent.CountDownLatch(1)
-            var result: File? = null
-            runOnUiThread {
-                if (isFinishing || isDestroyed) latch.countDown()
-                else getAndroidGreekTts().synthesize(text, cacheDir) { result = it; latch.countDown() }
-            }
-            if (latch.await(30, java.util.concurrent.TimeUnit.SECONDS)) result else null
-        } else {
-            val file = File(cacheDir, "tts-az-${speechCredentials.region().hashCode()}-${text.hashCode()}.mp3")
-            try {
-                if (file.length() == 0L) AzureGreekSpeech().synthesize(text, speechCredentials.region(), key, file)
-                file
-            } catch (exception: Exception) {
-                null
-            }
-        }
-        if (generation == playbackRenderGeneration) setSpeechFailed(clip == null)
-        return clip
     }
 
     private fun setSpeechFailed(failed: Boolean) {

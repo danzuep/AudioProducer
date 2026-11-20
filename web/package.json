@@ -1,7 +1,0 @@
-{
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "onnxruntime-web": "1.31.1"
-  }
-}

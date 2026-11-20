@@ -14,6 +14,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import android.util.TypedValue
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -415,7 +416,7 @@ internal class VerseDialogs(
                         refreshControls()
                     }
                 }
-                editor = VerseTakeEditor(activity, repository, cards, verse.words.size,
+                editor = VerseTakeEditor(activity, repository, cards,
                     actions::hasRecordingPermission, { closeEditor() }, {
                         closeEditor()
                         changed = false
@@ -615,7 +616,7 @@ internal class VerseDialogs(
         val play = roundButton(R.color.workbench_primary).apply {
             setOnClickListener {
                 if (repository.clipFile(word.surface).isFile) actions.playRecording(card)
-                else actions.speakGreek(word.surface)
+                else Toast.makeText(activity, R.string.audio_word_not_recorded, Toast.LENGTH_LONG).show()
             }
         }
         val close = Button(activity).apply {

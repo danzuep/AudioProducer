@@ -413,6 +413,34 @@ class WorkbenchLaunchTest {
     }
 
     @Test
+    fun verseAndChapterWithNoRecordingsDoNotSpeakTheGreekSource() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val verse = context.assets.open("books/JHN.json").bufferedReader().use {
+            MaculaVerseJson.parse(it.readText()).first()
+        }
+        ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
+            awaitBooks(scenario, 27)
+            scenario.onActivity { activity ->
+                val playVerse = WorkbenchActivity::class.java.getDeclaredMethod(
+                    "playVerse", AudioVerse::class.java, Boolean::class.javaObjectType
+                ).apply { isAccessible = true }
+                val versePlaying = WorkbenchActivity::class.java.getDeclaredField("playingVerseReference")
+                    .apply { isAccessible = true }
+                playVerse.invoke(activity, verse, null)
+                assertEquals(null, versePlaying.get(activity))
+
+                val playChapter = WorkbenchActivity::class.java.getDeclaredMethod(
+                    "playChapter", Int::class.javaPrimitiveType, List::class.java
+                ).apply { isAccessible = true }
+                val chapterPlaying = WorkbenchActivity::class.java.getDeclaredField("playingChapterKey")
+                    .apply { isAccessible = true }
+                playChapter.invoke(activity, 1, listOf(verse))
+                assertEquals(null, chapterPlaying.get(activity))
+            }
+        }
+    }
+
+    @Test
     fun chapterPlaybackStopsDuringPreparationAndResetsAfterCompletion() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val verse = context.assets.open("books/JHN.json").bufferedReader().use {

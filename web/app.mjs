@@ -299,7 +299,7 @@ $("references").addEventListener("change", action(async event => {
     const next = [];
     for (const file of files) {
         const token = file.name.replace(/\.[^.]+$/, "");
-        if (!token) throw new Error("Reference files must be named after their ancient word.");
+        if (!token) throw new Error("Reference files must be named after their target-language word or phrase.");
         next.push({ token, samples: await decodeAudio(await file.arrayBuffer(), 12) });
     }
     references = next;
@@ -320,33 +320,10 @@ $("match-references").addEventListener("click", action(async () => {
     setSelection(selected);
     status(`Suggested ${result.pairs.length} acoustic matches. Compare each clip and review every pairing.`);
 }));
-$("match-phones").addEventListener("click", action(async () => {
-    const model = $("phoneme-model").files[0], vocabulary = $("phoneme-vocab").files[0];
-    const language = $("pronunciation").value;
-    if (!samples || !model || !vocabulary) throw new Error("Load source audio, a phoneme model, and its vocabulary first.");
-    if (blobs.length > 100) throw new Error("Phoneme matching supports at most 100 waveform slices at a time.");
-    const snapshot = JSON.stringify({ cards, blobs });
-    status("Loading the local phoneme model…");
-    const result = await runWorker("phoneme-worker.mjs", { cards, blobs, samples, model, vocabulary, language }, 300000, $("match-phones"), status);
-    if (result.error) throw new Error(result.error);
-    if (snapshot !== JSON.stringify({ cards, blobs })) throw new Error("The deck changed during matching; try again.");
-    if (language !== $("pronunciation").value || model !== $("phoneme-model").files[0] || vocabulary !== $("phoneme-vocab").files[0]) {
-        throw new Error("The model or pronunciation changed during matching; try again.");
-    }
-    $("phoneme-observations").replaceChildren(...result.observations.map(phones => {
-        const item = document.createElement("li"); item.textContent = phones || "∅"; return item;
-    }));
-    for (const pair of result.pairs) {
-        const card = cards.find(item => item.id === pair.cardId), blob = blobs.find(item => item.id === pair.blobId);
-        if (card && blob && !card.spans.length && !owner(blob)) card.spans = [blob];
-    }
-    setSelection(selected);
-    status(`Suggested ${result.pairs.length} phoneme matches. Model predictions are approximate; review every pairing.`);
-}));
 $("match-transcript").addEventListener("click", action(() => {
     if (!samples) throw new Error("Load audio first.");
     const pairs = pairTranscript(cards, blobs, $("transcript").value);
-    for (const [card, blob] of pairs) card.spans = [blob];
+    for (const [card, spans] of pairs) card.spans = spans;
     setSelection(selected);
     status(`Paired ${pairs.length} unique transcript matches. Review every pairing.`);
 }));

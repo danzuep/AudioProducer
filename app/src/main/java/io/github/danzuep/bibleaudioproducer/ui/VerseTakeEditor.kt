@@ -30,7 +30,6 @@ internal class VerseTakeEditor(
     private val activity: AppCompatActivity,
     private val repository: AudioProjectRepository,
     private val words: List<VerseRecordingWord>,
-    private val spokenWordCount: Int,
     private val hasPermission: () -> Boolean,
     private val onBack: () -> Unit,
     private val onComplete: () -> Unit
@@ -77,8 +76,12 @@ internal class VerseTakeEditor(
         }
         content.addView(button("Cancel recording") { if (!working) onBack() })
         content.addView(TextView(activity).apply {
-            text = "Record the complete verse in its original spoken order, including disabled words. " +
-                "Suggestions are approximate; review each clip in the selected card order."
+            text = "Record the enabled translations in the target language, in original source-word order. " +
+                "Omit disabled words. Suggestions are approximate; review each clip in card order."
+        })
+        content.addView(TextView(activity).apply {
+            text = "Source-order gloss guide (adapt to your recording language): " +
+                words.sortedBy { it.spokenIndex }.joinToString(" · ") { targetLabel(it) }
         })
         record = button("Record verse") { toggleRecord() }
         content.addView(record)
@@ -179,7 +182,7 @@ internal class VerseTakeEditor(
                 io.execute {
                     try {
                         val decoded = AndroidAudioDecoder().decode(file)
-                        val suggested = VerseAudio.suggestBoundaries(decoded, spokenWordCount)
+                        val suggested = VerseAudio.suggestBoundaries(decoded, words.size)
                         activity.runOnUiThread {
                             if (!closed) {
                                 samples = decoded
@@ -246,7 +249,7 @@ internal class VerseTakeEditor(
             words.mapIndexed { i, word ->
                 val delta = i - word.spokenIndex
                 "${if (i in reviewed) "✓ " else ""}${i + 1}. " +
-                    "${word.word.gloss.ifBlank { word.word.surface }} — ${word.word.surface} " +
+                    "${targetLabel(word)} — ${word.word.surface} " +
                     "(spoken ${word.spokenIndex + 1}, ${if (delta > 0) "+" else ""}$delta)"
             })
         select.setSelection(index)
@@ -428,6 +431,8 @@ internal class VerseTakeEditor(
     }
 
     private fun seconds(sample: Int) = String.format(Locale.US, "%.6f", sample.toDouble() / VerseAudio.SAMPLE_RATE)
+    private fun targetLabel(word: VerseRecordingWord) =
+        word.word.gloss.ifBlank { word.word.mandarin.ifBlank { "[translation needed]" } }
     private fun toast(message: String) = Toast.makeText(activity, message, Toast.LENGTH_LONG).show()
     private fun dp(value: Int) = (value * activity.resources.displayMetrics.density).toInt()
 }

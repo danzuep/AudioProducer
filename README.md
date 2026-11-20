@@ -1,6 +1,6 @@
 # Bible Audio Producer
 
-Record and review Greek-form audio using the
+Record and review target-language audio associated with Greek forms using the
 [MACULA Greek](https://github.com/Clear-Bible/macula-greek/) and
 [MACULA Hebrew](https://github.com/Clear-Bible/macula-hebrew/) linguistic datasets.
 Greek New Testament support is included first; Hebrew is not yet bundled.
@@ -11,7 +11,7 @@ verse; existing projects keep their previous behavior. Select a book, tap the ch
 number to choose an available chapter with the number picker, then choose **Show verses**
 to navigate its verses. Changing books resets the chapter to 1 (or the first available chapter). Back
 returns to the previous screen. Tap a word to
-inspect its Macula metadata and English gloss, then record or play that Greek form.
+inspect its Macula metadata and English gloss, then record or play its target-language equivalent.
 Hold a word until it lifts, drag it into place, and release to drop it. Reset restores the
 original order with the **Original order** preset. Disable or restore a form from its word details.
 Closing the verse returns to the chapter list or recording cards. Select a book and chapter side by side;
@@ -21,14 +21,15 @@ Imports in a different language are rejected to prevent mixing projects. Plans a
 recordings remain in private storage; export them before uninstalling.
 
 In a verse, select a word-order mode or drag individual words, then choose **Add verse
-recording** to expand the recording editor below the verse. Record the complete verse
-in its original spoken order, including disabled words. The app suggests boundaries at
-quiet points in that order, then presents enabled words in the selected order. Disabled
-words still occupy time in the take but are not saved as clips. Select each word, adjust
+recording** to expand the recording editor below the verse. Record the enabled words'
+translations in the target language, following the original source-word order shown in
+the gloss guide; omit disabled words. The app suggests boundaries at quiet points in
+that order, then presents enabled words in the selected card order. Select each word, adjust
 the start and end with the sliders or typed seconds, preview it, and save it or keep its
 existing clip. Preview either the whole take or the enabled clips in card order.
-Suggestions assume one spoken segment per original word; they are not phonetic
-alignment and must be reviewed. Verse clips are saved as lossless WAV audio with
+Suggestions assume one spoken segment per enabled card; translations with extra, missing,
+or combined words need manual adjustment. They are not speech recognition and must be
+reviewed. Verse clips are saved as lossless WAV audio with
 short fades, including very short selections.
 Each saved clip is keyed by Greek surface form, so repeated forms share a
 recording: replacing any existing clip requires confirmation. Back or **Cancel recording**
@@ -62,7 +63,8 @@ and manually selected orders still take precedence; drag words to correct a pres
 The chapter verse list and verse text show pronunciation above each Greek word and
 English and Chinese glosses below where available. Recorded forms are marked
 green and disabled forms grey. The chapter list can play or save each verse, and its header
-plays or stops the full chapter. For natural neural speech with Classical/Erasmian pronunciation, the app can map
+plays or stops the full chapter. Explicit Greek pronunciation previews are separate
+from target-language recording and playback. For natural neural speech with Classical/Erasmian pronunciation, the app can map
 polytonic Greek to IPA and embed it in Azure Speech SSML. Configure an Azure Speech
 subscription and region in Settings for IPA-based neural synthesis; the speech service
 receives the Greek text and generated IPA. The subscription key is encrypted with Android
@@ -110,15 +112,14 @@ yet available.
 
 ## Browser interlinear slicer
 
-The separate browser workspace in `web/` works locally without uploading audio. To
-enable optional phoneme recognition, first run `npm ci --prefix web`. Start it
-from the repository root with `python3 -m http.server 8000`, then open
+The separate browser workspace in `web/` works locally without uploading audio or
+installing dependencies. Start it from the repository root with `python3 -m http.server 8000`, then open
 `http://localhost:8000/web/` in a recent browser. Microphone recording requires a secure
 context (localhost or HTTPS). This is separate from the Android project's stored clips
 and its word-order presets.
 
-Load a WAV, MP3, M4A, or supported microphone recording and an interlinear JSON array
-in target reading order, for example:
+Load a WAV, MP3, M4A, or supported microphone recording spoken in the target language
+and an interlinear JSON array in target reading order, for example:
 
 ```json
 [
@@ -129,12 +130,14 @@ in target reading order, for example:
 ```
 
 `spoken_index` is optional and 1-based; it points to a detected waveform slice, not to
-a verified word. Duplicate indices are left unassigned. Alternatively, enter an
-original-order transcript with one token per detected slice to pair unique exact
-matches. Greek accent marks and Hebrew cantillation are ignored for this comparison;
-Hebrew vowel marks are retained. Initial detection uses quiet gaps and may split
-syllables or join words. Optionally load reference word recordings named after their ancient text, such
-as `λόγος.wav`, and choose **Suggest acoustic matches**. This compares local spectral
+a verified word. Duplicate indices are left unassigned. Alternatively, enter a
+target-language transcript in spoken order, with one whitespace-separated word per
+detected slice, to pair unique matches to the target text. A multiword card can match
+consecutive slices. Matching ignores case and surrounding punctuation but preserves
+meaningful diacritics. Repeated or overlapping matches remain unassigned. Initial
+detection uses quiet gaps and may split syllables or join words. Optionally load
+target-language reference clips named after their target text, such as `word.wav`,
+and choose **Suggest acoustic matches**. This compares local spectral
 features against unassigned slices without assuming their order; same-speaker clips work
 best. It is an experimental similarity heuristic, not a phonetic recognizer, and can
 produce incorrect matches or leave words unmatched. Reference clips stay local and must
@@ -143,30 +146,10 @@ intentionally not matched automatically. Select an unassigned slice to attach it
 cursor. Drag the selected handles or enter milliseconds; the handles snap to nearby
 zero crossings. Cards can be reordered, split or merged, and audio can be moved separately.
 Overwriting an attachment or the whole recording requires reviewing the replacement.
-On Android, **Export interlinear script** in a verse exports the currently selected
+The ancient text is a label for its translated equivalent; it is not compared with
+the recording. On Android, **Export interlinear script** in a verse exports the currently selected
 word order and English glosses as a compatible JSON array. Disabled words are omitted,
 and audio must be paired separately.
-
-For phoneme-based suggestions, select a pronunciation scheme and supply an ONNX CTC
-phoneme model and its JSON vocabulary, then choose **Suggest phoneme matches**.
-The model must accept a single `[1, samples]` float32 audio input and return a single
-`[1, frames, vocabulary size]` logits output, with `<pad>` as the CTC blank. One tested
-example is the separately distributed
-[quantized wav2vec2-lv60-espeak model and vocabulary](https://github.com/HashCat03/weekdrop-phoneme-model/releases/tag/v1)
-(356 MB); inspect the provider's terms before downloading. Its tested SHA-256 values
-are `fe9969e144776591fd81232cb41b9b05e201021e2f779265dea5c669495cc4fb`
-for `phoneme_q8.onnx` and
-`d732ab2456c0c017930001dc9af0b41b3b93d25b2eb9740bf9d925508d7d87d0`
-for `vocab.json`. Models are not bundled or fetched automatically.
-
-Inference runs locally in WebAssembly and may take substantial time and memory.
-The model is not trained specifically for ancient pronunciation, and the Greek and
-Hebrew grapheme-to-phone rules are approximations, not full linguistic analyses.
-Hebrew matching requires vowel points. Both segmentation and recognition can fail:
-ambiguous matches and untranslated or unvoiced words are left unassigned, but even
-assigned matches require listening and boundary review. Open **Recognized phonemes**
-to inspect the last model output. At most 100 slices are analyzed in one pass; slices
-shorter than 25 ms or longer than 12 seconds are skipped.
 
 Export produces a ZIP with lossless clips in card order, the original source audio and
 `alignment.json`. Empty cards have no WAV; merged cards include all their spans in
@@ -175,7 +158,7 @@ playback order. To continue editing, load the exported source audio and then its
 current browser session. Global padding is applied at export, and short fades are
 applied at clip edges. Neither the source recording nor the timestamp map is modified
 by padding or fades. Run the browser core tests with
-`node --test web/core.test.mjs web/acoustic.test.mjs web/phonetics.test.mjs`.
+`node --test web/core.test.mjs web/acoustic.test.mjs`.
 With Google Chrome installed, `node --test web/browser.test.mjs` also exercises the
 browser workflow.
 

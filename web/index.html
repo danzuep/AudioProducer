@@ -10,7 +10,7 @@
 <main>
   <header>
     <h1>Interlinear audio slicer</h1>
-    <p>Keep the recording in spoken order; arrange the cards in translation order. Audio stays in this browser.</p>
+    <p>Record in the target language. Keep the waveform in spoken order and arrange cards in target-language reading order. Audio stays in this browser.</p>
   </header>
   <section class="toolbar" aria-label="Inputs">
     <label>Audio <input id="audio-file" type="file" accept="audio/wav,audio/mpeg,audio/mp4,audio/x-m4a,audio/*"></label>
@@ -42,27 +42,14 @@
   <section aria-labelledby="deck-title">
     <h2 id="deck-title">Interlinear deck</h2>
     <p>Drag a card to reorder it. Hold Shift while dragging its audio footer to move the audio to another card. Select a grey slice above to attach it.</p>
-    <label for="transcript">Optional spoken transcript (one token per detected slice)</label>
-    <textarea id="transcript" rows="2" placeholder="Original-language words in spoken order"></textarea>
+    <label for="transcript">Optional target-language transcript (one word per detected slice)</label>
+    <textarea id="transcript" rows="2" placeholder="Target-language words in spoken order"></textarea>
     <button id="match-transcript">Pair unique matching words</button>
     <div class="toolbar">
       <label>Reference word clips <input id="references" type="file" accept="audio/*" multiple></label>
       <button id="match-references">Suggest acoustic matches</button>
     </div>
-    <p>Optional: name each reference file after its ancient word, for example <code>λόγος.wav</code>. Same-speaker reference clips work best; suggestions always require review.</p>
-    <div class="toolbar">
-      <label>Pronunciation <select id="pronunciation">
-        <option value="greek-classical">Greek: Classical/Erasmian</option>
-        <option value="greek-koine">Greek: Koine</option>
-        <option value="hebrew-tiberian">Hebrew: Tiberian</option>
-        <option value="hebrew-modern">Hebrew: Modern</option>
-      </select></label>
-      <label>Phoneme ONNX model <input id="phoneme-model" type="file" accept=".onnx"></label>
-      <label>Model vocabulary <input id="phoneme-vocab" type="file" accept=".json,application/json"></label>
-      <button id="match-phones">Suggest phoneme matches</button>
-    </div>
-    <p>Optional local phoneme model and vocabulary required. Ancient pronunciations and model output are approximate; review all suggestions.</p>
-    <details><summary>Recognized phonemes from the last analysis</summary><ol id="phoneme-observations"></ol></details>
+    <p>Optional: name each reference file after its target-language word or phrase, for example <code>word.wav</code>. Same-speaker reference clips work best; suggestions always require review.</p>
     <div id="deck" class="deck"></div>
     <button id="add-card">Add empty card</button>
   </section>

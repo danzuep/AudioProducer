@@ -86,12 +86,12 @@ class VerseWorkflowTest {
     }
 
     @Test
-    fun recordingCardsMapToOriginalOccurrencesIncludingDisabledWords() {
+    fun recordingCardsMapToEnabledSourceOrderWithoutCountingDisabledWords() {
         val repeated = word("same", "same", "noun")
         val omitted = word("particle", "particle", "conj").copy(gloss = "")
         val words = listOf(repeated, omitted, repeated, word("verb", "verb", "verb"))
         val cards = VerseWorkflow.recordingWords(words, listOf(3, 2, 1, 0), emptySet())
-        assertEquals(listOf(3, 2, 0), cards.map { it.spokenIndex })
+        assertEquals(listOf(2, 1, 0), cards.map { it.spokenIndex })
         assertEquals(listOf("verb", "same", "same"), cards.map { it.word.surface })
         kotlin.test.assertFailsWith<IllegalArgumentException> {
             VerseWorkflow.recordingWords(words, listOf(3, 2, 0, 0), emptySet())
