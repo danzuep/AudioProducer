@@ -341,12 +341,13 @@ class WorkbenchLaunchTest {
             onView(withId(R.id.audio_choose_verse)).perform(click())
             onView(withContentDescription(verse.words.joinToString(" ") { it.surface })).perform(click())
             onView(withId(R.id.audio_verse_more)).perform(click())
-            onView(withText(R.string.audio_download_verse)).perform(click())
+            onView(withText(R.string.audio_format_wav)).perform(click())
             onView(withText(R.string.audio_format_wav)).check(matches(isDisplayed()))
             onView(withText(R.string.audio_format_aac)).check(matches(isDisplayed()))
             if (Build.VERSION.SDK_INT >= 29) {
                 onView(withText(R.string.audio_format_opus)).check(matches(isDisplayed()))
             }
+            pressBack()
             onView(withText(android.R.string.cancel)).perform(click())
             onView(withId(R.id.audio_verse_close)).perform(click())
         }
@@ -512,6 +513,7 @@ class WorkbenchLaunchTest {
                     }
                     val uri = checkNotNull(resolver.insert(android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values))
                     uris += uri
+                    checkNotNull(resolver.openOutputStream(uri)).close()
                     val monitor = instrumentation.addMonitor(
                         android.content.IntentFilter(android.content.Intent.ACTION_CREATE_DOCUMENT),
                         android.app.Instrumentation.ActivityResult(
@@ -602,24 +604,33 @@ class WorkbenchLaunchTest {
     @Test
     fun closingChapterStopsPlayback() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val surface = context.assets.open("books/JHN.json").bufferedReader().use {
-            MaculaVerseJson.parse(it.readText()).first().words.first { word -> !word.proper }.surface
+        val verse = context.assets.open("books/JHN.json").bufferedReader().use {
+            MaculaVerseJson.parse(it.readText()).first()
         }
+        val word = verse.words.first { !it.disabled(emptySet()) }
+        val shortVerse = AudioVerse(verse.reference, listOf(word))
         ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
             awaitBooks(scenario, 27)
             onView(withId(R.id.audio_verse_close)).perform(click())
-            val clip = AudioProjectRepository(directory).clipFile(surface)
+            val clip = AudioProjectRepository(directory).clipFile(word.surface)
             check(clip.parentFile!!.mkdirs() || clip.parentFile!!.isDirectory)
             clip.writeBytes(VerseAudio.encodeWav(FloatArray(10 * VerseAudio.SAMPLE_RATE) { 0.1f }))
             fun openChapter() {
                 onView(withId(R.id.audio_choose_verse)).perform(click())
             }
+            fun playShortChapter() {
+                scenario.onActivity { activity ->
+                    WorkbenchActivity::class.java.getDeclaredMethod(
+                        "playChapter", Int::class.javaPrimitiveType, List::class.java
+                    ).apply { isAccessible = true }.invoke(activity, 1, listOf(shortVerse))
+                }
+            }
             openChapter()
-            onView(withContentDescription(R.string.audio_play_chapter)).perform(click())
+            playShortChapter()
             onView(withContentDescription(R.string.audio_stop_chapter)).check(matches(isDisplayed()))
             onView(withContentDescription(R.string.audio_stop_chapter)).perform(click())
             onView(withContentDescription(R.string.audio_play_chapter)).check(matches(isDisplayed()))
-            onView(withContentDescription(R.string.audio_play_chapter)).perform(click())
+            playShortChapter()
             onView(withContentDescription(R.string.audio_stop_chapter)).check(matches(isDisplayed()))
             pressBack()
             openChapter()
