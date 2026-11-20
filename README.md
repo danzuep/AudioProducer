@@ -30,6 +30,9 @@ the sliders, or enter seconds. Adjacent spoken slices share their boundary: movi
 changes both clips and requires reviewing both again. Hold and drag a card, or use its
 arrow buttons, to change the target order without changing spoken boundaries. Preview
 each clip and save it or keep its existing clip. Preview the whole take or card order.
+The Android editor currently maps one spoken slice to each enabled Greek form; editable
+card text, audio re-pairing, split/merge, unassigned blobs and alignment ZIP export
+remain available only in the separate browser slicer below.
 Suggestions assume one spoken segment per enabled card; translations with extra, missing,
 or combined words need manual adjustment. They are not speech recognition and must be
 reviewed. Verse clips are saved as lossless WAV audio with
