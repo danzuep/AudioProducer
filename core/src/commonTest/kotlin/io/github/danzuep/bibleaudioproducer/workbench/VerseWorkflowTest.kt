@@ -164,6 +164,12 @@ class VerseWorkflowTest {
         assertEquals(listOf(0, 1, 2), VerseWorkflow.modeOrder(
             listOf(noun, adjective, adjective), WordOrderMode.ENGLISH_SVO
         ))
+        val outside = word("other", "other", "noun").copy(syntaxPath = "1,cl,,V-O/4,np,,")
+        assertEquals(listOf(0, 1, 2), VerseWorkflow.modeOrder(
+            listOf(noun, outside, adjective), WordOrderMode.ENGLISH_SVO
+        ))
+        val repeated = listOf(noun, adjective, noun.copy(syntaxPath = "1,cl,,V-O/4,np,,"))
+        assertEquals(listOf(1, 0, 2), VerseWorkflow.modeOrder(repeated, WordOrderMode.ENGLISH_SVO))
         val manual = listOf(0, 1)
         assertEquals(manual, VerseWorkflow.orderedWordIndices(words, emptyMap(), manual))
     }

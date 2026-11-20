@@ -121,7 +121,11 @@ class WorkbenchLaunchTest {
                 assertEquals(null, repository.loadState().defaultWordOrder)
                 select(R.string.audio_word_order_english)
                 waitForDefault("ENGLISH_SVO")
+                scenario.recreate()
+                awaitBooks(scenario, 27)
+                onView(withText("JHN 3:16")).check(matches(isDisplayed()))
                 select(R.string.audio_word_order_greek)
+                select(R.string.audio_word_order_custom)
                 onView(withText("Add verse recording")).perform(scrollTo(), click())
                 onView(withText("Cancel recording")).perform(scrollTo(), click())
                 onView(withId(R.id.audio_verse_close)).perform(click())
@@ -146,7 +150,17 @@ class WorkbenchLaunchTest {
                 assertEquals("ENGLISH_SVO", repository.loadState().defaultWordOrder)
                 assertEquals(VerseWorkflow.modeOrder(first.words, WordOrderMode.JAPANESE_SOV),
                     repository.loadState().wordOrders[first.reference])
-                assertEquals(null, AudioProjectRepository(File(context.filesDir, "projects/other")).loadState().defaultWordOrder)
+                val other = File(context.filesDir, "projects/project-002").apply { mkdirs() }
+                File(other, "project-name.txt").writeText("Project002")
+                File(other, "verse-onboarding").writeText("JHN 3:16")
+                onView(withId(R.id.audio_verse_close)).perform(click())
+                pressBack()
+                onView(withText("Project002")).perform(click())
+                assertTrue(awaitBookCount(scenario, 27, 15_000))
+                assertEquals(null, AudioProjectRepository(other).loadState().defaultWordOrder)
+                select(R.string.audio_word_order_japanese)
+                assertEquals("JAPANESE_SOV", AudioProjectRepository(other).loadState().defaultWordOrder)
+                assertEquals("ENGLISH_SVO", repository.loadState().defaultWordOrder)
             }
         }
         assertEquals(4917, cards.size)
