@@ -233,10 +233,11 @@ internal class VerseTakeEditor(
         record.text = if (recording) "Stop recording" else if (samples.isEmpty()) "Record verse" else "Record again"
         record.isEnabled = !working
         waveform.isEnabled = ready
-        start.isEnabled = ready
-        end.isEnabled = ready
-        startSeek.isEnabled = ready
-        endSeek.isEnabled = ready
+        val spoken = words[index].spokenIndex
+        start.isEnabled = ready && spoken > 0
+        end.isEnabled = ready && spoken < words.lastIndex
+        startSeek.isEnabled = start.isEnabled
+        endSeek.isEnabled = end.isEnabled
         previewButton.isEnabled = ready
         previewWhole.isEnabled = ready
         previewOrdered.isEnabled = ready

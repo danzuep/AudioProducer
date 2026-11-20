@@ -11,6 +11,7 @@ import kotlin.math.abs
 internal class VerseSliceWaveform(context: Context) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var samples = FloatArray(0)
+    private var peaks = FloatArray(0)
     private var boundaries = emptyList<Int>()
     private var selected = 0
     private var dragging = -1
@@ -18,6 +19,15 @@ internal class VerseSliceWaveform(context: Context) : View(context) {
     var onBoundary: (Int, Int) -> Unit = { _, _ -> }
 
     fun show(samples: FloatArray, boundaries: List<Int>, selected: Int) {
+        if (this.samples !== samples) {
+            peaks = if (samples.isEmpty()) FloatArray(0) else FloatArray(minOf(1024, samples.size)) { bucket ->
+                val first = (bucket.toLong() * samples.size / minOf(1024, samples.size)).toInt()
+                val last = ((bucket + 1L) * samples.size / minOf(1024, samples.size)).toInt()
+                var peak = 0f
+                for (i in first until last) peak = maxOf(peak, abs(samples[i]))
+                peak
+            }
+        }
         this.samples = samples
         this.boundaries = boundaries
         this.selected = selected
@@ -36,10 +46,10 @@ internal class VerseSliceWaveform(context: Context) : View(context) {
         paint.color = Color.rgb(38, 63, 91)
         paint.strokeWidth = 1f
         for (x in 0 until width) {
-            val start = (x.toLong() * samples.size / width).toInt()
-            val end = ((x + 1L) * samples.size / width).toInt().coerceAtMost(samples.size)
+            val start = (x.toLong() * peaks.size / width).toInt()
+            val end = ((x + 1L) * peaks.size / width).toInt().coerceAtLeast(start + 1).coerceAtMost(peaks.size)
             var peak = 0f
-            for (i in start until end) peak = maxOf(peak, abs(samples[i]))
+            for (i in start until end) peak = maxOf(peak, peaks[i])
             val half = (peak.coerceAtMost(1f) * height * 0.43f).coerceAtLeast(1f)
             canvas.drawLine(x.toFloat(), height / 2f - half, x.toFloat(), height / 2f + half, paint)
         }
