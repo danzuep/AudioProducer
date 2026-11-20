@@ -126,9 +126,10 @@ class WorkbenchLaunchTest {
             onView(withId(R.id.audio_workbench_empty))
                 .check(matches(withText(R.string.audio_workbench_no_results)))
         }
+    }
 
-        @Test
-        fun chapterPickerPreservesSelectionOnRefreshAndResetsForAnotherBook() {
+    @Test
+    fun chapterPickerPreservesSelectionOnRefreshAndResetsForAnotherBook() {
             ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
                 awaitBooks(scenario, 27)
                 onView(withId(R.id.audio_verse_close)).perform(click())
@@ -165,7 +166,6 @@ class WorkbenchLaunchTest {
                 onView(withId(R.id.audio_workbench_toolbar)).check(matches(org.hamcrest.Matchers.not(isDisplayed())))
                 pressBack()
                 onView(withId(R.id.audio_workbench_toolbar)).check(matches(isDisplayed()))
-            }
         }
     }
 
@@ -329,17 +329,17 @@ class WorkbenchLaunchTest {
     }
 
     @Test
-    fun closingChapterStopsPlayback() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val surface = context.assets.open("books/JHN.json").bufferedReader().use {
-            MaculaVerseJson.parse(it.readText()).first().words.first { word -> !word.proper }.surface
-        }
-
-        @Test
-        fun chapterPlaybackStopsDuringPreparationAndResetsAfterCompletion() {
+    fun chapterPlaybackStopsDuringPreparationAndResetsAfterCompletion() {
             val context = ApplicationProvider.getApplicationContext<Context>()
             val verse = context.assets.open("books/JHN.json").bufferedReader().use {
                 MaculaVerseJson.parse(it.readText()).first()
+    }
+
+    @Test
+    fun closingChapterStopsPlayback() {
+            val context = ApplicationProvider.getApplicationContext<Context>()
+            val surface = context.assets.open("books/JHN.json").bufferedReader().use {
+                MaculaVerseJson.parse(it.readText()).first().words.first { word -> !word.proper }.surface
             }
             val word = verse.words.first { !it.disabled(emptySet()) }
             val shortVerse = AudioVerse(verse.reference, listOf(word))
