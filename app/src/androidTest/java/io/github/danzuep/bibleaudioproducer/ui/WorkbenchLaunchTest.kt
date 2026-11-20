@@ -28,6 +28,7 @@ import androidx.test.espresso.matcher.ViewMatchers.isChecked
 import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.espresso.matcher.ViewMatchers.withContentDescription
+import androidx.test.espresso.matcher.RootMatchers.isDialog
 import androidx.test.espresso.UiController
 import androidx.test.espresso.ViewAction
 import androidx.test.espresso.matcher.ViewMatchers.isAssignableFrom
@@ -431,17 +432,19 @@ class WorkbenchLaunchTest {
                 }
             }
             openDownload()
-            onView(withText(context.getString(R.string.audio_download_tts_warning, 1))).check(matches(isDisplayed()))
-            onView(withText(R.string.audio_download_strip_tts)).check(matches(isDisplayed()))
-            onView(withText(android.R.string.cancel)).perform(click())
+            onView(withText(context.getString(R.string.audio_download_tts_warning, 1)))
+                .inRoot(isDialog()).check(matches(isDisplayed()))
+            onView(withText(R.string.audio_download_strip_tts)).inRoot(isDialog()).check(matches(isDisplayed()))
+            onView(withText(android.R.string.cancel)).inRoot(isDialog()).perform(click())
             check(clip.delete())
             openDownload()
-            onView(withText(context.getString(R.string.audio_download_tts_warning, 2))).check(matches(isDisplayed()))
-            onView(withText(R.string.audio_download_strip_tts)).perform(click())
-            onView(withText(R.string.audio_download_strip_tts)).check(matches(isChecked()))
-            onView(withText(R.string.audio_download_verse)).perform(click())
-            onView(withText(R.string.audio_download_strip_tts)).check(matches(isDisplayed()))
-            onView(withText(android.R.string.cancel)).perform(click())
+            onView(withText(context.getString(R.string.audio_download_tts_warning, 2)))
+                .inRoot(isDialog()).check(matches(isDisplayed()))
+            onView(withText(R.string.audio_download_strip_tts)).inRoot(isDialog()).perform(click())
+            onView(withText(R.string.audio_download_strip_tts)).inRoot(isDialog()).check(matches(isChecked()))
+            onView(withText(R.string.audio_download_verse)).inRoot(isDialog()).perform(click())
+            onView(withText(R.string.audio_download_strip_tts)).inRoot(isDialog()).check(matches(isDisplayed()))
+            onView(withText(android.R.string.cancel)).inRoot(isDialog()).perform(click())
         }
     }
 
