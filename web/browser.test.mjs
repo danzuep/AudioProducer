@@ -60,7 +60,7 @@ test("browser workflow: import, pair, review, split, merge, and export", { timeo
             const core = await import('/web/core.mjs');
             const data = new Float32Array(16000);
             for (let i = 2000; i < 5000; i++) data[i] = Math.sin(i / 10) * .5;
-            for (let i = 8000; i < 11000; i++) data[i] = Math.sin(i / 10) * .5;
+            for (let i = 8000; i < 11000; i++) data[i] = Math.sin(i / 6) * .5;
             const transfer = new DataTransfer();
             transfer.items.add(new File([core.wav(data)], 'source.wav', {type:'audio/wav'}));
             const input = document.querySelector('#audio-file'); input.files = transfer.files;
@@ -72,6 +72,26 @@ test("browser workflow: import, pair, review, split, merge, and export", { timeo
         }
         assert.match(await evaluate("document.querySelector('#status').textContent"), /detected 2/);
         await evaluate(`document.querySelector('#example').click();
+            (async () => {
+                const core = await import('/web/core.mjs'), data = new Float32Array(3000);
+                for (let i = 0; i < data.length; i++) data[i] = Math.sin((i + 8000) / 6) * .5;
+                const transfer = new DataTransfer();
+                transfer.items.add(new File([core.wav(data)], 'ἦν.wav', {type:'audio/wav'}));
+                const input = document.querySelector('#references'); input.files = transfer.files;
+                input.dispatchEvent(new Event('change'));
+            })()`);
+        for (let i = 0; i < 100; i++) {
+            if ((await evaluate("document.querySelector('#status').textContent")).includes("Loaded 1 reference")) break;
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        await evaluate("document.querySelector('#match-references').click()");
+        for (let i = 0; i < 100; i++) {
+            if ((await evaluate("document.querySelector('#status').textContent")).includes("Suggested")) break;
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        assert.match(await evaluate("document.querySelector('#status').textContent"), /Suggested 1 acoustic matches/);
+        await evaluate(`window.confirm = () => true;
+            document.querySelector('#example').click();
             document.querySelector('#transcript').value = 'λόγος ἦν';
             document.querySelector('#match-transcript').click()`);
         assert.match(await evaluate("document.querySelector('#status').textContent"), /Paired 1/);

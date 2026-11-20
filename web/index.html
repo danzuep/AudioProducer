@@ -45,6 +45,11 @@
     <label for="transcript">Optional spoken transcript (one token per detected slice)</label>
     <textarea id="transcript" rows="2" placeholder="Original-language words in spoken order"></textarea>
     <button id="match-transcript">Pair unique matching words</button>
+    <div class="toolbar">
+      <label>Reference word clips <input id="references" type="file" accept="audio/*" multiple></label>
+      <button id="match-references">Suggest acoustic matches</button>
+    </div>
+    <p>Optional: name each reference file after its ancient word, for example <code>λόγος.wav</code>. Same-speaker reference clips work best; suggestions always require review.</p>
     <div id="deck" class="deck"></div>
     <button id="add-card">Add empty card</button>
   </section>
@@ -52,7 +57,7 @@
     <label>Breathing room (ms) <input id="padding" type="number" min="0" max="100" step="1" value="0"></label>
     <button id="export">Export WAVs and alignment.json</button>
   </section>
-  <p class="notice">Quiet-gap segmentation is approximate and is not phonetic recognition. Check every boundary and pairing. A spoken_index in the script is only a provisional blob assignment.</p>
+  <p class="notice">Quiet-gap segmentation and reference matching are approximate, not phonetic recognition. Check every boundary and pairing. A spoken_index in the script is only a provisional blob assignment.</p>
 </main>
 <dialog id="review">
   <form method="dialog">

@@ -4,6 +4,7 @@ const $ = id => document.getElementById(id);
 const colors = ["#007b89", "#d05b32", "#7863bb", "#a08009", "#ba4775", "#3b8260"];
 let samples = null, blobs = [], cards = [], selected = null, cursor = 0, player = null;
 let sourceBytes = null, sourceName = "", sourceHash = "";
+let references = [];
 let recorder = null, chunks = [], drag = null, movingHandle = null;
 const context = new AudioContext();
 
@@ -203,14 +204,17 @@ function renderDeck() {
         deck.append(element);
     });
 }
-async function loadAudio(data, name) {
-    stop();
+async function decodeAudio(data, maxSeconds) {
     const decoded = await context.decodeAudioData(data.slice(0));
-    if (!decoded.length || decoded.duration > 180) throw new Error("Audio must be nonempty and at most 180 seconds.");
+    if (!decoded.length || decoded.duration > maxSeconds) throw new Error(`Audio must be nonempty and at most ${maxSeconds} seconds.`);
     const offline = new OfflineAudioContext(1, Math.ceil(decoded.duration * SAMPLE_RATE), SAMPLE_RATE);
     const source = offline.createBufferSource(); source.buffer = decoded; source.connect(offline.destination); source.start();
     const rendered = await offline.startRendering();
-    const next = normalizeAudio(rendered.getChannelData(0));
+    return normalizeAudio(rendered.getChannelData(0));
+}
+async function loadAudio(data, name) {
+    stop();
+    const next = await decodeAudio(data, 180);
     const detected = detectBlobs(next);
     const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", data))].map(byte => byte.toString(16).padStart(2, "0")).join("");
     if (samples && !await reviewAudio(samples, next)) { status("Kept the current recording."); return; }
@@ -270,6 +274,40 @@ $("play-spoken").addEventListener("click", action(() => play(samples)));
 $("play-deck").addEventListener("click", action(() => play(renderSlice(samples, cards.flatMap(card => card.spans)))));
 $("stop").addEventListener("click", stop);
 $("direction").addEventListener("change", renderDeck);
+$("references").addEventListener("change", action(async event => {
+    const files = [...event.target.files];
+    event.target.value = "";
+    if (files.length > 50) throw new Error("Load at most 50 reference clips at a time.");
+    const next = [];
+    for (const file of files) {
+        const token = file.name.replace(/\.[^.]+$/, "");
+        if (!token) throw new Error("Reference files must be named after their ancient word.");
+        next.push({ token, samples: await decodeAudio(await file.arrayBuffer(), 12) });
+    }
+    references = next;
+    status(`Loaded ${references.length} reference clips. Select “Suggest acoustic matches” to compare them locally.`);
+}));
+$("match-references").addEventListener("click", action(async () => {
+    if (!samples || !references.length) throw new Error("Load source audio and reference clips first.");
+    if (blobs.length > 100) throw new Error("Acoustic matching supports at most 100 waveform slices at a time.");
+    const snapshot = JSON.stringify({ cards, blobs });
+    const worker = new Worker("acoustic-worker.mjs", { type: "module" });
+    const result = await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => { worker.terminate(); reject(new Error("Acoustic matching took too long.")); }, 60000);
+        worker.onmessage = event => { clearTimeout(timer); worker.terminate(); resolve(event.data); };
+        worker.onerror = event => { clearTimeout(timer); worker.terminate(); reject(new Error(event.message || "Acoustic matching failed.")); };
+        worker.postMessage({ cards, blobs, samples, references });
+        status("Comparing reference clips to waveform slices locally…");
+    });
+    if (result.error) throw new Error(result.error);
+    if (snapshot !== JSON.stringify({ cards, blobs })) throw new Error("The deck changed during matching; try again.");
+    for (const pair of result.pairs) {
+        const card = cards.find(item => item.id === pair.cardId), blob = blobs.find(item => item.id === pair.blobId);
+        if (card && blob && !card.spans.length && !owner(blob)) card.spans = [blob];
+    }
+    setSelection(selected);
+    status(`Suggested ${result.pairs.length} acoustic matches. Compare each clip and review every pairing.`);
+}));
 $("match-transcript").addEventListener("click", action(() => {
     if (!samples) throw new Error("Load audio first.");
     const pairs = pairTranscript(cards, blobs, $("transcript").value);

@@ -132,9 +132,14 @@ a verified word. Duplicate indices are left unassigned. Alternatively, enter an
 original-order transcript with one token per detected slice to pair unique exact
 matches. Greek accent marks and Hebrew cantillation are ignored for this comparison;
 Hebrew vowel marks are retained. The detection uses quiet gaps, not speech recognition,
-and does **not** implement phonetic acoustic alignment. It may split syllables or join
-words. Check all pairings and boundaries; repeated words are intentionally not matched
-automatically. Select an unassigned slice to attach it, or add a slice at the waveform
+and does **not** implement phoneme recognition. It may split syllables or join
+words. Optionally load reference word recordings named after their ancient text, such
+as `λόγος.wav`, and choose **Suggest acoustic matches**. This compares local spectral
+features against unassigned slices without assuming their order; same-speaker clips work
+best. It is an experimental similarity heuristic, not a phonetic recognizer, and can
+produce incorrect matches or leave words unmatched. Reference clips stay local and must
+be loaded again after reopening. Check all pairings and boundaries; repeated words are
+intentionally not matched automatically. Select an unassigned slice to attach it, or add a slice at the waveform
 cursor. Drag the selected handles or enter milliseconds; the handles snap to nearby
 zero crossings. Cards can be reordered, split or merged, and audio can be moved separately.
 Overwriting an attachment or the whole recording requires reviewing the replacement.
@@ -148,7 +153,8 @@ playback order. To continue editing, load the exported source audio and then its
 `alignment.json`; the source hash must match. Edits are otherwise held only in the
 current browser session. Global padding is applied at export, and short fades are
 applied at clip edges. Neither the source recording nor the timestamp map is modified
-by padding or fades. Run the browser core tests with `node --test web/core.test.mjs`.
+by padding or fades. Run the browser core tests with
+`node --test web/core.test.mjs web/acoustic.test.mjs`.
 With Google Chrome installed, `node --test web/browser.test.mjs` also exercises the
 browser workflow.
 
