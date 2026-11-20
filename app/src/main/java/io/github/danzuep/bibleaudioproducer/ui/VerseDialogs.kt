@@ -84,7 +84,7 @@ internal class VerseDialogs(
         if (pages.isEmpty()) {
             val root = container.parent as ViewGroup
             previousVisibility = (0 until root.childCount).map(root::getChildAt)
-                .filter { it !== container && it.id != R.id.audio_workbench_toolbar }
+                .filter { it !== container }
                 .associateWith { it.visibility }
             previousVisibility.keys.forEach { it.visibility = View.GONE }
             container.visibility = View.VISIBLE
@@ -117,37 +117,6 @@ internal class VerseDialogs(
             page.refresh()
         }
         return true
-    }
-
-    fun showChapterPicker(bookVerses: List<AudioVerse>, selected: Int, onSelect: (Int) -> Unit) {
-        val root = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(12), dp(16), dp(12))
-        }
-        val header = LinearLayout(activity).apply { gravity = Gravity.CENTER_VERTICAL }
-        header.addView(Button(activity).apply {
-            text = "←"
-            contentDescription = activity.getString(R.string.audio_back)
-            setOnClickListener { back() }
-        })
-        header.addView(TextView(activity).apply {
-            setText(R.string.audio_choose_chapter)
-            textSize = 20f
-        })
-        root.addView(header)
-        val rows = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
-        bookVerses.map { it.chapter }.distinct().forEach { chapter ->
-            rows.addView(MaterialButton(activity).apply {
-                text = activity.getString(R.string.audio_chapter, chapter) + if (chapter == selected) " ✓" else ""
-                setOnClickListener {
-                    back()
-                    onSelect(chapter)
-                }
-            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        }
-        root.addView(ScrollView(activity).apply { addView(rows) },
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-        push(root, {}) { actions.stopPlayback(); true }
     }
 
     private fun showVerseActions(verse: AudioVerse) {
@@ -276,7 +245,7 @@ internal class VerseDialogs(
                     state.wordOrders[verse.reference], verse.reference in state.fullVerseReferences
                 ).any { repository.playableClip(it) != null }
             }
-            val chapterPlayable = chapterRecorded || !actions.speechFailed
+            val chapterPlayable = actions.isPlayingChapter(chapter) || chapterRecorded || !actions.speechFailed
             chapterPlay.isEnabled = chapterPlayable
             chapterPlay.alpha = if (chapterPlayable) 1f else 0.45f
             chapterPlay.setText(
@@ -290,7 +259,7 @@ internal class VerseDialogs(
                     verse.words, state.rules, state.seedOrders[verse.reference], state.unspoken,
                     state.wordOrders[verse.reference], verse.reference in state.fullVerseReferences
                 ).any { repository.playableClip(it) != null }
-                val playable = recorded || !actions.speechFailed
+                val playable = actions.isPlayingVerse(verse) || recorded || !actions.speechFailed
                 button.isEnabled = playable
                 button.alpha = if (playable) 1f else 0.45f
                 button.setText(
@@ -418,16 +387,27 @@ internal class VerseDialogs(
         controls.addView(orderMode)
         controls.addView(neural, LinearLayout.LayoutParams(0, dp(48), 1f))
         root.addView(controls)
-        root.addView(MaterialButton(activity).apply {
+        val editorContainer = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        val addRecording = MaterialButton(activity).apply {
             text = "Add verse recording"
             setOnClickListener {
                 val spoken = order.map(verse.words::get).filter { !it.disabled(unspoken) }
                 if (spoken.isEmpty()) return@setOnClickListener
                 actions.stopPlayback()
                 lateinit var editor: VerseTakeEditor
-                editor = VerseTakeEditor(activity, repository, spoken, verse.reference,
-                    actions::hasRecordingPermission, { back() }, {
-                        back()
+                fun closeEditor() {
+                    if (editor.close()) {
+                        takeEditor = null
+                        editorContainer.removeAllViews()
+                        isEnabled = true
+                        orderMode.isEnabled = true
+                        renderWords()
+                        refreshControls()
+                    }
+                }
+                editor = VerseTakeEditor(activity, repository, spoken,
+                    actions::hasRecordingPermission, { closeEditor() }, {
+                        closeEditor()
                         changed = false
                         neuralChanged = false
                         back()
@@ -437,14 +417,12 @@ internal class VerseDialogs(
                         )
                     })
                 takeEditor = editor
-                push(editor.view(), {}) {
-                    if (editor.close()) {
-                        takeEditor = null
-                        true
-                    } else false
-                }
+                isEnabled = false
+                orderMode.isEnabled = false
+                editorContainer.addView(editor.view())
+                renderWords()
             }
-        })
+        }
 
         lateinit var flow: VerseFlowLayout
         lateinit var scroll: ScrollView
@@ -462,6 +440,7 @@ internal class VerseDialogs(
                     28f
                 )
                 token.setOnClickListener {
+                    if (takeEditor != null) return@setOnClickListener
                     showWordDetails(word, word.disabled(unspoken)) { disabled ->
                         word.withDisabled(unspoken, disabled)
                         changed = true
@@ -475,7 +454,7 @@ internal class VerseDialogs(
                     private var dragging = false
 
                     fun lift(): Boolean {
-                        if (!touching) return false
+                        if (!touching || takeEditor != null) return false
                         dragging = true
                         token.translationZ = dp(8).toFloat()
                         token.alpha = 0.85f
@@ -540,11 +519,17 @@ internal class VerseDialogs(
         }
 
         flow = VerseFlowLayout(activity)
+        val verseContent = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(flow)
+            addView(addRecording)
+            addView(editorContainer)
+        }
         scroll = ScrollView(activity).apply {
             setFillViewport(true)
             isVerticalScrollBarEnabled = true
             isScrollbarFadingEnabled = false
-            addView(flow, ViewGroup.LayoutParams(
+            addView(verseContent, ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             ))
         }
@@ -562,7 +547,7 @@ internal class VerseDialogs(
                 verse.words, actions.state.rules, actions.state.seedOrders[verse.reference], unspoken, order,
                 verse.reference in actions.state.fullVerseReferences
             ).any { repository.playableClip(it) != null }
-            val playable = recorded || !actions.speechFailed
+            val playable = actions.isPlayingVerse(verse) || recorded || !actions.speechFailed
             play.isEnabled = playable
             play.setText(if (actions.isPlayingVerse(verse)) R.string.audio_stop_symbol else R.string.audio_play_symbol)
             play.contentDescription = if (actions.isPlayingVerse(verse)) {
@@ -574,6 +559,18 @@ internal class VerseDialogs(
         }
         close.setOnClickListener { back() }
         push(root, refresh) {
+            val editor = takeEditor
+            if (editor != null) {
+                if (editor.close()) {
+                    takeEditor = null
+                    editorContainer.removeAllViews()
+                    addRecording.isEnabled = true
+                    orderMode.isEnabled = true
+                    renderWords()
+                    refreshControls()
+                }
+                return@push false
+            }
             if (changed || neuralChanged) {
                 actions.saveVerseState(
                     verse.reference,

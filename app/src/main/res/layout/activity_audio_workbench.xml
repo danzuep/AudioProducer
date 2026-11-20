@@ -55,13 +55,6 @@
         android:layout_weight="1"
         android:orientation="vertical"
         android:visibility="gone">
-        <TextView
-            android:id="@+id/audio_project_heading"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingHorizontal="16dp"
-            android:paddingTop="12dp"
-            android:textAppearance="?attr/textAppearanceHeadline6" />
         <LinearLayout
             android:id="@+id/audio_workbench_controls"
             android:layout_width="match_parent"
@@ -75,21 +68,23 @@
                 android:orientation="horizontal">
                 <Spinner
                     android:id="@+id/audio_workbench_books"
-                    android:layout_width="76dp"
+                    android:layout_width="0dp"
                     android:layout_height="48dp"
+                    android:layout_weight="1"
                     android:contentDescription="@string/audio_workbench_choose_book" />
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/audio_workbench_chapter"
                     style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                     android:layout_width="wrap_content"
                     android:layout_height="48dp"
+                    android:minWidth="48dp"
+                    android:paddingHorizontal="4dp"
                     android:text="@string/audio_chapter_filter" />
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/audio_choose_verse"
                     style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                    android:layout_width="0dp"
+                    android:layout_width="wrap_content"
                     android:layout_height="48dp"
-                    android:layout_weight="1"
                     android:minWidth="0dp"
                     android:text="@string/audio_choose_verse" />
             </LinearLayout>
@@ -124,6 +119,26 @@
             android:clipToPadding="false"
             android:paddingHorizontal="12dp"
             android:paddingBottom="16dp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/audio_settings_header"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:visibility="gone">
+        <Button
+            android:id="@+id/audio_settings_back"
+            android:layout_width="48dp"
+            android:layout_height="56dp"
+            android:contentDescription="@string/audio_back"
+            android:text="←" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/audio_step_settings"
+            android:textAppearance="?attr/textAppearanceHeadline6" />
     </LinearLayout>
 
     <LinearLayout
