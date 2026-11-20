@@ -20,11 +20,11 @@ test("reference matching pairs non-monotonic clips without attaching unmatched a
     samples.set(low); samples.set(high, low.length); samples.set(unknown, low.length * 2);
     const blobs = [0, 1, 2].map((i) => ({ id: `${i}`, start: i * low.length, end: (i + 1) * low.length }));
     const cards = [
-        { ancient: "ἦν", spans: [] },
-        { ancient: "λόγος", spans: [] },
-        { ancient: "", spans: [] }
+        { target: "was", ancient: "ἦν", spans: [] },
+        { target: "word", ancient: "λόγος", spans: [] },
+        { target: "", ancient: "δέ", spans: [] }
     ];
-    const refs = [{ token: "λόγος", samples: low }, { token: "ἦν", samples: high }];
+    const refs = [{ token: "word", samples: low }, { token: "was", samples: high }];
     const pairs = matchReferences(cards, blobs, samples, refs);
     assert.equal(pairs.length, 2);
     assert.equal(pairs.find(pair => pair.card === cards[0]).blob, blobs[1]);
@@ -35,19 +35,20 @@ test("reference matching pairs non-monotonic clips without attaching unmatched a
 test("reference matching refuses ambiguous words and already attached blobs", () => {
     const samples = tone(200);
     const blob = { id: "a", start: 0, end: samples.length };
-    const refs = [{ token: "λόγος", samples }];
+    const refs = [{ token: "word", samples }];
     assert.deepEqual(matchReferences([
-        { ancient: "λόγος", spans: [] }, { ancient: "λογος", spans: [] }
+        { target: "word", ancient: "λόγος", spans: [] }, { target: "WORD", ancient: "ἦν", spans: [] }
     ], [blob], samples, refs), []);
     assert.deepEqual(matchReferences([
-        { ancient: "λόγος", spans: [] }
+        { target: "word", ancient: "λόγος", spans: [] }
     ], [blob], samples, [...refs, ...refs]), []);
     assert.deepEqual(matchReferences([
-        { ancient: "λόγος", spans: [] }, { ancient: "other", spans: [blob] }
+        { target: "word", ancient: "λόγος", spans: [] }, { target: "other", ancient: "", spans: [blob] }
     ], [blob], samples, refs), []);
     assert.deepEqual(matchReferences([
-        { ancient: "λόγος", spans: [] }, { ancient: "ἦν", spans: [] }
-    ], [blob], samples, [...refs, { token: "ἦν", samples }]), []);
-    assert.equal(tokenKey("בָּ֑רָא"), tokenKey("בָּרָא"));
-    assert.notEqual(tokenKey("בָּרָא"), tokenKey("בֶּרָא"));
+        { target: "word", ancient: "λόγος", spans: [] }, { target: "was", ancient: "ἦν", spans: [] }
+    ], [blob], samples, [...refs, { token: "was", samples }]), []);
+    assert.equal(tokenKey("CAFÉ!"), tokenKey("cafe\u0301"));
+    assert.notEqual(tokenKey("café"), tokenKey("cafe"));
+    assert.notEqual(tokenKey("a bc"), tokenKey("ab c"));
 });

@@ -57,10 +57,12 @@ enum class WordOrderMode(
 }
 
 object VerseWorkflow {
-    /** Map the enabled cards back to their positions in the complete original verse. */
+    /** Map enabled cards to their positions when their translations are spoken in source order. */
     fun recordingWords(words: List<VerseWord>, order: List<Int>, unspoken: Set<String>): List<VerseRecordingWord> {
         require(validOrder(order, words.size)) { "Invalid verse word order." }
-        return order.filter { !words[it].disabled(unspoken) }.map { VerseRecordingWord(words[it], it) }
+        val spoken = words.indices.filter { !words[it].disabled(unspoken) }
+        val positions = spoken.withIndex().associate { it.value to it.index }
+        return order.filter { it in positions }.map { VerseRecordingWord(words[it], positions.getValue(it)) }
     }
 
     fun defaultMode(name: String?): WordOrderMode? =

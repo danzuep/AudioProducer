@@ -24,9 +24,11 @@ import androidx.test.espresso.action.ViewActions.scrollTo
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
 import androidx.test.espresso.matcher.ViewMatchers.isEnabled
+import androidx.test.espresso.matcher.ViewMatchers.isChecked
 import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.espresso.matcher.ViewMatchers.withContentDescription
+import androidx.test.espresso.matcher.RootMatchers.isDialog
 import androidx.test.espresso.UiController
 import androidx.test.espresso.ViewAction
 import androidx.test.espresso.matcher.ViewMatchers.isAssignableFrom
@@ -341,12 +343,7 @@ class WorkbenchLaunchTest {
             onView(withId(R.id.audio_choose_verse)).perform(click())
             onView(withContentDescription(verse.words.joinToString(" ") { it.surface })).perform(click())
             onView(withId(R.id.audio_verse_more)).perform(click())
-            onView(withText(R.string.audio_download_verse)).perform(click())
             onView(withText(R.string.audio_format_wav)).check(matches(isDisplayed()))
-            onView(withText(R.string.audio_format_aac)).check(matches(isDisplayed()))
-            if (Build.VERSION.SDK_INT >= 29) {
-                onView(withText(R.string.audio_format_opus)).check(matches(isDisplayed()))
-            }
             onView(withText(android.R.string.cancel)).perform(click())
             onView(withId(R.id.audio_verse_close)).perform(click())
         }
@@ -413,6 +410,147 @@ class WorkbenchLaunchTest {
     }
 
     @Test
+    fun downloadWarnsAboutMissingSpeechAndCanStripIt() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val verse = context.assets.open("books/JHN.json").bufferedReader().use {
+            MaculaVerseJson.parse(it.readText()).first()
+        }
+        val words = verse.words.filter { !it.disabled(emptySet()) }.distinctBy { it.surface }.take(2)
+        assertEquals(2, words.size)
+        val shortVerse = AudioVerse(verse.reference, words)
+        ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
+            awaitBooks(scenario, 27)
+            val clip = AudioProjectRepository(directory).clipFile(words.first().surface)
+            check(clip.parentFile!!.mkdirs() || clip.parentFile!!.isDirectory)
+            clip.writeBytes(VerseAudio.encodeWav(FloatArray(16000) { 0.1f }))
+            fun openDownload() {
+                scenario.onActivity { activity ->
+                    val download = WorkbenchActivity::class.java.getDeclaredMethod(
+                        "downloadVerse", AudioVerse::class.java
+                    ).apply { isAccessible = true }
+                    download.invoke(activity, shortVerse)
+                }
+            }
+            openDownload()
+            onView(withText(context.getString(R.string.audio_download_tts_warning, 1)))
+                .inRoot(isDialog()).check(matches(isDisplayed()))
+            onView(withText(R.string.audio_download_strip_tts)).inRoot(isDialog()).check(matches(isDisplayed()))
+            onView(withText(android.R.string.cancel)).inRoot(isDialog()).perform(click())
+            check(clip.delete())
+            openDownload()
+            onView(withText(context.getString(R.string.audio_download_tts_warning, 2)))
+                .inRoot(isDialog()).check(matches(isDisplayed()))
+            onView(withText(R.string.audio_download_strip_tts)).inRoot(isDialog()).perform(click())
+            onView(withText(R.string.audio_download_strip_tts)).inRoot(isDialog()).check(matches(isChecked()))
+            onView(withText(R.string.audio_download_verse)).inRoot(isDialog()).perform(click())
+            onView(withText(R.string.audio_download_strip_tts)).inRoot(isDialog()).check(matches(isDisplayed()))
+            onView(withText(android.R.string.cancel)).inRoot(isDialog()).perform(click())
+        }
+    }
+
+    @Test
+    fun missingVerseUsesModernGreekFallback() {
+        org.junit.Assume.assumeTrue(
+            InstrumentationRegistry.getArguments().getString("testGreekTts") == "true"
+        )
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val verse = context.assets.open("books/JHN.json").bufferedReader().use {
+            MaculaVerseJson.parse(it.readText()).first()
+        }
+        val shortVerse = AudioVerse(verse.reference, listOf(verse.words.first { !it.disabled(emptySet()) }))
+        ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
+            awaitBooks(scenario, 27)
+            scenario.onActivity { activity ->
+                val playVerse = WorkbenchActivity::class.java.getDeclaredMethod(
+                    "playVerse", AudioVerse::class.java
+                ).apply { isAccessible = true }
+                val versePlaying = WorkbenchActivity::class.java.getDeclaredField("playingVerseReference")
+                    .apply { isAccessible = true }
+                playVerse.invoke(activity, shortVerse)
+                assertEquals(shortVerse.reference, versePlaying.get(activity))
+            }
+            val deadline = System.currentTimeMillis() + 20_000
+            var rendered = false
+            while (!rendered && System.currentTimeMillis() < deadline) {
+                scenario.onActivity { activity ->
+                    val temporary = WorkbenchActivity::class.java.getDeclaredField("playbackTempFile")
+                        .apply { isAccessible = true }
+                    rendered = (temporary.get(activity) as? File)?.length()?.let { it > 44 } == true
+                }
+                if (!rendered) Thread.sleep(25)
+            }
+            assertTrue("Modern Greek fallback did not render", rendered)
+        }
+    }
+
+    @Test
+    fun downloadIncludesOrStripsGreekSpeechAsSelected() {
+        org.junit.Assume.assumeTrue(
+            Build.VERSION.SDK_INT >= 29 &&
+                InstrumentationRegistry.getArguments().getString("testGreekTts") == "true"
+        )
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val verse = context.assets.open("books/JHN.json").bufferedReader().use {
+            MaculaVerseJson.parse(it.readText()).first()
+        }
+        val words = verse.words.filter { !it.disabled(emptySet()) }.distinctBy { it.surface }.take(2)
+        assertEquals(2, words.size)
+        val shortVerse = AudioVerse(verse.reference, words)
+        val resolver = context.contentResolver
+        val uris = mutableListOf<android.net.Uri>()
+        try {
+            ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
+                awaitBooks(scenario, 27)
+                val clip = AudioProjectRepository(directory).clipFile(words.first().surface)
+                check(clip.parentFile!!.mkdirs() || clip.parentFile!!.isDirectory)
+                clip.writeBytes(VerseAudio.encodeWav(FloatArray(16000) { 0.1f }))
+                fun save(strip: Boolean): ByteArray {
+                    val values = android.content.ContentValues().apply {
+                        put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, "test-${System.nanoTime()}.wav")
+                        put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "audio/wav")
+                    }
+                    val uri = checkNotNull(resolver.insert(android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values))
+                    uris += uri
+                    checkNotNull(resolver.openOutputStream(uri)).close()
+                    val paths = listOf(clip.absolutePath, "")
+                    val selected = selectVerseDownloadIndices(paths, strip)
+                    scenario.onActivity { activity ->
+                        val exportClass = WorkbenchActivity::class.java.declaredClasses
+                            .first { it.simpleName == "VerseExport" }
+                        val export = exportClass.declaredConstructors.single().apply { isAccessible = true }
+                            .newInstance(
+                                shortVerse.reference, selected.map { words[it].surface },
+                                selected.map { paths[it] }, if (strip) 1 else 0,
+                                io.github.danzuep.bibleaudioproducer.audio.VerseExportFormat.WAV
+                            )
+                        WorkbenchActivity::class.java.getDeclaredMethod("exportVerse", android.net.Uri::class.java, exportClass)
+                            .apply { isAccessible = true }.invoke(activity, uri, export)
+                    }
+                    val deadline = System.currentTimeMillis() + 30_000
+                    var bytes = byteArrayOf()
+                    var busy = true
+                    while ((bytes.size <= 44 || busy) && System.currentTimeMillis() < deadline) {
+                        bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: byteArrayOf()
+                        scenario.onActivity { activity ->
+                            busy = WorkbenchActivity::class.java.getDeclaredField("busy")
+                                .apply { isAccessible = true }.getBoolean(activity)
+                        }
+                        if (bytes.size <= 44 || busy) Thread.sleep(100)
+                    }
+                    assertTrue("Verse download was not written", bytes.size > 44 && !busy)
+                    return bytes
+                }
+                val stripped = save(true)
+                val withTts = save(false)
+                assertEquals(44 + 16000 * 2, stripped.size)
+                assertTrue("Generated Greek audio was not included", withTts.size > stripped.size)
+            }
+        } finally {
+            uris.forEach { resolver.delete(it, null, null) }
+        }
+    }
+
+    @Test
     fun chapterPlaybackStopsDuringPreparationAndResetsAfterCompletion() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val verse = context.assets.open("books/JHN.json").bufferedReader().use {
@@ -460,24 +598,33 @@ class WorkbenchLaunchTest {
     @Test
     fun closingChapterStopsPlayback() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val surface = context.assets.open("books/JHN.json").bufferedReader().use {
-            MaculaVerseJson.parse(it.readText()).first().words.first { word -> !word.proper }.surface
+        val verse = context.assets.open("books/JHN.json").bufferedReader().use {
+            MaculaVerseJson.parse(it.readText()).first()
         }
+        val word = verse.words.first { !it.disabled(emptySet()) }
+        val shortVerse = AudioVerse(verse.reference, listOf(word))
         ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
             awaitBooks(scenario, 27)
             onView(withId(R.id.audio_verse_close)).perform(click())
-            val clip = AudioProjectRepository(directory).clipFile(surface)
+            val clip = AudioProjectRepository(directory).clipFile(word.surface)
             check(clip.parentFile!!.mkdirs() || clip.parentFile!!.isDirectory)
             clip.writeBytes(VerseAudio.encodeWav(FloatArray(10 * VerseAudio.SAMPLE_RATE) { 0.1f }))
             fun openChapter() {
                 onView(withId(R.id.audio_choose_verse)).perform(click())
             }
+            fun playShortChapter() {
+                scenario.onActivity { activity ->
+                    WorkbenchActivity::class.java.getDeclaredMethod(
+                        "playChapter", Int::class.javaPrimitiveType, List::class.java
+                    ).apply { isAccessible = true }.invoke(activity, 1, listOf(shortVerse))
+                }
+            }
             openChapter()
-            onView(withContentDescription(R.string.audio_play_chapter)).perform(click())
+            playShortChapter()
             onView(withContentDescription(R.string.audio_stop_chapter)).check(matches(isDisplayed()))
             onView(withContentDescription(R.string.audio_stop_chapter)).perform(click())
             onView(withContentDescription(R.string.audio_play_chapter)).check(matches(isDisplayed()))
-            onView(withContentDescription(R.string.audio_play_chapter)).perform(click())
+            playShortChapter()
             onView(withContentDescription(R.string.audio_stop_chapter)).check(matches(isDisplayed()))
             pressBack()
             openChapter()

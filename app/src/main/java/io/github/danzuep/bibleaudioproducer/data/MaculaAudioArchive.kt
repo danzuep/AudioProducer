@@ -82,24 +82,14 @@ internal object MaculaAudioArchive {
         val incomingOrders = readOrders(manifest.getAsJsonObject("seed_orders"))
         val incomingWordOrders = readOrders(manifest.getAsJsonObject("word_orders"))
         val incomingUnspoken = manifest.getAsJsonArray("unspoken")?.map { it.asString }?.toSet().orEmpty()
-        val incomingNeuralOff = manifest.getAsJsonArray("neural_off")?.map { it.asString }?.toSet().orEmpty()
-        val incomingNeuralStrength = manifest.string("neural_strength")
-            .let { runCatching { io.github.danzuep.bibleaudioproducer.audio.NeuralStrength.valueOf(it) }.getOrNull() }
         val merged = AudioProjectState(
             rules = if (current.seedOrders.isEmpty()) incomingRules else current.rules,
             seedOrders = if (current.seedOrders.isEmpty()) incomingOrders else current.seedOrders,
             unspoken = current.unspoken + incomingUnspoken,
             wordOrders = if (current.wordOrders.isEmpty()) incomingWordOrders else current.wordOrders,
-            neuralAudio = current.neuralAudio || manifest.get("neural_audio")?.asBoolean == true,
-            neuralOff = current.neuralOff + incomingNeuralOff,
             fullVerseReferences = current.fullVerseReferences +
                 manifest.getAsJsonArray("full_verse_references")?.map { it.asString }?.toSet().orEmpty(),
-            defaultWordOrder = current.defaultWordOrder ?: manifest.string("default_word_order").ifBlank { null },
-            neuralStrength = if (current.seedOrders.isEmpty()) {
-                incomingNeuralStrength ?: current.neuralStrength
-            } else {
-                current.neuralStrength
-            }
+            defaultWordOrder = current.defaultWordOrder ?: manifest.string("default_word_order").ifBlank { null }
         )
         val (added, alreadyRecorded) = consume(imported)
         return AudioArchiveImport(

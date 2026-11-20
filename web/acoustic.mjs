@@ -1,4 +1,4 @@
-import { SAMPLE_RATE } from "./core.mjs";
+import { SAMPLE_RATE, targetTokens } from "./core.mjs";
 
 // Log-mel spectra provide a speaker-dependent acoustic comparison, not phone recognition.
 const FRAME = 400, FFT = 512, HOP = 160, BANDS = 24;
@@ -85,14 +85,12 @@ export function distance(first, second) {
 }
 
 export function tokenKey(text) {
-    return text.toLowerCase().normalize("NFD").replace(/[\u0591-\u05af]/g, "")
-        .replace(/([\u0370-\u03ff])[\u0300-\u036f]*/g, "$1")
-        .replace(/[^\p{L}\p{M}]/gu, "");
+    return targetTokens(text).join(" ");
 }
 
 export function matchReferences(cards, blobs, samples, references) {
     const available = blobs.filter(blob => !cards.some(card => card.spans.includes(blob)));
-    const keys = cards.map(card => tokenKey(card.ancient));
+    const keys = cards.map(card => tokenKey(card.target));
     const candidates = cards.flatMap((card, i) => {
         const key = keys[i], matching = references.filter(reference => tokenKey(reference.token) === key);
         if (!key || card.spans.length || keys.filter(value => value === key).length !== 1 || matching.length !== 1) return [];

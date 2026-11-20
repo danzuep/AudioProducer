@@ -119,24 +119,33 @@ export function assignIndexed(cards, blobs) {
     }
 }
 
+export function targetTokens(text) {
+    return text.normalize("NFC").toLowerCase().trim().split(/\s+/).filter(Boolean).map(token =>
+        token.replace(/^[^\p{L}\p{M}\p{N}]+|[^\p{L}\p{M}\p{N}]+$/gu, ""));
+}
+
 export function pairTranscript(cards, blobs, transcript) {
-    const tokens = transcript.trim().split(/\s+/).filter(Boolean);
-    if (tokens.length !== blobs.length) throw new Error("The transcript must contain exactly one word per detected slice. Adjust slices first.");
-    const key = text => text.toLowerCase().normalize("NFD")
-        .replace(/[\u0591-\u05af]/g, "")
-        .replace(/([\u0370-\u03ff])[\u0300-\u036f]*/g, "$1")
-        .replace(/[^\p{L}\p{M}]/gu, "");
-    const tokenKeys = tokens.map(key);
-    const cardKeys = cards.map(card => key(card.ancient));
-    const pairs = [];
-    for (let i = 0; i < cards.length; i++) {
-        const k = cardKeys[i];
-        if (!k || cards[i].spans.length || cardKeys.filter(value => value === k).length !== 1) continue;
-        const positions = tokenKeys.flatMap((value, index) => value === k ? [index] : []);
-        if (positions.length !== 1 || cards.some(card => card.spans.includes(blobs[positions[0]]))) continue;
-        pairs.push([cards[i], blobs[positions[0]]]);
+    const tokens = targetTokens(transcript);
+    if (tokens.length !== blobs.length || tokens.some(token => !token)) {
+        throw new Error("The target-language transcript must contain exactly one word per detected slice. Adjust slices first.");
     }
-    return pairs;
+    const cardTokens = cards.map(card => targetTokens(card.target));
+    const keys = cardTokens.map(words => words.join(" "));
+    const candidates = [];
+    for (let i = 0; i < cards.length; i++) {
+        const words = cardTokens[i], key = keys[i];
+        if (!key || words.some(word => !word) || cards[i].spans.length || keys.filter(value => value === key).length !== 1) continue;
+        const positions = [];
+        for (let start = 0; start + words.length <= tokens.length; start++) {
+            if (words.every((word, offset) => word === tokens[start + offset])) positions.push(start);
+        }
+        if (positions.length !== 1) continue;
+        const spans = blobs.slice(positions[0], positions[0] + words.length);
+        if (spans.some(blob => cards.some(card => card.spans.includes(blob)))) continue;
+        candidates.push([cards[i], spans]);
+    }
+    return candidates.filter(([, spans], index) =>
+        !candidates.some(([, other], otherIndex) => otherIndex !== index && spans.some(span => other.includes(span))));
 }
 
 export function manifest(cards) {

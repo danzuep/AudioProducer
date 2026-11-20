@@ -19,10 +19,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.google.android.material.button.MaterialButton
-import com.google.android.material.checkbox.MaterialCheckBox
 import io.github.danzuep.bibleaudioproducer.R
-import io.github.danzuep.bibleaudioproducer.audio.NeuralStrength
-import io.github.danzuep.bibleaudioproducer.audio.VerseExportFormat
 import io.github.danzuep.bibleaudioproducer.audio.GreekTransliterator
 import io.github.danzuep.bibleaudioproducer.data.AudioProjectRepository
 import io.github.danzuep.bibleaudioproducer.workbench.AudioProjectState
@@ -30,7 +27,6 @@ import io.github.danzuep.bibleaudioproducer.workbench.AudioVerse
 import io.github.danzuep.bibleaudioproducer.workbench.RecordingCard
 import io.github.danzuep.bibleaudioproducer.workbench.VerseWord
 import io.github.danzuep.bibleaudioproducer.workbench.VerseWorkflow
-import android.os.Build
 import kotlin.math.max
 
 internal class VerseDialogs(
@@ -44,14 +40,14 @@ internal class VerseDialogs(
         val state: AudioProjectState
         val busy: Boolean
         val speechFailed: Boolean
-        fun playVerse(verse: AudioVerse, smoothOverride: Boolean? = null)
+        fun playVerse(verse: AudioVerse)
         fun isPlayingVerse(verse: AudioVerse): Boolean
         fun playChapter(chapter: Int, verses: List<AudioVerse>)
         fun isPlayingChapter(chapter: Int): Boolean
-        fun downloadVerse(verse: AudioVerse, strength: NeuralStrength?, format: VerseExportFormat)
+        fun downloadVerse(verse: AudioVerse)
         fun exportInterlinear(reference: String, words: List<VerseWord>)
         fun saveVerseState(
-            reference: String, order: List<Int>?, unspoken: Set<String>, neuralOff: Set<String>,
+            reference: String, order: List<Int>?, unspoken: Set<String>,
             selectedPreset: WordOrderMode? = null
         )
         fun recordWord(word: VerseWord)
@@ -61,7 +57,7 @@ internal class VerseDialogs(
         fun stopPlayback()
         fun hasRecordingPermission(): Boolean
         fun completeVerse(
-            verse: AudioVerse, order: List<Int>, unspoken: Set<String>, neuralOff: Set<String>
+            verse: AudioVerse, order: List<Int>, unspoken: Set<String>
         )
     }
 
@@ -123,34 +119,7 @@ internal class VerseDialogs(
     }
 
     private fun showVerseActions(verse: AudioVerse) {
-        val options = arrayOf(
-            activity.getString(R.string.audio_download_verse),
-            activity.getString(R.string.audio_download_neural),
-            activity.getString(R.string.audio_download_neural_strong)
-        )
-        AlertDialog.Builder(activity)
-            .setTitle(verse.reference)
-            .setItems(options) { _, index ->
-                val strength = when (index) {
-                    1 -> NeuralStrength.STANDARD
-                    2 -> NeuralStrength.STRONG
-                    else -> null
-                }
-                chooseFormat(verse, strength)
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-    }
-
-    private fun chooseFormat(verse: AudioVerse, strength: NeuralStrength?) {
-        val formats = VerseExportFormat.entries.filter { Build.VERSION.SDK_INT >= it.minSdk }
-        AlertDialog.Builder(activity)
-            .setTitle(R.string.audio_choose_format)
-            .setItems(formats.map { activity.getString(it.label) }.toTypedArray()) { _, index ->
-                actions.downloadVerse(verse, strength, formats[index])
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+        actions.downloadVerse(verse)
     }
 
     fun showVerses(bookVerses: List<AudioVerse>, chapter: Int) {
@@ -225,7 +194,7 @@ internal class VerseDialogs(
                 layoutParams = LinearLayout.LayoutParams(dp(44), dp(44))
                 cornerRadius = dp(22)
                 textSize = 18f
-                setOnClickListener { actions.playVerse(verse, null) }
+                setOnClickListener { actions.playVerse(verse) }
             }
             verseButtons += verse to play
             row.addView(play, LinearLayout.LayoutParams(dp(48), dp(48)))
@@ -291,10 +260,6 @@ internal class VerseDialogs(
         val unspoken = actions.state.unspoken.toMutableSet()
         var changed = !hasSavedOrder && defaultMode != null
         var selectedMode = if (!hasSavedOrder) defaultMode else null
-        var neuralChanged = false
-        val neuralOff = actions.state.neuralOff.toMutableSet()
-        var smoothOverride: Boolean? =
-            if (actions.state.neuralAudio) verse.reference !in neuralOff else null
         val recordedStates = mutableMapOf<String, Boolean>()
         lateinit var renderWords: () -> Unit
 
@@ -312,7 +277,7 @@ internal class VerseDialogs(
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         }
         val play = roundButton(R.color.workbench_primary).apply {
-            setOnClickListener { actions.playVerse(verse, smoothOverride) }
+            setOnClickListener { actions.playVerse(verse) }
         }
         val more = Button(activity).apply {
             id = R.id.audio_verse_more
@@ -371,26 +336,17 @@ internal class VerseDialogs(
                     }
                     changed = true
                     if (verse.reference == "JHN 3:16") {
-                        actions.saveVerseState(verse.reference, order.toList(), unspoken.toSet(), neuralOff.toSet(), mode)
+                        actions.saveVerseState(verse.reference, order.toList(), unspoken.toSet(), mode)
                     }
                 }
 
                 override fun onNothingSelected(parent: AdapterView<*>?) = Unit
             }
         }
-        val neural = MaterialCheckBox(activity).apply {
-            text = activity.getString(R.string.audio_verse_neural_toggle)
-            isChecked = actions.state.neuralAudio && verse.reference !in neuralOff
-            isEnabled = actions.state.neuralAudio
-            setOnCheckedChangeListener { _, checked ->
-                if (checked) neuralOff.remove(verse.reference) else neuralOff.add(verse.reference)
-                neuralChanged = true
-                smoothOverride = checked
-            }
-        }
         controls.addView(orderMode)
-        controls.addView(neural, LinearLayout.LayoutParams(0, dp(48), 1f))
         root.addView(controls)
+        lateinit var flow: VerseFlowLayout
+        lateinit var scroll: ScrollView
         val editorContainer = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
         val exportInterlinear = MaterialButton(activity).apply {
             text = "Export interlinear script"
@@ -403,6 +359,8 @@ internal class VerseDialogs(
             setOnClickListener {
                 val cards = VerseWorkflow.recordingWords(verse.words, order, unspoken)
                 if (cards.isEmpty()) return@setOnClickListener
+                val enabledIndices = order.filter { !verse.words[it].disabled(unspoken) }
+                val sourceIndices = enabledIndices.sorted()
                 actions.stopPlayback()
                 lateinit var editor: VerseTakeEditor
                 fun closeEditor() {
@@ -410,29 +368,46 @@ internal class VerseDialogs(
                         takeEditor = null
                         editorContainer.removeAllViews()
                         isEnabled = true
+                        visibility = View.VISIBLE
+                        flow.visibility = View.VISIBLE
+                        exportInterlinear.visibility = View.VISIBLE
+                        controls.visibility = View.VISIBLE
+                        hint.visibility = View.VISIBLE
                         orderMode.isEnabled = true
                         renderWords()
                         refreshControls()
                     }
                 }
-                editor = VerseTakeEditor(activity, repository, cards, verse.words.size,
-                    actions::hasRecordingPermission, { closeEditor() }, {
+                editor = VerseTakeEditor(activity, repository, cards,
+                    actions::hasRecordingPermission, { spokenOrder ->
+                        val reordered = spokenOrder.map { sourceIndices[it] }.iterator()
+                        order = order.map {
+                            if (verse.words[it].disabled(unspoken)) it else reordered.next()
+                        }.toMutableList()
+                        selecting = true
+                        orderMode.setSelection(WordOrderMode.CUSTOM.ordinal)
+                        selecting = false
+                        selectedMode = WordOrderMode.CUSTOM
+                        changed = true
+                    }, { closeEditor() }, {
                         closeEditor()
                         changed = false
-                        neuralChanged = false
                         back()
-                        actions.completeVerse(verse, order.toList(), unspoken.toSet(), neuralOff.toSet())
+                        actions.completeVerse(verse, order.toList(), unspoken.toSet())
                     })
                 takeEditor = editor
                 isEnabled = false
+                visibility = View.GONE
+                flow.visibility = View.GONE
+                exportInterlinear.visibility = View.GONE
+                controls.visibility = View.GONE
+                hint.visibility = View.GONE
                 orderMode.isEnabled = false
                 editorContainer.addView(editor.view())
-                renderWords()
+                scroll.post { scroll.scrollTo(0, 0) }
             }
         }
 
-        lateinit var flow: VerseFlowLayout
-        lateinit var scroll: ScrollView
         renderWords = {
             val oldScroll = scroll.scrollY
             flow.removeAllViews()
@@ -573,18 +548,22 @@ internal class VerseDialogs(
                     takeEditor = null
                     editorContainer.removeAllViews()
                     addRecording.isEnabled = true
+                    addRecording.visibility = View.VISIBLE
+                    flow.visibility = View.VISIBLE
+                    exportInterlinear.visibility = View.VISIBLE
+                    controls.visibility = View.VISIBLE
+                    hint.visibility = View.VISIBLE
                     orderMode.isEnabled = true
                     renderWords()
                     refreshControls()
                 }
                 return@push false
             }
-            if (changed || neuralChanged) {
+            if (changed) {
                 actions.saveVerseState(
                     verse.reference,
                     if (changed) order.toList() else actions.state.wordOrders[verse.reference],
-                    unspoken,
-                    neuralOff
+                    unspoken
                 )
             }
             actions.stopPlayback()

@@ -7,6 +7,23 @@ import kotlin.test.assertTrue
 
 class VerseSplitTest {
     @Test
+    fun movingSharedBoundaryUpdatesBothNeighborsAndRejectsCrossings() {
+        val boundaries = VerseBoundaries(listOf(0, 100, 200, 300))
+        assertEquals(setOf(0, 1), boundaries.move(1, 120))
+        assertEquals(120, boundaries.end(0))
+        assertEquals(120, boundaries.start(1))
+        assertEquals(emptySet(), boundaries.move(1, 120))
+        assertFailsWith<IllegalArgumentException> { boundaries.move(1, 200) }
+        assertFailsWith<IllegalArgumentException> { boundaries.move(0, 10) }
+        assertEquals(listOf(0, 120, 200, 300), boundaries.snapshot())
+        assertEquals(setOf(0, 1, 2), boundaries.setRange(1, 130, 220))
+        assertEquals(listOf(0, 130, 220, 300), boundaries.snapshot())
+        assertFailsWith<IllegalArgumentException> { boundaries.setRange(1, 220, 220) }
+        assertFailsWith<IllegalArgumentException> { boundaries.setRange(0, 1, 100) }
+        assertEquals(listOf(0, 130, 220, 300), boundaries.snapshot())
+    }
+
+    @Test
     fun boundariesCoverAudioInOrderAndPreferQuietGaps() {
         val samples = FloatArray(48000) { 0.5f }
         for (i in 15840 until 16000) samples[i] = 0f
