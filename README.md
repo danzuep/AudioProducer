@@ -24,9 +24,12 @@ In a verse, select a word-order mode or drag individual words, then choose **Add
 recording** to expand the recording editor below the verse. Record the enabled words'
 translations in the target language, following the original source-word order shown in
 the gloss guide; omit disabled words. The app suggests boundaries at quiet points in
-that order, then presents enabled words in the selected card order. Select each word, adjust
-the start and end with the sliders or typed seconds, preview it, and save it or keep its
-existing clip. Preview either the whole take or the enabled clips in card order.
+that order and shows them on a chronological waveform above a horizontal deck in the
+selected card order. Tap a slice or card to select it; drag a waveform boundary, use
+the sliders, or enter seconds. Adjacent spoken slices share their boundary: moving it
+changes both clips and requires reviewing both again. Hold and drag a card, or use its
+arrow buttons, to change the target order without changing spoken boundaries. Preview
+each clip and save it or keep its existing clip. Preview the whole take or card order.
 Suggestions assume one spoken segment per enabled card; translations with extra, missing,
 or combined words need manual adjustment. They are not speech recognition and must be
 reviewed. Verse clips are saved as lossless WAV audio with

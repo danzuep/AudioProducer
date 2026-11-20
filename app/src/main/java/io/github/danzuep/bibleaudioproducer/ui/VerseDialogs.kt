@@ -345,6 +345,8 @@ internal class VerseDialogs(
         }
         controls.addView(orderMode)
         root.addView(controls)
+        lateinit var flow: VerseFlowLayout
+        lateinit var scroll: ScrollView
         val editorContainer = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
         val exportInterlinear = MaterialButton(activity).apply {
             text = "Export interlinear script"
@@ -357,6 +359,8 @@ internal class VerseDialogs(
             setOnClickListener {
                 val cards = VerseWorkflow.recordingWords(verse.words, order, unspoken)
                 if (cards.isEmpty()) return@setOnClickListener
+                val enabledIndices = order.filter { !verse.words[it].disabled(unspoken) }
+                val sourceIndices = enabledIndices.sorted()
                 actions.stopPlayback()
                 lateinit var editor: VerseTakeEditor
                 fun closeEditor() {
@@ -364,13 +368,28 @@ internal class VerseDialogs(
                         takeEditor = null
                         editorContainer.removeAllViews()
                         isEnabled = true
+                        visibility = View.VISIBLE
+                        flow.visibility = View.VISIBLE
+                        exportInterlinear.visibility = View.VISIBLE
+                        controls.visibility = View.VISIBLE
+                        hint.visibility = View.VISIBLE
                         orderMode.isEnabled = true
                         renderWords()
                         refreshControls()
                     }
                 }
                 editor = VerseTakeEditor(activity, repository, cards,
-                    actions::hasRecordingPermission, { closeEditor() }, {
+                    actions::hasRecordingPermission, { spokenOrder ->
+                        val reordered = spokenOrder.map { sourceIndices[it] }.iterator()
+                        order = order.map {
+                            if (verse.words[it].disabled(unspoken)) it else reordered.next()
+                        }.toMutableList()
+                        selecting = true
+                        orderMode.setSelection(WordOrderMode.CUSTOM.ordinal)
+                        selecting = false
+                        selectedMode = WordOrderMode.CUSTOM
+                        changed = true
+                    }, { closeEditor() }, {
                         closeEditor()
                         changed = false
                         back()
@@ -378,14 +397,17 @@ internal class VerseDialogs(
                     })
                 takeEditor = editor
                 isEnabled = false
+                visibility = View.GONE
+                flow.visibility = View.GONE
+                exportInterlinear.visibility = View.GONE
+                controls.visibility = View.GONE
+                hint.visibility = View.GONE
                 orderMode.isEnabled = false
                 editorContainer.addView(editor.view())
-                renderWords()
+                scroll.post { scroll.scrollTo(0, 0) }
             }
         }
 
-        lateinit var flow: VerseFlowLayout
-        lateinit var scroll: ScrollView
         renderWords = {
             val oldScroll = scroll.scrollY
             flow.removeAllViews()
@@ -526,6 +548,11 @@ internal class VerseDialogs(
                     takeEditor = null
                     editorContainer.removeAllViews()
                     addRecording.isEnabled = true
+                    addRecording.visibility = View.VISIBLE
+                    flow.visibility = View.VISIBLE
+                    exportInterlinear.visibility = View.VISIBLE
+                    controls.visibility = View.VISIBLE
+                    hint.visibility = View.VISIBLE
                     orderMode.isEnabled = true
                     renderWords()
                     refreshControls()
