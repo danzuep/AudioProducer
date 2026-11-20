@@ -139,4 +139,47 @@ class VerseWorkflowTest {
         assertEquals(words.indices.toList(), VerseWorkflow.modeOrder(words, WordOrderMode.GERMAN_V2))
         assertEquals(listOf(3, 2, 0, 1), VerseWorkflow.modeOrder(words, WordOrderMode.JAPANESE_SOV))
     }
+
+    @Test
+    fun englishMovesOnlySimplePostpositiveAdjectivesWithinTheirPhrase() {
+        val path = "1,cl,,V-O/2,np,o,NpAdjp"
+        val noun = word("noun", "noun", "noun").copy(syntaxPath = path)
+        val adjective = word("adj", "adj", "adj").copy(syntaxPath = path)
+        val words = listOf(noun, adjective)
+        assertEquals(listOf(1, 0), VerseWorkflow.modeOrder(words, WordOrderMode.ENGLISH_SVO))
+        for (mode in WordOrderMode.entries.filter { it != WordOrderMode.ENGLISH_SVO }) {
+            assertEquals(listOf(0, 1), VerseWorkflow.modeOrder(words, mode))
+        }
+        val withDeterminer = listOf(
+            word("det", "det", "det").copy(syntaxPath = "$path/3,np,,DetNP"),
+            noun.copy(syntaxPath = "$path/3,np,,DetNP"), adjective
+        )
+        assertEquals(listOf(0, 2, 1), VerseWorkflow.modeOrder(withDeterminer, WordOrderMode.ENGLISH_SVO))
+        assertEquals(listOf(0, 1), VerseWorkflow.modeOrder(words.map {
+            it.copy(syntaxPath = it.syntaxPath.replace("NpAdjp", "unknown"))
+        }, WordOrderMode.ENGLISH_SVO))
+        assertEquals(listOf(0, 1), VerseWorkflow.modeOrder(words.map {
+            it.copy(syntaxPath = it.syntaxPath.replace("2,np", "2,!np"))
+        }, WordOrderMode.ENGLISH_SVO))
+        assertEquals(listOf(0, 1, 2), VerseWorkflow.modeOrder(
+            listOf(noun, adjective, adjective), WordOrderMode.ENGLISH_SVO
+        ))
+        val manual = listOf(0, 1)
+        assertEquals(manual, VerseWorkflow.orderedWordIndices(words, emptyMap(), manual))
+    }
+
+    @Test
+    fun onlyAJohnPresetSelectionUpdatesTheProjectDefault() {
+        val previous = WordOrderMode.JAPANESE_SOV.name
+        assertEquals(WordOrderMode.ENGLISH_SVO.name,
+            VerseWorkflow.selectedDefault("JHN 3:16", WordOrderMode.ENGLISH_SVO, previous))
+        for (mode in listOf(WordOrderMode.GREEK, WordOrderMode.CUSTOM, null)) {
+            assertEquals(previous, VerseWorkflow.selectedDefault("JHN 3:16", mode, previous))
+        }
+        assertEquals(previous, VerseWorkflow.selectedDefault("JHN 1:1", WordOrderMode.ENGLISH_SVO, previous))
+        for (name in listOf(null, "GREEK", "CUSTOM", "obsolete")) {
+            assertEquals(null, VerseWorkflow.defaultMode(name))
+        }
+        assertEquals(WordOrderMode.JAPANESE_SOV, VerseWorkflow.defaultMode(previous))
+    }
 }

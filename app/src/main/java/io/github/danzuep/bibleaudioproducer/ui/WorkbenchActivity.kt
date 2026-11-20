@@ -104,8 +104,9 @@ class WorkbenchActivity : AppCompatActivity() {
             override fun downloadVerse(verse: AudioVerse, strength: NeuralStrength?, format: VerseExportFormat) =
                 this@WorkbenchActivity.downloadVerse(verse, strength, format)
             override fun saveVerseState(
-                reference: String, order: List<Int>?, unspoken: Set<String>, neuralOff: Set<String>
-            ) = this@WorkbenchActivity.saveVerseState(reference, order, unspoken, neuralOff)
+                reference: String, order: List<Int>?, unspoken: Set<String>, neuralOff: Set<String>,
+                selectedPreset: WordOrderMode?
+            ) = this@WorkbenchActivity.saveVerseState(reference, order, unspoken, neuralOff, selectedPreset = selectedPreset)
             override fun recordWord(word: VerseWord) {
                 if (!busy && hasRecordingPermission()) startRecording(word.surface, word)
             }
@@ -115,9 +116,8 @@ class WorkbenchActivity : AppCompatActivity() {
             override fun stopPlayback() = this@WorkbenchActivity.stopPlayback()
             override fun hasRecordingPermission() = this@WorkbenchActivity.hasRecordingPermission()
             override fun completeVerse(
-                verse: AudioVerse, order: List<Int>, unspoken: Set<String>, neuralOff: Set<String>,
-                mode: WordOrderMode
-            ) = this@WorkbenchActivity.completeVerse(verse, order, unspoken, neuralOff, mode)
+                verse: AudioVerse, order: List<Int>, unspoken: Set<String>, neuralOff: Set<String>
+            ) = this@WorkbenchActivity.completeVerse(verse, order, unspoken, neuralOff)
         })
     }
     private var cards = emptyList<RecordingCard>()
@@ -689,24 +689,34 @@ class WorkbenchActivity : AppCompatActivity() {
         unspoken: Set<String>,
         neuralOff: Set<String>,
         fullVerse: Boolean = false,
-        mode: WordOrderMode? = null,
+        selectedPreset: WordOrderMode? = null,
         onSaved: (() -> Unit)? = null
     ) {
-        busy = true
+        val targetProject = activeProjectId ?: return
         val orders = if (order == null) projectState.wordOrders - reference
             else projectState.wordOrders + (reference to order)
         val updated = projectState.copy(wordOrders = orders, unspoken = unspoken, neuralOff = neuralOff,
             fullVerseReferences = if (fullVerse) projectState.fullVerseReferences + reference
                 else projectState.fullVerseReferences,
-            defaultWordOrder = if (fullVerse) mode?.takeIf { it != WordOrderMode.CUSTOM }?.name
-                else projectState.defaultWordOrder)
+            defaultWordOrder = VerseWorkflow.selectedDefault(reference, selectedPreset, projectState.defaultWordOrder))
         val targetRepository = repository
+        if (selectedPreset != null) {
+            try {
+                targetRepository.saveState(updated)
+                projectState = updated
+            } catch (exception: Exception) {
+                Toast.makeText(this, exception.message ?: getString(R.string.audio_order_failed), Toast.LENGTH_LONG).show()
+            }
+            return
+        }
+        busy = true
+        projectState = updated
         io.execute {
             try {
                 targetRepository.saveState(updated)
                 runOnUiThread {
+                    if (activeProjectId != targetProject || isDestroyed) return@runOnUiThread
                     busy = false
-                    projectState = updated
                     refreshAudioSettingControls()
                     updateRows()
                     Toast.makeText(this, R.string.audio_order_saved, Toast.LENGTH_SHORT).show()
@@ -715,6 +725,7 @@ class WorkbenchActivity : AppCompatActivity() {
 
             } catch (exception: Exception) {
                 runOnUiThread {
+                    if (activeProjectId != targetProject || isDestroyed) return@runOnUiThread
                     busy = false
                     Toast.makeText(
                         this, exception.message ?: getString(R.string.audio_order_failed), Toast.LENGTH_LONG
@@ -725,10 +736,10 @@ class WorkbenchActivity : AppCompatActivity() {
     }
 
     private fun completeVerse(
-        verse: AudioVerse, order: List<Int>, unspoken: Set<String>, neuralOff: Set<String>, mode: WordOrderMode
+        verse: AudioVerse, order: List<Int>, unspoken: Set<String>, neuralOff: Set<String>
     ) {
         val projectId = activeProjectId ?: return
-        saveVerseState(verse.reference, order, unspoken, neuralOff, fullVerse = true, mode = mode) {
+        saveVerseState(verse.reference, order, unspoken, neuralOff, fullVerse = true) {
             if (activeProjectId != projectId) return@saveVerseState
             val marker = File(projectDirectory(projectId), "verse-onboarding")
             val book = verse.reference.substringBefore(' ')
