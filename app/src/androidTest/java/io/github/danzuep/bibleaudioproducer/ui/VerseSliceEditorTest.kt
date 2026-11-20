@@ -1,6 +1,7 @@
 package io.github.danzuep.bibleaudioproducer.ui
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.view.MotionEvent
 import android.view.View
 import android.widget.EditText
@@ -15,6 +16,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.matcher.ViewMatchers.withText
+import androidx.test.espresso.matcher.RootMatchers.isDialog
 import io.github.danzuep.bibleaudioproducer.audio.VerseAudio
 import io.github.danzuep.bibleaudioproducer.audio.VerseBoundaries
 import io.github.danzuep.bibleaudioproducer.data.AudioProjectRepository
@@ -190,13 +192,23 @@ class VerseSliceEditorTest {
                     assertEquals(0, reviewedCount())
                     (field("save").get(editor) as Button).performClick()
                 }
+                fun waitForActivityFocus() {
+                    val deadline = System.currentTimeMillis() + 10_000
+                    var focused = false
+                    while (!focused && System.currentTimeMillis() < deadline) {
+                        scenario.onActivity { focused = it.window.decorView.hasWindowFocus() }
+                        if (!focused) Thread.sleep(50)
+                    }
+                    assertTrue("Activity did not regain focus after replacement dialog", focused)
+                }
                 onView(withText(android.R.string.cancel)).perform(click())
+                waitForActivityFocus()
                 scenario.onActivity {
                     assertEquals(0, reviewedCount())
                     assertArrayEquals(original, clip.readBytes())
                     (field("save").get(editor) as Button).performClick()
                 }
-                onView(withText("Replace")).perform(click())
+                onView(withText("Replace")).inRoot(isDialog()).perform(click())
                 fun waitForReviewed(count: Int) {
                     val deadline = System.currentTimeMillis() + 15_000
                     while (System.currentTimeMillis() < deadline) {
@@ -209,6 +221,7 @@ class VerseSliceEditorTest {
                 }
                 waitForReviewed(1)
                 assertArrayEquals(VerseAudio.encodeWav(VerseAudio.slice(samples, 800, 1600)), clip.readBytes())
+                waitForActivityFocus()
                 scenario.onActivity {
                     VerseTakeEditor::class.java.getDeclaredMethod("moveCard", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
                         .apply { isAccessible = true }.invoke(editor, 1, 0)
@@ -217,7 +230,7 @@ class VerseSliceEditorTest {
                     assertEquals(1, reviewedCount())
                     (field("save").get(editor) as Button).performClick()
                 }
-                onView(withText("Replace")).perform(click())
+                onView(withText("Replace")).inRoot(isDialog()).perform(click())
                 waitForReviewed(2)
                 assertArrayEquals(VerseAudio.encodeWav(VerseAudio.slice(samples, 0, 800)), clip.readBytes())
                 scenario.onActivity { editor.dispose() }
@@ -240,7 +253,10 @@ class VerseSliceEditorTest {
                 lateinit var deck: LinearLayout
                 lateinit var deckScroll: HorizontalScrollView
                 lateinit var next: Button
+                var originalFlags = 0
                 scenario.onActivity { activity ->
+                    originalFlags = activity.applicationInfo.flags
+                    activity.applicationInfo.flags = originalFlags or ApplicationInfo.FLAG_SUPPORTS_RTL
                     editor = VerseTakeEditor(
                         activity, AudioProjectRepository(File(context.cacheDir, "slice-scroll-test")),
                         words, { true }, {}, {}, {}
@@ -253,25 +269,41 @@ class VerseSliceEditorTest {
                     root.layoutDirection = direction
                     activity.setContentView(ScrollView(activity).apply { addView(root) })
                 }
-                fun waitFor(condition: () -> Boolean) {
-                    val deadline = System.currentTimeMillis() + 10_000
-                    while (System.currentTimeMillis() < deadline) {
-                        var done = false
-                        scenario.onActivity { done = condition() }
-                        if (done) return
-                        Thread.sleep(50)
+                try {
+                    fun waitFor(condition: () -> Boolean) {
+                        val deadline = System.currentTimeMillis() + 10_000
+                        while (System.currentTimeMillis() < deadline) {
+                            var done = false
+                            scenario.onActivity { done = condition() }
+                            if (done) return
+                            Thread.sleep(50)
+                        }
+                        var details = ""
+                        scenario.onActivity {
+                            val card = deck.getChildAt(words.lastIndex)
+                            details = "resolved=${deck.layoutDirection}, scroll=${deckScroll.scrollX}, " +
+                                "viewport=${deckScroll.width}, deck=${deck.width}, " +
+                                "padding=${deck.paddingLeft}/${deck.paddingRight}, card=${card.left}..${card.right}"
+                        }
+                        throw AssertionError("Card did not align for layout direction $direction: $details")
                     }
-                    throw AssertionError("Card did not align for layout direction $direction")
+                    waitFor { deckScroll.width > 0 && deck.getChildAt(0).isLaidOut }
+                    scenario.onActivity {
+                        assertEquals("Requested deck direction was not resolved", direction, deck.layoutDirection)
+                    }
+                    scenario.onActivity { repeat(words.lastIndex) { next.performClick() } }
+                    waitFor {
+                        val card = deck.getChildAt(words.lastIndex)
+                        card.isLaidOut && if (direction == View.LAYOUT_DIRECTION_RTL) {
+                            card.right - deckScroll.scrollX == deckScroll.width
+                        } else card.left == deckScroll.scrollX
+                    }
+                } finally {
+                    scenario.onActivity {
+                        editor.dispose()
+                        it.applicationInfo.flags = originalFlags
+                    }
                 }
-                waitFor { deckScroll.width > 0 && deck.getChildAt(0).isLaidOut }
-                scenario.onActivity { repeat(words.lastIndex) { next.performClick() } }
-                waitFor {
-                    val card = deck.getChildAt(words.lastIndex)
-                    card.isLaidOut && if (direction == View.LAYOUT_DIRECTION_RTL) {
-                        card.right - deckScroll.scrollX == deckScroll.width
-                    } else card.left == deckScroll.scrollX
-                }
-                scenario.onActivity { editor.dispose() }
             }
         }
     }
