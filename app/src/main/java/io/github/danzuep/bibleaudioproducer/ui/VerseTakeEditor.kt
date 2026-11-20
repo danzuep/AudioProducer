@@ -19,7 +19,7 @@ import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioPlayer
 import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioRecorder
 import io.github.danzuep.bibleaudioproducer.audio.VerseAudio
 import io.github.danzuep.bibleaudioproducer.data.AudioProjectRepository
-import io.github.danzuep.bibleaudioproducer.workbench.VerseWord
+import io.github.danzuep.bibleaudioproducer.workbench.VerseRecordingWord
 import java.io.File
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -29,7 +29,8 @@ import kotlin.math.roundToInt
 internal class VerseTakeEditor(
     private val activity: AppCompatActivity,
     private val repository: AudioProjectRepository,
-    private val words: List<VerseWord>,
+    private val words: List<VerseRecordingWord>,
+    private val spokenWordCount: Int,
     private val hasPermission: () -> Boolean,
     private val onBack: () -> Unit,
     private val onComplete: () -> Unit
@@ -40,7 +41,8 @@ internal class VerseTakeEditor(
     private var draft: File? = null
     private var preview: File? = null
     private var samples = FloatArray(0)
-    private var boundaries = mutableListOf<Int>()
+    private var starts = IntArray(0)
+    private var ends = IntArray(0)
     private val reviewed = mutableSetOf<Int>()
     private var recording = false
     private var working = false
@@ -61,6 +63,7 @@ internal class VerseTakeEditor(
     private lateinit var finish: Button
     private lateinit var previewButton: Button
     private lateinit var previewWhole: Button
+    private lateinit var previewOrdered: Button
     private lateinit var previewExisting: Button
 
     fun view(): View {
@@ -74,7 +77,8 @@ internal class VerseTakeEditor(
         }
         content.addView(button("Cancel recording") { if (!working) onBack() })
         content.addView(TextView(activity).apply {
-            text = "Record the whole verse in the selected order. Review each suggested clip before saving."
+            text = "Record the complete verse in its original spoken order, including disabled words. " +
+                "Suggestions are approximate; review each clip in the selected card order."
         })
         record = button("Record verse") { toggleRecord() }
         content.addView(record)
@@ -87,9 +91,17 @@ internal class VerseTakeEditor(
         select.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                if (!updating && boundaries.isNotEmpty()) {
+                if (!updating && starts.isNotEmpty() && position != index) {
+                    if (!rememberSelection()) {
+                        updating = true
+                        select.setSelection(index)
+                        updating = false
+                        return
+                    }
                     index = position
                     showSelection()
+                    finish.isEnabled = reviewed.size == words.size
+                    status.text = "${reviewed.size} / ${words.size} clips reviewed"
                 }
             }
         }
@@ -123,20 +135,25 @@ internal class VerseTakeEditor(
         content.addView(previewButton)
         previewWhole = button("Preview whole verse") { previewSamples(0, samples.size) }
         content.addView(previewWhole)
+        previewOrdered = button("Preview card order") { previewCardOrder() }
+        content.addView(previewOrdered)
         previewExisting = button("Preview existing clip") {
-            player.play(listOf(repository.clipFile(words[index].surface)))
+            player.play(listOf(repository.clipFile(words[index].word.surface)))
         }
         content.addView(previewExisting)
         save = button("Save clip and next") { saveSelection() }
         content.addView(save)
         keep = button("Keep existing clip and next") {
-            if (repository.clipFile(words[index].surface).isFile) advance()
+            if (repository.clipFile(words[index].word.surface).isFile && rememberSelection()) advance()
         }
         content.addView(keep)
         finish = button("Finish verse") {
-            if (reviewed.size == words.size) {
+            if (rememberSelection() && reviewed.size == words.size) {
                 discardConfirmed = true
                 onComplete()
+            } else {
+                refresh()
+                toast("Review and save the changed clip before finishing.")
             }
         }
         content.addView(finish)
@@ -162,17 +179,18 @@ internal class VerseTakeEditor(
                 io.execute {
                     try {
                         val decoded = AndroidAudioDecoder().decode(file)
-                        val suggested = VerseAudio.suggestBoundaries(decoded, words.size)
+                        val suggested = VerseAudio.suggestBoundaries(decoded, spokenWordCount)
                         activity.runOnUiThread {
                             if (!closed) {
                                 samples = decoded
-                                boundaries = suggested.toMutableList()
+                                starts = suggested.dropLast(1).toIntArray()
+                                ends = suggested.drop(1).toIntArray()
                                 reviewed.clear()
                                 index = 0
                                 waveform.showLevels(RecordingWaveform.peaks(decoded))
                                 working = false
-                                refresh()
                                 showSelection()
+                                refresh()
                             }
                         }
                     } catch (e: Exception) {
@@ -195,7 +213,8 @@ internal class VerseTakeEditor(
             recorder.start(file)
             recording = true
             samples = FloatArray(0)
-            boundaries.clear()
+            starts = IntArray(0)
+            ends = IntArray(0)
             reviewed.clear()
             waveform.showLevels(emptyList())
             refresh()
@@ -216,26 +235,31 @@ internal class VerseTakeEditor(
         endSeek.isEnabled = ready
         previewButton.isEnabled = ready
         previewWhole.isEnabled = ready
-        previewExisting.isEnabled = ready && repository.clipFile(words[index].surface).isFile
+        previewOrdered.isEnabled = ready
+        previewExisting.isEnabled = ready && repository.clipFile(words[index].word.surface).isFile
         save.isEnabled = ready
-        keep.isEnabled = ready && repository.clipFile(words[index].surface).isFile
+        keep.isEnabled = ready && repository.clipFile(words[index].word.surface).isFile
         finish.isEnabled = ready && reviewed.size == words.size
         status.text = if (recording) "Recording…" else "${reviewed.size} / ${words.size} clips reviewed"
         updating = true
         select.adapter = ArrayAdapter(activity, android.R.layout.simple_spinner_dropdown_item,
             words.mapIndexed { i, word ->
-                "${if (i in reviewed) "✓ " else ""}${i + 1}. ${word.gloss.ifBlank { word.surface }} — ${word.surface} (${word.lemma})"
+                val delta = i - word.spokenIndex
+                "${if (i in reviewed) "✓ " else ""}${i + 1}. " +
+                    "${word.word.gloss.ifBlank { word.word.surface }} — ${word.word.surface} " +
+                    "(spoken ${word.spokenIndex + 1}, ${if (delta > 0) "+" else ""}$delta)"
             })
         select.setSelection(index)
         updating = false
     }
 
     private fun showSelection() {
-        start.setText(seconds(boundaries[index]))
-        end.setText(seconds(boundaries[index + 1]))
-        startSeek.progress = (boundaries[index].toLong() * 10000 / samples.size).toInt()
-        endSeek.progress = (boundaries[index + 1].toLong() * 10000 / samples.size).toInt()
-        keep.isEnabled = repository.clipFile(words[index].surface).isFile
+        val spokenIndex = words[index].spokenIndex
+        start.setText(seconds(starts[spokenIndex]))
+        end.setText(seconds(ends[spokenIndex]))
+        startSeek.progress = (starts[spokenIndex].toLong() * 10000 / samples.size).toInt()
+        endSeek.progress = (ends[spokenIndex].toLong() * 10000 / samples.size).toInt()
+        keep.isEnabled = repository.clipFile(words[index].word.surface).isFile
         previewExisting.isEnabled = keep.isEnabled
     }
 
@@ -262,13 +286,46 @@ internal class VerseTakeEditor(
         previewSamples(first, last)
     }
 
+    private fun rememberSelection(): Boolean {
+        val (first, last) = selection() ?: return false
+        val spokenIndex = words[index].spokenIndex
+        if (starts[spokenIndex] != first || ends[spokenIndex] != last) reviewed.remove(index)
+        starts[spokenIndex] = first
+        ends[spokenIndex] = last
+        return true
+    }
+
+    private fun previewCardOrder() {
+        if (samples.isEmpty() || working || recording || !rememberSelection()) return
+        try {
+            val length = words.sumOf { (ends[it.spokenIndex] - starts[it.spokenIndex]).toLong() }
+            require(length <= VerseAudio.SAMPLE_RATE * 600L) { "The card-order preview is too long." }
+            val parts = words.map { VerseAudio.slice(samples, starts[it.spokenIndex], ends[it.spokenIndex]) }
+            val joined = FloatArray(length.toInt())
+            var offset = 0
+            parts.forEach { part ->
+                part.copyInto(joined, offset)
+                offset += part.size
+            }
+            player.stop()
+            preview?.delete()
+            val file = repository.newVersePreview()
+            preview = file
+            file.writeBytes(VerseAudio.encodeWav(joined))
+            player.play(listOf(file))
+            refresh()
+        } catch (e: Exception) {
+            toast(e.message ?: "Unable to preview card order.")
+        }
+    }
+
     private fun previewSamples(first: Int, last: Int) {
         try {
             player.stop()
             preview?.delete()
             val file = repository.newVersePreview()
             preview = file
-            file.writeBytes(VerseAudio.encodeWav(samples.copyOfRange(first, last)))
+            file.writeBytes(VerseAudio.encodeWav(VerseAudio.slice(samples, first, last)))
             player.play(listOf(file))
         } catch (e: Exception) {
             toast(e.message ?: "Unable to preview selection.")
@@ -277,7 +334,7 @@ internal class VerseTakeEditor(
 
     private fun saveSelection() {
         val (first, last) = selection() ?: return
-        val word = words[index]
+        val word = words[index].word
         fun save() {
             val candidate = repository.recordingCandidateFile(word.surface)
             if (candidate.exists()) {
@@ -287,7 +344,7 @@ internal class VerseTakeEditor(
             working = true
             player.stop()
             refresh()
-            val part = samples.copyOfRange(first, last)
+            val part = VerseAudio.slice(samples, first, last)
             io.execute {
                 var written = false
                 try {
@@ -297,9 +354,9 @@ internal class VerseTakeEditor(
                     repository.commitRecording(word.surface, "audio/wav")
                     activity.runOnUiThread {
                         if (!closed) {
-                            if (index + 2 < boundaries.size && last > boundaries[index] && last < boundaries[index + 2]) {
-                                boundaries[index + 1] = last
-                            }
+                            val spokenIndex = words[index].spokenIndex
+                            starts[spokenIndex] = first
+                            ends[spokenIndex] = last
                             working = false
                             advance()
                         }

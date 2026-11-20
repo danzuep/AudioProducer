@@ -36,6 +36,8 @@ data class AudioVerse(val reference: String, val words: List<VerseWord>) {
     val chapter: Int get() = reference.substringAfter(' ').substringBefore(':').toInt()
 }
 
+data class VerseRecordingWord(val word: VerseWord, val spokenIndex: Int)
+
 data class GrammarChunk(val slot: String, val words: List<VerseWord>)
 data class GrammarRule(val keep: Int = 0, val flip: Int = 0)
 
@@ -55,6 +57,12 @@ enum class WordOrderMode(
 }
 
 object VerseWorkflow {
+    /** Map the enabled cards back to their positions in the complete original verse. */
+    fun recordingWords(words: List<VerseWord>, order: List<Int>, unspoken: Set<String>): List<VerseRecordingWord> {
+        require(validOrder(order, words.size)) { "Invalid verse word order." }
+        return order.filter { !words[it].disabled(unspoken) }.map { VerseRecordingWord(words[it], it) }
+    }
+
     fun defaultMode(name: String?): WordOrderMode? =
         WordOrderMode.entries.firstOrNull { it.name == name && it != WordOrderMode.GREEK && it != WordOrderMode.CUSTOM }
 

@@ -21,4 +21,16 @@ class VerseSplitTest {
         assertFailsWith<IllegalArgumentException> { VerseAudio.suggestBoundaries(FloatArray(2), 3) }
         assertFailsWith<IllegalArgumentException> { VerseAudio.suggestBoundaries(floatArrayOf(Float.NaN), 1) }
     }
+
+    @Test
+    fun sliceFadesBothEndsWithoutChangingSource() {
+        val source = FloatArray(200) { 1f }
+        val slice = VerseAudio.slice(source, 10, 190)
+        assertEquals(180, slice.size)
+        assertEquals(0f, slice.first())
+        assertEquals(0f, slice.last())
+        assertEquals(1f, slice[80])
+        assertTrue(source.all { it == 1f })
+        assertFailsWith<IllegalArgumentException> { VerseAudio.slice(source, 10, 10) }
+    }
 }

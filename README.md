@@ -21,11 +21,15 @@ Imports in a different language are rejected to prevent mixing projects. Plans a
 recordings remain in private storage; export them before uninstalling.
 
 In a verse, select a word-order mode or drag individual words, then choose **Add verse
-recording** to expand the recording editor below the verse. Record the whole verse in that order. The app suggests boundaries at quiet
-points; select each word, adjust the start and end with the sliders or typed seconds,
-preview it, and save it or keep its existing clip. Suggestions are approximate and must
-be reviewed. Disabled words are omitted; restore them in word details before recording
-if needed. Verse clips are saved as lossless WAV audio, including very short selections.
+recording** to expand the recording editor below the verse. Record the complete verse
+in its original spoken order, including disabled words. The app suggests boundaries at
+quiet points in that order, then presents enabled words in the selected order. Disabled
+words still occupy time in the take but are not saved as clips. Select each word, adjust
+the start and end with the sliders or typed seconds, preview it, and save it or keep its
+existing clip. Preview either the whole take or the enabled clips in card order.
+Suggestions assume one spoken segment per original word; they are not phonetic
+alignment and must be reviewed. Verse clips are saved as lossless WAV audio with
+short fades, including very short selections.
 Each saved clip is keyed by Greek surface form, so repeated forms share a
 recording: replacing any existing clip requires confirmation. Back or **Cancel recording**
 closes the editor and discards the unsaved verse take after confirmation, but keeps clips already saved.

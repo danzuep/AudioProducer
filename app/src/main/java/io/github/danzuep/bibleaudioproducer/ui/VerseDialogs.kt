@@ -394,8 +394,8 @@ internal class VerseDialogs(
         val addRecording = MaterialButton(activity).apply {
             text = "Add verse recording"
             setOnClickListener {
-                val spoken = order.map(verse.words::get).filter { !it.disabled(unspoken) }
-                if (spoken.isEmpty()) return@setOnClickListener
+                val cards = VerseWorkflow.recordingWords(verse.words, order, unspoken)
+                if (cards.isEmpty()) return@setOnClickListener
                 actions.stopPlayback()
                 lateinit var editor: VerseTakeEditor
                 fun closeEditor() {
@@ -408,7 +408,7 @@ internal class VerseDialogs(
                         refreshControls()
                     }
                 }
-                editor = VerseTakeEditor(activity, repository, spoken,
+                editor = VerseTakeEditor(activity, repository, cards, verse.words.size,
                     actions::hasRecordingPermission, { closeEditor() }, {
                         closeEditor()
                         changed = false
