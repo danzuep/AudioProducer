@@ -8,7 +8,8 @@ def maculaAssets = layout.buildDirectory.dir('generated/maculaAudioAssets')
 
 tasks.register('generateMaculaAssets', Exec) {
     inputs.files(rootProject.file('scripts/generate-macula-assets.sh'),
-        rootProject.file('scripts/generate-macula-verses.mjs'))
+        rootProject.file('scripts/generate-macula-verses.mjs'),
+        rootProject.file('scripts/macula-syntax.py'))
     outputs.dir(maculaAssets)
     commandLine 'bash', rootProject.file('scripts/generate-macula-assets.sh'),
         maculaAssets.get().asFile.absolutePath

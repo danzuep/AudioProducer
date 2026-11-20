@@ -86,7 +86,7 @@ class VerseWorkflowTest {
     }
 
     @Test
-    fun reordersClauseRolesByWordOrderMode() {
+    fun missingSyntaxKeepsOriginalOrderForEveryMode() {
         val words = listOf(
             word("ἐν", "ἐν", "prep"),
             word("ἀρχῇ", "ἀρχή", "noun", "dative"),
@@ -96,23 +96,47 @@ class VerseWorkflowTest {
             word("τὸν", "ὁ", "det", "accusative"),
             word("θεόν", "θεός", "noun", "accusative")
         )
-        assertEquals(words.indices.toList(), VerseWorkflow.modeOrder(words, WordOrderMode.GREEK))
-        assertEquals(listOf(3, 4, 2, 5, 6, 0, 1), VerseWorkflow.modeOrder(words, WordOrderMode.ENGLISH_SVO))
-        assertEquals(listOf(3, 4, 1, 0, 5, 6, 2), VerseWorkflow.modeOrder(words, WordOrderMode.JAPANESE_SOV))
-        assertEquals(listOf(2, 3, 4, 5, 6, 0, 1), VerseWorkflow.modeOrder(words, WordOrderMode.ARABIC_VSO))
-        assertEquals(listOf(3, 4, 2, 5, 6, 0, 1), VerseWorkflow.modeOrder(words, WordOrderMode.GERMAN_V2))
+        for (mode in WordOrderMode.entries) {
+            assertEquals(words.indices.toList(), VerseWorkflow.modeOrder(words, mode))
+        }
     }
 
     @Test
-    fun verbSecondFrontsOneConstituentAndHeadFinalMovesGenitives() {
-        val objectFirst = listOf(word("ἔχει", "ἔχω", "verb"), word("τὸν", "ὁ", "det", "accusative"), word("θεόν", "θεός", "noun", "accusative"))
-        assertEquals(listOf(0, 1, 2), VerseWorkflow.modeOrder(objectFirst, WordOrderMode.ENGLISH_SVO))
-        assertEquals(listOf(1, 2, 0), VerseWorkflow.modeOrder(objectFirst, WordOrderMode.GERMAN_V2))
-        val genitive = listOf(
-            word("ὁ", "ὁ", "det", "nominative"), word("λόγος", "λόγος", "noun", "nominative"),
-            word("τοῦ", "ὁ", "det", "genitive"), word("θεοῦ", "θεός", "noun", "genitive"), word("ἦν", "εἰμί", "verb")
+    fun syntaxRolesDriveEachPresetAndKeepCoordinatedNounPhraseTogether() {
+        fun syntax(surface: String, pos: String, role: String, path: String) =
+            word(surface, surface, pos).copy(role = role, syntaxPath = path)
+        val clause = "1,cl,,V-S-O"
+        val words = listOf(
+            syntax("v", "verb", "v", clause),
+            syntax("s1", "noun", "", "$clause/2,np,s,ConjNp"),
+            syntax("and", "conj", "", "$clause/2,np,s,ConjNp"),
+            syntax("s2", "noun", "", "$clause/2,np,s,ConjNp"),
+            syntax("o", "noun", "o", clause)
         )
-        assertEquals(listOf(0, 1, 2, 3, 4), VerseWorkflow.modeOrder(genitive, WordOrderMode.ENGLISH_SVO))
-        assertEquals(listOf(2, 3, 0, 1, 4), VerseWorkflow.modeOrder(genitive, WordOrderMode.MANDARIN_SADVVO))
+        assertEquals(listOf(1, 2, 3, 0, 4), VerseWorkflow.modeOrder(words, WordOrderMode.ENGLISH_SVO))
+        assertEquals(listOf(1, 2, 3, 0, 4), VerseWorkflow.modeOrder(words, WordOrderMode.GERMAN_V2))
+        assertEquals(listOf(1, 2, 3, 0, 4), VerseWorkflow.modeOrder(words, WordOrderMode.MANDARIN_SADVVO))
+        assertEquals(listOf(1, 2, 3, 4, 0), VerseWorkflow.modeOrder(words, WordOrderMode.JAPANESE_SOV))
+        assertEquals(listOf(0, 1, 2, 3, 4), VerseWorkflow.modeOrder(words, WordOrderMode.ARABIC_VSO))
+        assertEquals(words.indices.toList(), VerseWorkflow.modeOrder(words, WordOrderMode.GREEK))
+        assertEquals(words.indices.toList(), VerseWorkflow.modeOrder(words, WordOrderMode.CUSTOM))
+        assertEquals(words.indices.toList(), VerseWorkflow.modeOrder(words.mapIndexed { i, w ->
+            if (i == 0) w.copy(syntaxPath = "invalid") else w
+        }, WordOrderMode.ENGLISH_SVO))
+        val incomplete = words.map { it.copy(syntaxPath = it.syntaxPath.replace("2,np,s", "2,!np,s")) }
+        assertEquals(words.indices.toList(), VerseWorkflow.modeOrder(incomplete, WordOrderMode.ENGLISH_SVO))
+    }
+
+    @Test
+    fun japanesePostpositionsAndGermanSubordinateClausesAreConservative() {
+        val cl = "1,cl,,sub-CL/2,cl,,O-V"
+        val words = listOf(
+            word("object", "object", "noun").copy(role = "o", syntaxPath = cl),
+            word("verb", "verb", "verb").copy(role = "v", syntaxPath = cl),
+            word("prep", "prep", "prep").copy(syntaxPath = "$cl/3,pp,adv,PrepNp"),
+            word("noun", "noun", "noun").copy(syntaxPath = "$cl/3,pp,adv,PrepNp")
+        )
+        assertEquals(words.indices.toList(), VerseWorkflow.modeOrder(words, WordOrderMode.GERMAN_V2))
+        assertEquals(listOf(3, 2, 0, 1), VerseWorkflow.modeOrder(words, WordOrderMode.JAPANESE_SOV))
     }
 }

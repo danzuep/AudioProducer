@@ -18,8 +18,24 @@ curl --fail --location --retry 3 --connect-timeout 15 --max-time 180 --silent --
   "https://raw.githubusercontent.com/Clear-Bible/macula-greek/$greek_revision/SBLGNT/tsv/macula-greek-SBLGNT.tsv" \
   --output "$source_dir/macula-greek-SBLGNT.tsv"
 
+curl --fail --location --retry 3 --connect-timeout 15 --max-time 180 --silent --show-error \
+  "https://raw.githubusercontent.com/Clear-Bible/macula-greek/$greek_revision/SBLGNT/lowfat/sblgntlowfat.xml" \
+  --output "$source_dir/lowfat-index.xml"
+mkdir -p "$source_dir/lowfat" "$source_dir/syntax"
+python3 - "$source_dir/lowfat-index.xml" <<'PY' | while IFS= read -r file; do
+import sys
+import xml.etree.ElementTree as ET
+for child in ET.parse(sys.argv[1]).getroot():
+    print(child.attrib["href"])
+PY
+  curl --fail --location --retry 3 --connect-timeout 15 --max-time 180 --silent --show-error \
+    "https://raw.githubusercontent.com/Clear-Bible/macula-greek/$greek_revision/SBLGNT/lowfat/$file" \
+    --output "$source_dir/lowfat/$file"
+  python3 "$root/scripts/macula-syntax.py" "$source_dir/lowfat/$file" "$source_dir/syntax/${file%.xml}.json"
+done
+
 printf '%s\n' '{"type":"module"}' > "$source_dir/package.json"
 node "$source_dir/scripts/generate-recording-plan.mjs" \
   "$source_dir/macula-greek-SBLGNT.tsv" lemma "$output/recording-plan.json"
 node "$root/scripts/generate-macula-verses.mjs" \
-  "$source_dir/macula-greek-SBLGNT.tsv" "$output"
+  "$source_dir/macula-greek-SBLGNT.tsv" "$output" "$source_dir/syntax"

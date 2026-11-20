@@ -1,8 +1,8 @@
 import { strict as assert } from "node:assert";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-const [source, output] = process.argv.slice(2);
+const [source, output, syntaxDirectory] = process.argv.slice(2);
 const plan = JSON.parse(readFileSync(join(output, "recording-plan.json"), "utf8"));
 const books = new Set([
   "MAT", "MRK", "LUK", "JHN", "ACT", "ROM", "1CO", "2CO", "GAL", "EPH",
@@ -30,13 +30,24 @@ const indexes = fields.map((field) => {
   return index;
 });
 const rowsByBook = new Map([...books].map((book) => [book, []]));
+const syntax = new Map();
+for (const file of readdirSync(syntaxDirectory)) {
+  for (const [ref, path] of Object.entries(JSON.parse(readFileSync(join(syntaxDirectory, file), "utf8")))) {
+    assert.ok(!syntax.has(ref), `Duplicate XML reference: ${ref}`);
+    syntax.set(ref, path);
+  }
+}
 for (const line of lines) {
   const cells = line.split("\t");
   const row = indexes.map((index) => cells[index] ?? "");
   const book = row[0].split(" ")[0];
   assert.ok(rowsByBook.has(book), `Unexpected book: ${book}`);
+  assert.ok(syntax.has(row[0]), `Missing XML reference: ${row[0]}`);
+  row.push(syntax.get(row[0]));
+  syntax.delete(row[0]);
   rowsByBook.get(book).push(row);
 }
+assert.equal(syntax.size, 0, "XML and TSV references must match");
 assert.equal(lines.length, plan.summary.tokens + plan.summary.proper_nouns_excluded);
 const verses = join(output, "books");
 mkdirSync(verses, { recursive: true });
