@@ -76,7 +76,7 @@ class WorkbenchActivity : AppCompatActivity() {
     private val neuralModels by lazy { NeuralModelStore(File(filesDir, "audio-models")) }
     private val speechCredentials by lazy { SpeechCredentials(preferences) }
     private var androidGreekTts: AndroidGreekTts? = null
-    private var speechGeneration = 0
+    @Volatile private var speechGeneration = 0
     @Volatile private var speechFailed = false
     private val audioPlayer by lazy {
         AndroidAudioPlayer {
@@ -132,7 +132,7 @@ class WorkbenchActivity : AppCompatActivity() {
     private var playingLemma: String? = null
     private var playingVerseReference: String? = null
     private var playingChapterKey: String? = null
-    private var playbackRenderGeneration = 0
+    @Volatile private var playbackRenderGeneration = 0
     private var playbackTempFile: File? = null
     private var pendingCardFocus: String? = null
     private var pendingCardFocusOffset = 0
@@ -234,13 +234,31 @@ class WorkbenchActivity : AppCompatActivity() {
         chapters = findViewById<Button>(R.id.audio_workbench_chapter).apply {
             isEnabled = false
             setOnClickListener {
-                verseDialogs.showChapterPicker(bookVerses, selectedChapter) { chapter ->
-                    stopPlayback()
-                    selectedChapter = chapter
-                    text = getString(R.string.audio_chapter, chapter)
-                    resetCardPosition()
-                    updateRows()
+                val available = bookVerses.map { it.chapter }.distinct().sorted()
+                if (available.isEmpty()) return@setOnClickListener
+                val picker = android.widget.NumberPicker(this@WorkbenchActivity).apply {
+                    minValue = 0
+                    maxValue = available.lastIndex
+                    displayedValues = available.map(Int::toString).toTypedArray()
+                    value = available.indexOf(selectedChapter).coerceAtLeast(0)
+                    wrapSelectorWheel = false
                 }
+                AlertDialog.Builder(this@WorkbenchActivity)
+                    .setTitle(R.string.audio_choose_chapter)
+                    .setView(picker)
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .setPositiveButton(android.R.string.ok) { _, _ ->
+                        picker.clearFocus()
+                        val chapter = available[picker.value]
+                        if (selectedChapter != chapter) {
+                            stopPlayback()
+                            selectedChapter = chapter
+                            saveBookSelection()
+                            updateChapterButton()
+                            resetCardPosition()
+                            updateRows()
+                        }
+                    }.show()
             }
         }
         search = findViewById(R.id.audio_workbench_search)
@@ -267,6 +285,9 @@ class WorkbenchActivity : AppCompatActivity() {
         }
         language.setOnFocusChangeListener { _, hasFocus -> if (!hasFocus) saveLanguage() }
         findViewById<Button>(R.id.audio_project_new).setOnClickListener { promptNewProject() }
+        findViewById<Button>(R.id.audio_settings_back).setOnClickListener {
+            showStep(if (activeProjectId == null) Step.PROJECTS else Step.BOOKS)
+        }
         ensureDefaultProject()
         renderProjects()
         books.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -528,7 +549,8 @@ class WorkbenchActivity : AppCompatActivity() {
         cards = emptyList()
         projectState = AudioProjectState()
         refreshAudioSettingControls()
-        selectedBook = null
+        selectedBook = preferences.getString("selected_book_${project.id}", null)
+        selectedChapter = preferences.getInt("selected_chapter_${project.id}", 1)
         bookVerses = emptyList()
         language.setText(preferences.getString(languageKey(project.id), ""))
         showStep(Step.BOOKS)
@@ -604,8 +626,11 @@ class WorkbenchActivity : AppCompatActivity() {
                 ?: getString(R.string.audio_workbench_title)
         }
         val toolbar = findViewById<Toolbar>(R.id.audio_workbench_toolbar)
+        toolbar.visibility = if (settings) View.GONE else View.VISIBLE
+        findViewById<View>(R.id.audio_settings_header).visibility = if (settings) View.VISIBLE else View.GONE
         toolbar.navigationIcon = if (projects) null else
             ContextCompat.getDrawable(this, android.R.drawable.ic_menu_revert)
+        toolbar.navigationContentDescription = getString(R.string.audio_back)
         updateRows()
     }
 
@@ -626,8 +651,11 @@ class WorkbenchActivity : AppCompatActivity() {
                     if (selectedBook == book && activeProjectId == selectedProject) {
                         bookVerses = verses
                         val available = verses.map { it.chapter }.distinct()
-                        if (selectedChapter !in available) selectedChapter = available.firstOrNull() ?: 1
-                        chapters.text = getString(R.string.audio_chapter, selectedChapter)
+                        if (selectedChapter !in available) {
+                            selectedChapter = available.firstOrNull() ?: 1
+                            saveBookSelection()
+                        }
+                        updateChapterButton()
                         chapters.isEnabled = available.isNotEmpty()
                         updateRows()
                     }
@@ -730,7 +758,9 @@ class WorkbenchActivity : AppCompatActivity() {
         )
         val words = spoken.filter { repository.playableClip(it) != null }
         if (words.isEmpty()) {
-            speakGreek(listOf(VerseWorkflow.originalText(verse)))
+            speakGreek(listOf(VerseWorkflow.originalText(verse))) {
+                playingVerseReference = verse.reference
+            }
             return
         }
         if (pendingTake() == null) {
@@ -760,7 +790,9 @@ class WorkbenchActivity : AppCompatActivity() {
         }
         val recorded = groups.flatMap { it.second }
         if (recorded.isEmpty()) {
-            speakGreek(verses.map(VerseWorkflow::originalText))
+            speakGreek(verses.map(VerseWorkflow::originalText)) {
+                playingChapterKey = key
+            }
             return
         }
         if (pendingTake() == null) {
@@ -1143,7 +1175,9 @@ class WorkbenchActivity : AppCompatActivity() {
     private fun refreshBooks(preferIncomplete: Boolean) {
         val bookList = RecordingPlan.books(cards)
         books.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, bookList)
-        val preferred = if (preferIncomplete) {
+        val preferred = if (selectedBook in bookList) {
+            selectedBook
+        } else if (preferIncomplete) {
             RecordingPlan.nextIncompleteBook(cards) { it in projectState.unspoken || repository.clipFile(it).isFile }
         } else {
             selectedBook
@@ -1163,14 +1197,27 @@ class WorkbenchActivity : AppCompatActivity() {
 
     private fun selectRecordingBook(book: String) {
         stopPlayback()
+        val changed = selectedBook != book
         selectedBook = book
         bookVerses = emptyList()
-        selectedChapter = 1
+        if (changed) selectedChapter = 1
+        saveBookSelection()
         chapters.isEnabled = false
-        chapters.text = getString(R.string.audio_chapter, selectedChapter)
+        updateChapterButton()
         resetCardPosition()
         updateRows()
         loadBook(book)
+    }
+
+    private fun updateChapterButton() {
+        chapters.text = selectedChapter.toString()
+        chapters.contentDescription = getString(R.string.audio_chapter, selectedChapter)
+    }
+
+    private fun saveBookSelection() {
+        val project = activeProjectId ?: return
+        preferences.edit().putString("selected_book_$project", selectedBook)
+            .putInt("selected_chapter_$project", selectedChapter).apply()
     }
 
     private fun resetCardPosition() {
@@ -1208,8 +1255,6 @@ class WorkbenchActivity : AppCompatActivity() {
         findViewById<View>(R.id.audio_workbench_controls).visibility =
             if (!noPlan && showList) View.VISIBLE else View.GONE
         findViewById<Button>(R.id.audio_workbench_export).isEnabled = !noPlan
-        findViewById<TextView>(R.id.audio_project_heading).text =
-            listProjects().firstOrNull { it.id == activeProjectId }?.name.orEmpty()
         empty.setText(if (noPlan) R.string.audio_workbench_empty else R.string.audio_workbench_no_results)
         empty.visibility = if (showList && (noPlan || visibleCards.isEmpty())) View.VISIBLE else View.GONE
         findViewById<RecyclerView>(R.id.audio_workbench_list).visibility =
@@ -1593,7 +1638,7 @@ class WorkbenchActivity : AppCompatActivity() {
 
     private fun speakGreek(text: String) = speakGreek(listOf(text))
 
-    private fun speakGreek(texts: List<String>) {
+    private fun speakGreek(texts: List<String>, onStart: () -> Unit = {}) {
         if (busy) return
         stopRecording()
         if (pendingTake() != null) return
@@ -1605,29 +1650,46 @@ class WorkbenchActivity : AppCompatActivity() {
             setSpeechFailed(true)
             return
         }
+        val generation = ++speechGeneration
+        onStart()
+        updateRows()
+        fun complete(success: Boolean) {
+            runOnUiThread {
+                if (generation == speechGeneration && !isFinishing && !isDestroyed) {
+                    playingVerseReference = null
+                    playingChapterKey = null
+                    setSpeechFailed(!success)
+                    updateRows()
+                    if (!success) Toast.makeText(this, R.string.audio_workbench_playback_failed, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
         if (key.isBlank()) {
             Toast.makeText(this, R.string.audio_speech_fallback_notice, Toast.LENGTH_LONG).show()
-            getAndroidGreekTts().speak(texts)
+            getAndroidGreekTts().speak(texts, ::complete)
             return
         }
         val region = speechCredentials.region()
-        val generation = ++speechGeneration
         io.execute {
             val audioFiles = texts.indices.map { File(cacheDir, "greek-speech-$it.mp3") }
             try {
                 texts.forEachIndexed { index, text ->
+                    check(generation == speechGeneration) { "Playback was stopped." }
                     AzureGreekSpeech().synthesize(text, region, key, audioFiles[index])
                 }
                 runOnUiThread {
                     if (generation == speechGeneration && !isFinishing && !isDestroyed) {
                         setSpeechFailed(false)
-                        audioPlayer.play(audioFiles)
+                        audioPlayer.play(audioFiles) { complete(true) }
                     }
                 }
             } catch (exception: Exception) {
-                setSpeechFailed(true)
                 runOnUiThread {
                     if (generation == speechGeneration && !isFinishing && !isDestroyed) {
+                        playingVerseReference = null
+                        playingChapterKey = null
+                        setSpeechFailed(true)
+                        updateRows()
                         Toast.makeText(
                             this,
                             getString(R.string.audio_speech_failed, exception.message ?: ""),

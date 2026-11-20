@@ -8,7 +8,8 @@ The complete Greek New Testament recording plan is bundled and available offline
 launch. The first screen lists projects; a new project with no name is assigned a name such
 as **Project001**. New projects start with John 3:16 to try a word order and record a
 verse; existing projects keep their previous behavior. Select a book, tap the chapter
-button to choose a chapter, then choose **Show verses** to navigate its verses. Back
+number to choose an available chapter with the number picker, then choose **Show verses**
+to navigate its verses. Changing books resets the chapter to 1 (or the first available chapter). Back
 returns to the previous screen. Tap a word to
 inspect its Macula metadata and English gloss, then record or play that Greek form.
 Hold a word until it lifts, drag it into place, and release to drop it. Reset restores the
@@ -20,14 +21,15 @@ Imports in a different language are rejected to prevent mixing projects. Plans a
 recordings remain in private storage; export them before uninstalling.
 
 In a verse, select a word-order mode or drag individual words, then choose **Add verse
-recording**. Record the whole verse in that order. The app suggests boundaries at quiet
+recording** to expand the recording editor below the verse. Record the whole verse in that order. The app suggests boundaries at quiet
 points; select each word, adjust the start and end with the sliders or typed seconds,
 preview it, and save it or keep its existing clip. Suggestions are approximate and must
 be reviewed. Disabled words are omitted; restore them in word details before recording
 if needed. Verse clips are saved as lossless WAV audio, including very short selections.
 Each saved clip is keyed by Greek surface form, so repeated forms share a
-recording: replacing any existing clip requires confirmation. Back discards the unsaved
-verse take but keeps clips already saved. Once every word is reviewed, **Finish verse**
+recording: replacing any existing clip requires confirmation. Back or **Cancel recording**
+closes the editor and discards the unsaved verse take after confirmation, but keeps clips already saved.
+Once every word is reviewed, **Finish verse**
 saves the order and advances from John 3:16 to John 1:1, then through the following
 verses. The selected preset is used for subsequent verses unless they already have a
 saved order; a custom order is specific to its verse.

@@ -35,6 +35,7 @@ import androidx.core.content.ContextCompat
 import androidx.appcompat.widget.Toolbar
 import androidx.recyclerview.widget.RecyclerView
 import android.widget.Spinner
+import android.widget.NumberPicker
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertArrayEquals
@@ -91,8 +92,9 @@ class WorkbenchLaunchTest {
             onView(withText("JHN 3:16")).check(matches(isDisplayed()))
             onView(withId(R.id.audio_verse_close)).check(matches(isDisplayed()))
             onView(withId(R.id.audio_verse_close)).perform(click())
+            onView(withId(R.id.audio_workbench_chapter)).check(matches(withText("1")))
             onView(withId(R.id.audio_workbench_chapter)).perform(click())
-            onView(withText("Chapter 1 ✓")).check(matches(isDisplayed()))
+            onView(isAssignableFrom(NumberPicker::class.java)).check(matches(isDisplayed()))
             pressBack()
             onView(withId(R.id.audio_workbench_coverage))
                 .check(matches(withText("0 of ${chapterCards.size} recorded")))
@@ -122,6 +124,42 @@ class WorkbenchLaunchTest {
             closeSoftKeyboard()
             onView(withId(R.id.audio_workbench_empty))
                 .check(matches(withText(R.string.audio_workbench_no_results)))
+        }
+
+        @Test
+        fun chapterPickerPreservesSelectionOnRefreshAndResetsForAnotherBook() {
+            ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
+                awaitBooks(scenario, 27)
+                onView(withId(R.id.audio_verse_close)).perform(click())
+                onView(withId(R.id.audio_workbench_chapter)).perform(click())
+                onView(isAssignableFrom(NumberPicker::class.java)).perform(object : ViewAction {
+                    override fun getDescription() = "Select chapter 3"
+                    override fun getConstraints() = isAssignableFrom(NumberPicker::class.java)
+                    override fun perform(uiController: UiController, view: View) {
+                        (view as NumberPicker).value = 2
+                    }
+                })
+                onView(withText(android.R.string.ok)).perform(click())
+                onView(withId(R.id.audio_workbench_chapter))
+                    .check(matches(allOf(withText("3"), withContentDescription("Chapter 3"))))
+                scenario.onActivity { activity ->
+                    val refresh = WorkbenchActivity::class.java.getDeclaredMethod("refreshBooks", Boolean::class.javaPrimitiveType)
+                    refresh.isAccessible = true
+                    refresh.invoke(activity, false)
+                }
+                assertTrue(awaitBookCount(scenario, 27, 15_000))
+                onView(withId(R.id.audio_workbench_chapter)).check(matches(withText("3")))
+                scenario.onActivity { activity ->
+                    val spinner = activity.findViewById<Spinner>(R.id.audio_workbench_books)
+                    spinner.setSelection((spinner.selectedItemPosition + 1) % spinner.count)
+                }
+                assertTrue(awaitBookCount(scenario, 27, 15_000))
+                onView(withId(R.id.audio_workbench_chapter)).check(matches(withText("1")))
+                onView(withId(R.id.audio_choose_verse)).perform(click())
+                onView(withId(R.id.audio_workbench_toolbar)).check(matches(org.hamcrest.Matchers.not(isDisplayed())))
+                pressBack()
+                onView(withId(R.id.audio_workbench_toolbar)).check(matches(isDisplayed()))
+            }
         }
     }
 
@@ -302,6 +340,10 @@ class WorkbenchLaunchTest {
             openChapter()
             onView(withContentDescription(R.string.audio_play_chapter)).perform(click())
             onView(withContentDescription(R.string.audio_stop_chapter)).check(matches(isDisplayed()))
+            onView(withContentDescription(R.string.audio_stop_chapter)).perform(click())
+            onView(withContentDescription(R.string.audio_play_chapter)).check(matches(isDisplayed()))
+            onView(withContentDescription(R.string.audio_play_chapter)).perform(click())
+            onView(withContentDescription(R.string.audio_stop_chapter)).check(matches(isDisplayed()))
             pressBack()
             openChapter()
             onView(withContentDescription(R.string.audio_play_chapter)).check(matches(isEnabled()))
@@ -350,7 +392,9 @@ class WorkbenchLaunchTest {
             check(clip.parentFile!!.mkdirs() || clip.parentFile!!.isDirectory)
             val original = VerseAudio.encodeWav(FloatArray(16000) { 0.1f })
             clip.writeBytes(original)
-            onView(withText("Add verse recording")).perform(click())
+            onView(withText("Add verse recording")).perform(scrollTo(), click())
+            onView(withId(R.id.audio_verse_close)).check(matches(isDisplayed()))
+            onView(withId(R.id.audio_workbench_toolbar)).check(matches(org.hamcrest.Matchers.not(isDisplayed())))
             onView(withText("Record verse")).perform(scrollTo(), click())
             Thread.sleep(1000)
             onView(withText("Stop recording")).perform(scrollTo(), click())
@@ -397,6 +441,8 @@ class WorkbenchLaunchTest {
             pressBack()
             onView(withText("Discard")).perform(click())
             assertArrayEquals(original, clip.readBytes())
+            onView(withId(R.id.audio_verse_close)).check(matches(isDisplayed()))
+            onView(withText("Add verse recording")).perform(scrollTo()).check(matches(isEnabled()))
         }
     }
 
@@ -479,8 +525,10 @@ class WorkbenchLaunchTest {
     private fun openSettings(scenario: ActivityScenario<WorkbenchActivity>) {
         var opened = false
         scenario.onActivity { activity ->
-            opened = activity.findViewById<Toolbar>(R.id.audio_workbench_toolbar).menu
-                .performIdentifierAction(R.id.audio_menu_settings, 0)
+            val back = activity.findViewById<Button>(R.id.audio_settings_back)
+            opened = if (back.isShown) back.performClick() else
+                activity.findViewById<Toolbar>(R.id.audio_workbench_toolbar).menu
+                    .performIdentifierAction(R.id.audio_menu_settings, 0)
         }
         assertTrue("Settings menu action was not available", opened)
     }

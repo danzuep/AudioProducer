@@ -295,11 +295,12 @@ internal class AndroidGreekTts(
 ) {
     private var ready = false
     private var failed = false
-    private var pendingTexts: List<String>? = null
+    private var pendingSpeech: Pair<List<String>, (Boolean) -> Unit>? = null
     private var voices = emptyList<Voice>()
     private var selectedVoice: Voice? = null
     private val voiceCallbacks = mutableListOf<(List<Voice>) -> Unit>()
     private val fileCallbacks = java.util.concurrent.ConcurrentHashMap<String, (Boolean) -> Unit>()
+    private val speechCallbacks = java.util.concurrent.ConcurrentHashMap<String, (Boolean) -> Unit>()
     private var closed = false
     private val main = android.os.Handler(android.os.Looper.getMainLooper())
 
@@ -312,12 +313,12 @@ internal class AndroidGreekTts(
             override fun onStart(utteranceId: String?) = Unit
             override fun onDone(utteranceId: String?) {
                 val callback = utteranceId?.let(fileCallbacks::remove)
-                if (callback != null) callback(true) else this@AndroidGreekTts.onDone()
+                if (callback != null) callback(true) else utteranceId?.let { speechCallbacks.remove(it)?.invoke(true) }
                 shutdownWhenIdle()
             }
             override fun onError(utteranceId: String?) {
                 val callback = utteranceId?.let(fileCallbacks::remove)
-                if (callback != null) callback(false) else onError("Android speech synthesis failed.")
+                if (callback != null) callback(false) else utteranceId?.let { speechCallbacks.remove(it)?.invoke(false) }
                 shutdownWhenIdle()
             }
         })
@@ -344,9 +345,12 @@ internal class AndroidGreekTts(
         val callbacks = voiceCallbacks.toList()
         voiceCallbacks.clear()
         callbacks.forEach { it(if (ready) voices else emptyList()) }
-        if (error != null) onError(error)
-        if (ready) pendingTexts?.let(::speakNow)
-        pendingTexts = null
+        val pending = pendingSpeech
+        pendingSpeech = null
+        if (error != null) {
+            onError(error)
+            pending?.second?.invoke(false)
+        } else if (pending != null) speakNow(pending.first, pending.second)
     }
 
     private fun Voice.language() = when (locale.language) {
@@ -357,11 +361,13 @@ internal class AndroidGreekTts(
 
     fun speak(text: String) = speak(listOf(text))
 
-    fun speak(texts: List<String>) {
+    fun speak(texts: List<String>, done: (Boolean) -> Unit = {
+        if (it) onDone() else onError("Android speech synthesis failed.")
+    }) {
         when {
-            ready -> speakNow(texts)
-            failed -> onError("Install a Greek or Italian Android TTS voice to use device speech.")
-            else -> pendingTexts = texts
+            ready -> speakNow(texts, done)
+            failed -> done(false)
+            else -> pendingSpeech = texts to done
         }
     }
 
@@ -402,7 +408,8 @@ internal class AndroidGreekTts(
 
     fun shutdown() {
         closed = true
-        pendingTexts = null
+        pendingSpeech = null
+        speechCallbacks.clear()
         voiceCallbacks.clear()
         if (fileCallbacks.isEmpty()) {
             if (ready) engine.stop()
@@ -417,7 +424,8 @@ internal class AndroidGreekTts(
     }
 
     fun stop() {
-        pendingTexts = null
+        pendingSpeech = null
+        speechCallbacks.clear()
         // Stopping the Pico engine mid-synthesis can crash it, so let file requests finish.
         if (ready && fileCallbacks.isEmpty()) engine.stop()
     }
@@ -437,17 +445,31 @@ internal class AndroidGreekTts(
         }
     }
 
-    private fun speakNow(texts: List<String>) {
+    private fun speakNow(texts: List<String>, done: (Boolean) -> Unit) {
+        if (texts.isEmpty()) {
+            done(true)
+            return
+        }
         val italian = selectedVoice?.language() == "it"
+        val ids = texts.indices.map { "greek-${System.nanoTime()}-$it" }
+        val remaining = java.util.concurrent.atomic.AtomicInteger(texts.size)
+        val finished = java.util.concurrent.atomic.AtomicBoolean(false)
+        val callback: (Boolean) -> Unit = { success ->
+            if ((!success || remaining.decrementAndGet() == 0) && finished.compareAndSet(false, true)) {
+                ids.forEach(speechCallbacks::remove)
+                done(success)
+            }
+        }
+        ids.forEach { speechCallbacks[it] = callback }
         texts.forEachIndexed { index, text ->
             val result = engine.speak(
                 if (italian) ClassicalGreekG2p.italianRespelling(text) else text,
                 if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD,
                 null,
-                "greek-${System.nanoTime()}"
+                ids[index]
             )
             if (result == TextToSpeech.ERROR) {
-                onError("Android speech synthesis failed.")
+                callback(false)
                 return
             }
         }

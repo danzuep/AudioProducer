@@ -8,7 +8,6 @@ import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.Spinner
 import android.widget.TextView
@@ -31,7 +30,6 @@ internal class VerseTakeEditor(
     private val activity: AppCompatActivity,
     private val repository: AudioProjectRepository,
     private val words: List<VerseWord>,
-    private val reference: String,
     private val hasPermission: () -> Boolean,
     private val onBack: () -> Unit,
     private val onComplete: () -> Unit
@@ -66,20 +64,15 @@ internal class VerseTakeEditor(
     private lateinit var previewExisting: Button
 
     fun view(): View {
-        val root = LinearLayout(activity).apply {
+        val content = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(12), dp(16), dp(12))
         }
-        val content = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
         fun button(label: String, action: () -> Unit) = Button(activity).apply {
             text = label
             setOnClickListener { action() }
         }
-        content.addView(button("← Back") { if (!working) onBack() })
-        content.addView(TextView(activity).apply {
-            text = "$reference · Verse clips"
-            textSize = 22f
-        })
+        content.addView(button("Cancel recording") { if (!working) onBack() })
         content.addView(TextView(activity).apply {
             text = "Record the whole verse in the selected order. Review each suggested clip before saving."
         })
@@ -147,10 +140,8 @@ internal class VerseTakeEditor(
             }
         }
         content.addView(finish)
-        root.addView(ScrollView(activity).apply { addView(content) },
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         refresh()
-        return root
+        return content
     }
 
     private fun toggleRecord() {
