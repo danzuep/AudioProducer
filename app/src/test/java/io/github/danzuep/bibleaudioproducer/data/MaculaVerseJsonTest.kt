@@ -48,7 +48,8 @@ class MaculaVerseJsonTest {
         val second = verses.getValue("JHN 3:16").words
         val order = VerseWorkflow.modeOrder(second, WordOrderMode.ENGLISH_SVO)
         assertTrue(before(order, 2, 5))
-        assertTrue(before(order, 5, 3))
+        assertTrue(before(order, 5, 1))
+        assertTrue(before(order, 1, 3))
         assertTrue(before(order, 3, 7))
         assertTrue(before(order, 7, 8))
         assertTrue(before(order, 13, 10))

@@ -249,8 +249,11 @@ object VerseWorkflow {
         val result = original.toMutableList()
         fun members(node: Node): List<Int> = node.word?.let(::listOf)
             ?: node.children.flatMap(::members).sorted()
-        fun contiguous(indices: List<Int>) = indices.isNotEmpty() &&
-            indices.last() - indices.first() + 1 == indices.size
+        fun positions(indices: List<Int>) = indices.map { result.indexOf(it) }.sorted()
+        fun contiguous(indices: List<Int>): Boolean {
+            val positions = positions(indices)
+            return positions.isNotEmpty() && positions.last() - positions.first() + 1 == positions.size
+        }
         fun replace(indices: List<Int>, ordered: List<Int>) {
             val positions = result.indices.filter { result[it] in indices }
             positions.zip(ordered).forEach { (position, index) -> result[position] = index }
@@ -258,6 +261,22 @@ object VerseWorkflow {
         fun visit(node: Node, inNominal: Boolean, subordinate: Boolean) {
             val nominal = inNominal || node.category.removePrefix("!") == "np"
             val sub = subordinate || node.rule.equals("sub-CL", ignoreCase = true)
+            // MACULA can place a postpositive conjunction before its clause in the
+            // tree even though it interrupts the clause's first adverb in the text.
+            if (node.category == "cl" && !nominal && !(mode.verbSecond && sub) && node.children.size == 2) {
+                val conjunction = node.children.singleOrNull { it.word?.let { i -> words[i].pos == "conj" } == true }
+                val clause = node.children.singleOrNull { it.category == "cl" }
+                if (conjunction != null && clause != null) {
+                    val conj = conjunction.word!!
+                    val clauseWords = members(clause)
+                    val all = (clauseWords + conj).sorted()
+                    if (clauseWords.size > 1 && contiguous(all) && conj == clauseWords.first() + 1 &&
+                        words[clauseWords.first()].role == "adv" && words[clauseWords.first()].pos == "adv"
+                    ) {
+                        replace(all, listOf(conj) + result.filter { it in clauseWords })
+                    }
+                }
+            }
             node.children.forEach { visit(it, nominal, sub) }
             val all = members(node)
             if (mode.postpositions && node.category == "pp" && contiguous(all) &&
@@ -283,13 +302,13 @@ object VerseWorkflow {
                     if (child.category == "cl" || child.category.startsWith("!") || !contiguous(indices)) "" else role,
                     indices, child.category
                 )
-            }.sortedBy { it.indices.firstOrNull() ?: Int.MAX_VALUE }
+            }.sortedBy { positions(it.indices).firstOrNull() ?: Int.MAX_VALUE }
 
             fun reorder(segment: List<Constituent>) {
                 if (segment.count { it.role == "V" } != 1 || segment.size < 2) return
                 val merged = mutableListOf<Constituent>()
                 for (part in segment) {
-                    if (part.role == "V" && merged.lastOrNull()?.role == "ADV") {
+                    if (!mode.verbSecond && part.role == "V" && merged.lastOrNull()?.role == "ADV") {
                         val modifier = merged.removeAt(merged.lastIndex)
                         merged.add(Constituent("V", modifier.indices + part.indices, ""))
                     } else merged.add(part)
@@ -315,7 +334,7 @@ object VerseWorkflow {
             val segment = mutableListOf<Constituent>()
             for (part in parts) {
                 if (part.role.isEmpty() || (segment.isNotEmpty() &&
-                    segment.last().indices.last() + 1 != part.indices.first())
+                    positions(segment.last().indices).last() + 1 != positions(part.indices).first())
                 ) {
                     reorder(segment)
                     segment.clear()
