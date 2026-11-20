@@ -188,4 +188,25 @@ class VerseWorkflowTest {
         }
         assertEquals(WordOrderMode.JAPANESE_SOV, VerseWorkflow.defaultMode(previous))
     }
+
+    @Test
+    fun defaultOrderAppliesWithoutReplacingSavedWordOrChunkOrders() {
+        val path = "1,cl,,V-O/2,np,o,NpAdjp"
+        val words = listOf(
+            word("noun", "noun", "noun").copy(syntaxPath = path),
+            word("adj", "adj", "adj").copy(syntaxPath = path)
+        )
+        val verse = AudioVerse("JHN 1:1", words)
+        val state = AudioProjectState(defaultWordOrder = "ENGLISH_SVO")
+        val order = VerseWorkflow.effectiveWordOrder(verse, state)
+        assertEquals(listOf(1, 0), order)
+        assertEquals(listOf("adj", "noun"),
+            VerseWorkflow.spokenWords(words, emptyMap(), null, emptySet(), order).map { it.surface })
+        assertEquals(listOf(0, 1),
+            VerseWorkflow.effectiveWordOrder(verse, state.copy(wordOrders = mapOf(verse.reference to listOf(0, 1)))))
+        assertEquals(null, VerseWorkflow.effectiveWordOrder(
+            verse, state.copy(seedOrders = mapOf(verse.reference to listOf(0)))
+        ))
+        assertEquals(null, VerseWorkflow.effectiveWordOrder(verse, state.copy(defaultWordOrder = "GREEK")))
+    }
 }

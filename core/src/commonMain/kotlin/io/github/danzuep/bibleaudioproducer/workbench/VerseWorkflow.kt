@@ -61,6 +61,10 @@ object VerseWorkflow {
     fun selectedDefault(reference: String, mode: WordOrderMode?, previous: String?): String? =
         if (reference == "JHN 3:16" && mode != null && defaultMode(mode.name) != null) mode.name else previous
 
+    fun effectiveWordOrder(verse: AudioVerse, state: AudioProjectState): List<Int>? =
+        state.wordOrders[verse.reference] ?: if (verse.reference in state.seedOrders) null
+        else defaultMode(state.defaultWordOrder)?.let { modeOrder(verse.words, it) }
+
     private val nominal = setOf("noun", "pron", "det", "adj", "num")
     private val heads = setOf("noun", "pron", "num")
     private val cases = mapOf(

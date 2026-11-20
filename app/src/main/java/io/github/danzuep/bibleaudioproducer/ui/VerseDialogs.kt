@@ -244,7 +244,7 @@ internal class VerseDialogs(
             val chapterRecorded = verses.any { verse ->
                 VerseWorkflow.spokenWords(
                     verse.words, state.rules, state.seedOrders[verse.reference], state.unspoken,
-                    state.wordOrders[verse.reference], verse.reference in state.fullVerseReferences
+                    VerseWorkflow.effectiveWordOrder(verse, state), verse.reference in state.fullVerseReferences
                 ).any { repository.playableClip(it) != null }
             }
             val chapterPlayable = actions.isPlayingChapter(chapter) || chapterRecorded || !actions.speechFailed
@@ -259,7 +259,7 @@ internal class VerseDialogs(
             verseButtons.forEach { (verse, button) ->
                 val recorded = VerseWorkflow.spokenWords(
                     verse.words, state.rules, state.seedOrders[verse.reference], state.unspoken,
-                    state.wordOrders[verse.reference], verse.reference in state.fullVerseReferences
+                    VerseWorkflow.effectiveWordOrder(verse, state), verse.reference in state.fullVerseReferences
                 ).any { repository.playableClip(it) != null }
                 val playable = actions.isPlayingVerse(verse) || recorded || !actions.speechFailed
                 button.isEnabled = playable
@@ -283,10 +283,8 @@ internal class VerseDialogs(
         if (actions.busy) return
         val defaultMode = VerseWorkflow.defaultMode(actions.state.defaultWordOrder)
         val hasSavedOrder = verse.reference in actions.state.wordOrders || verse.reference in actions.state.seedOrders
-        var order = if (!hasSavedOrder && defaultMode != null) {
-            VerseWorkflow.modeOrder(verse.words, defaultMode).toMutableList()
-        } else VerseWorkflow.orderedWordIndices(
-            verse.words, actions.state.rules, actions.state.wordOrders[verse.reference],
+        var order = VerseWorkflow.orderedWordIndices(
+            verse.words, actions.state.rules, VerseWorkflow.effectiveWordOrder(verse, actions.state),
             actions.state.seedOrders[verse.reference]
         ).toMutableList()
         val unspoken = actions.state.unspoken.toMutableSet()

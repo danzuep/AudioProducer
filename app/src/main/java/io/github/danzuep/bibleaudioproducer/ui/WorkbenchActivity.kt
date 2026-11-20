@@ -710,13 +710,13 @@ class WorkbenchActivity : AppCompatActivity() {
             return
         }
         busy = true
-        projectState = updated
         io.execute {
             try {
                 targetRepository.saveState(updated)
                 runOnUiThread {
                     if (activeProjectId != targetProject || isDestroyed) return@runOnUiThread
                     busy = false
+                    projectState = updated
                     refreshAudioSettingControls()
                     updateRows()
                     Toast.makeText(this, R.string.audio_order_saved, Toast.LENGTH_SHORT).show()
@@ -767,7 +767,7 @@ class WorkbenchActivity : AppCompatActivity() {
         stopPlayback()
         val spoken = VerseWorkflow.spokenWords(
             verse.words, projectState.rules, projectState.seedOrders[verse.reference], projectState.unspoken,
-            projectState.wordOrders[verse.reference], verse.reference in projectState.fullVerseReferences
+            VerseWorkflow.effectiveWordOrder(verse, projectState), verse.reference in projectState.fullVerseReferences
         )
         val words = spoken.filter { repository.playableClip(it) != null }
         if (words.isEmpty()) {
@@ -795,7 +795,7 @@ class WorkbenchActivity : AppCompatActivity() {
         val spokenGroups = verses.map { verse ->
             verse.reference to VerseWorkflow.spokenWords(
                 verse.words, projectState.rules, projectState.seedOrders[verse.reference], projectState.unspoken,
-                projectState.wordOrders[verse.reference], verse.reference in projectState.fullVerseReferences
+                VerseWorkflow.effectiveWordOrder(verse, projectState), verse.reference in projectState.fullVerseReferences
             )
         }
         val groups = spokenGroups.map { (reference, words) ->
@@ -928,7 +928,7 @@ class WorkbenchActivity : AppCompatActivity() {
         }
         val words = VerseWorkflow.spokenWords(
             verse.words, projectState.rules, projectState.seedOrders[verse.reference], projectState.unspoken,
-            projectState.wordOrders[verse.reference], verse.reference in projectState.fullVerseReferences
+            VerseWorkflow.effectiveWordOrder(verse, projectState), verse.reference in projectState.fullVerseReferences
         )
         val recorded = words.filter { repository.clipFile(it.surface).isFile }
         if (recorded.isEmpty()) {

@@ -33,8 +33,8 @@ Once every word is reviewed, **Finish verse**
 saves the order and advances from John 3:16 to John 1:1, then through the following
 verses. Selecting a preset in John 3:16 saves it immediately as this project's default,
 even without recording. Original order and Custom do not replace that default.
-Subsequent verses use it unless they already have a saved order; a custom order is
-specific to its verse.
+Subsequent verses use it for the editor, recorded playback and export unless they
+already have a saved order; a custom order is specific to its verse.
 
 Word-order presets are starting points, not translations. The bundled Greek data uses
 [MACULA's pinned syntax trees](https://github.com/Clear-Bible/macula-greek/tree/8423afe47b9e8f24b7772e808af45c7159a6fe7e/SBLGNT/lowfat)
