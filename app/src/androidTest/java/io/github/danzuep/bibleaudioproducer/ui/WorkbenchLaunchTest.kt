@@ -484,6 +484,77 @@ class WorkbenchLaunchTest {
     }
 
     @Test
+    fun downloadIncludesOrStripsGreekSpeechAsSelected() {
+        org.junit.Assume.assumeTrue(
+            Build.VERSION.SDK_INT >= 29 &&
+                InstrumentationRegistry.getArguments().getString("testGreekTts") == "true"
+        )
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val verse = context.assets.open("books/JHN.json").bufferedReader().use {
+            MaculaVerseJson.parse(it.readText()).first()
+        }
+        val words = verse.words.filter { !it.disabled(emptySet()) }.distinctBy { it.surface }.take(2)
+        assertEquals(2, words.size)
+        val shortVerse = AudioVerse(verse.reference, words)
+        val resolver = context.contentResolver
+        val uris = mutableListOf<android.net.Uri>()
+        try {
+            ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
+                awaitBooks(scenario, 27)
+                val clip = AudioProjectRepository(directory).clipFile(words.first().surface)
+                check(clip.parentFile!!.mkdirs() || clip.parentFile!!.isDirectory)
+                clip.writeBytes(VerseAudio.encodeWav(FloatArray(16000) { 0.1f }))
+                fun save(strip: Boolean): ByteArray {
+                    val values = android.content.ContentValues().apply {
+                        put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, "test-${System.nanoTime()}.wav")
+                        put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "audio/wav")
+                    }
+                    val uri = checkNotNull(resolver.insert(android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values))
+                    uris += uri
+                    val monitor = instrumentation.addMonitor(
+                        android.content.IntentFilter(android.content.Intent.ACTION_CREATE_DOCUMENT),
+                        android.app.Instrumentation.ActivityResult(
+                            android.app.Activity.RESULT_OK, android.content.Intent().setData(uri)
+                        ), true
+                    )
+                    try {
+                        scenario.onActivity { activity ->
+                            WorkbenchActivity::class.java.getDeclaredMethod("downloadVerse", AudioVerse::class.java)
+                                .apply { isAccessible = true }.invoke(activity, shortVerse)
+                        }
+                        onView(withText(context.getString(R.string.audio_download_tts_warning, 1)))
+                            .check(matches(isDisplayed()))
+                        if (strip) onView(withText(R.string.audio_download_strip_tts)).perform(click())
+                        onView(withText(R.string.audio_download_verse)).perform(click())
+                        val deadline = System.currentTimeMillis() + 30_000
+                        var bytes = byteArrayOf()
+                        var busy = true
+                        while ((bytes.size <= 44 || busy) && System.currentTimeMillis() < deadline) {
+                            bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: byteArrayOf()
+                            scenario.onActivity { activity ->
+                                busy = WorkbenchActivity::class.java.getDeclaredField("busy")
+                                    .apply { isAccessible = true }.getBoolean(activity)
+                            }
+                            if (bytes.size <= 44 || busy) Thread.sleep(100)
+                        }
+                        assertTrue("Verse download was not written", bytes.size > 44 && !busy)
+                        return bytes
+                    } finally {
+                        instrumentation.removeMonitor(monitor)
+                    }
+                }
+                val stripped = save(true)
+                val withTts = save(false)
+                assertEquals(44 + 16000 * 2, stripped.size)
+                assertTrue("Generated Greek audio was not included", withTts.size > stripped.size)
+            }
+        } finally {
+            uris.forEach { resolver.delete(it, null, null) }
+        }
+    }
+
+    @Test
     fun chapterPlaybackStopsDuringPreparationAndResetsAfterCompletion() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val verse = context.assets.open("books/JHN.json").bufferedReader().use {

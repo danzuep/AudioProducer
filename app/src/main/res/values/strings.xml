@@ -65,7 +65,7 @@
     <string name="audio_verse_ready">Ready</string>
     <string name="audio_verse_no_words">No recordable words</string>
     <string name="audio_verse_missing">%1$d words missing</string>
-    <string name="audio_play_verse">Play recorded words</string>
+    <string name="audio_play_verse">Play verse</string>
     <string name="audio_play_chapter">Play chapter</string>
     <string name="audio_stop_chapter">Stop chapter</string>
     <string name="audio_download_verse">Save verse audio</string>
