@@ -48,6 +48,19 @@ object VerseAudio {
         return boundaries
     }
 
+    /** Copy a non-destructive selection with short fades to reduce clicks. */
+    fun slice(samples: FloatArray, start: Int, end: Int): FloatArray {
+        require(start >= 0 && end <= samples.size && start < end) { "Invalid audio selection." }
+        val result = samples.copyOfRange(start, end)
+        val fade = minOf(SAMPLE_RATE / 200, result.size / 2)
+        for (i in 0 until fade) {
+            val gain = i.toFloat() / fade
+            result[i] *= gain
+            result[result.lastIndex - i] *= gain
+        }
+        return result
+    }
+
     fun assemble(clips: List<FloatArray>): FloatArray {
         require(clips.isNotEmpty()) { "No recordings are available for this verse." }
         val parts = clips.map { trimSilence(normalize(it)) }

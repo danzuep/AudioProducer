@@ -21,11 +21,15 @@ Imports in a different language are rejected to prevent mixing projects. Plans a
 recordings remain in private storage; export them before uninstalling.
 
 In a verse, select a word-order mode or drag individual words, then choose **Add verse
-recording** to expand the recording editor below the verse. Record the whole verse in that order. The app suggests boundaries at quiet
-points; select each word, adjust the start and end with the sliders or typed seconds,
-preview it, and save it or keep its existing clip. Suggestions are approximate and must
-be reviewed. Disabled words are omitted; restore them in word details before recording
-if needed. Verse clips are saved as lossless WAV audio, including very short selections.
+recording** to expand the recording editor below the verse. Record the complete verse
+in its original spoken order, including disabled words. The app suggests boundaries at
+quiet points in that order, then presents enabled words in the selected order. Disabled
+words still occupy time in the take but are not saved as clips. Select each word, adjust
+the start and end with the sliders or typed seconds, preview it, and save it or keep its
+existing clip. Preview either the whole take or the enabled clips in card order.
+Suggestions assume one spoken segment per original word; they are not phonetic
+alignment and must be reviewed. Verse clips are saved as lossless WAV audio with
+short fades, including very short selections.
 Each saved clip is keyed by Greek surface form, so repeated forms share a
 recording: replacing any existing clip requires confirmation. Back or **Cancel recording**
 closes the editor and discards the unsaved verse take after confirmation, but keeps clips already saved.
@@ -103,6 +107,77 @@ AAC (M4A), or compact Opus (Ogg, Android 10 or later). All formats also support 
 smoothing. Very short audio (under 128 ms) must be saved as WAV instead of AAC.
 The app reports how many missing words were skipped. Computer voice is not
 yet available.
+
+## Browser interlinear slicer
+
+The separate browser workspace in `web/` works locally without uploading audio. To
+enable optional phoneme recognition, first run `npm ci --prefix web`. Start it
+from the repository root with `python3 -m http.server 8000`, then open
+`http://localhost:8000/web/` in a recent browser. Microphone recording requires a secure
+context (localhost or HTTPS). This is separate from the Android project's stored clips
+and its word-order presets.
+
+Load a WAV, MP3, M4A, or supported microphone recording and an interlinear JSON array
+in target reading order, for example:
+
+```json
+[
+  {"target_text": "word", "ancient_text": "λόγος", "spoken_index": 2},
+  {"target_text": "was", "ancient_text": "ἦν", "spoken_index": 1},
+  {"target_text": "implied word", "ancient_text": ""}
+]
+```
+
+`spoken_index` is optional and 1-based; it points to a detected waveform slice, not to
+a verified word. Duplicate indices are left unassigned. Alternatively, enter an
+original-order transcript with one token per detected slice to pair unique exact
+matches. Greek accent marks and Hebrew cantillation are ignored for this comparison;
+Hebrew vowel marks are retained. Initial detection uses quiet gaps and may split
+syllables or join words. Optionally load reference word recordings named after their ancient text, such
+as `λόγος.wav`, and choose **Suggest acoustic matches**. This compares local spectral
+features against unassigned slices without assuming their order; same-speaker clips work
+best. It is an experimental similarity heuristic, not a phonetic recognizer, and can
+produce incorrect matches or leave words unmatched. Reference clips stay local and must
+be loaded again after reopening. Check all pairings and boundaries; repeated words are
+intentionally not matched automatically. Select an unassigned slice to attach it, or add a slice at the waveform
+cursor. Drag the selected handles or enter milliseconds; the handles snap to nearby
+zero crossings. Cards can be reordered, split or merged, and audio can be moved separately.
+Overwriting an attachment or the whole recording requires reviewing the replacement.
+On Android, **Export interlinear script** in a verse exports the currently selected
+word order and English glosses as a compatible JSON array. Disabled words are omitted,
+and audio must be paired separately.
+
+For phoneme-based suggestions, select a pronunciation scheme and supply an ONNX CTC
+phoneme model and its JSON vocabulary, then choose **Suggest phoneme matches**.
+The model must accept a single `[1, samples]` float32 audio input and return a single
+`[1, frames, vocabulary size]` logits output, with `<pad>` as the CTC blank. One tested
+example is the separately distributed
+[quantized wav2vec2-lv60-espeak model and vocabulary](https://github.com/HashCat03/weekdrop-phoneme-model/releases/tag/v1)
+(356 MB); inspect the provider's terms before downloading. Its tested SHA-256 values
+are `fe9969e144776591fd81232cb41b9b05e201021e2f779265dea5c669495cc4fb`
+for `phoneme_q8.onnx` and
+`d732ab2456c0c017930001dc9af0b41b3b93d25b2eb9740bf9d925508d7d87d0`
+for `vocab.json`. Models are not bundled or fetched automatically.
+
+Inference runs locally in WebAssembly and may take substantial time and memory.
+The model is not trained specifically for ancient pronunciation, and the Greek and
+Hebrew grapheme-to-phone rules are approximations, not full linguistic analyses.
+Hebrew matching requires vowel points. Both segmentation and recognition can fail:
+ambiguous matches and untranslated or unvoiced words are left unassigned, but even
+assigned matches require listening and boundary review. Open **Recognized phonemes**
+to inspect the last model output. At most 100 slices are analyzed in one pass; slices
+shorter than 25 ms or longer than 12 seconds are skipped.
+
+Export produces a ZIP with lossless clips in card order, the original source audio and
+`alignment.json`. Empty cards have no WAV; merged cards include all their spans in
+playback order. To continue editing, load the exported source audio and then its
+`alignment.json`; the source hash must match. Edits are otherwise held only in the
+current browser session. Global padding is applied at export, and short fades are
+applied at clip edges. Neither the source recording nor the timestamp map is modified
+by padding or fades. Run the browser core tests with
+`node --test web/core.test.mjs web/acoustic.test.mjs web/phonetics.test.mjs`.
+With Google Chrome installed, `node --test web/browser.test.mjs` also exercises the
+browser workflow.
 
 On Android 7.0 or later, **Save with neural smoothing** optionally blends an on-device
 SpeechT5 HiFi-GAN reconstruction into verses up to 30 seconds long. Choose the standard

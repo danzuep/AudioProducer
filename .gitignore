@@ -5,6 +5,7 @@
 .DS_Store
 /build
 /captures
+/web/node_modules/
 *debug*
 *release*
 !.github/workflows/release.yml

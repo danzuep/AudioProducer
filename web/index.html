@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Interlinear audio slicer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <header>
+    <h1>Interlinear audio slicer</h1>
+    <p>Keep the recording in spoken order; arrange the cards in translation order. Audio stays in this browser.</p>
+  </header>
+  <section class="toolbar" aria-label="Inputs">
+    <label>Audio <input id="audio-file" type="file" accept="audio/wav,audio/mpeg,audio/mp4,audio/x-m4a,audio/*"></label>
+    <button id="record">Record microphone</button>
+    <label>Interlinear JSON or alignment.json <input id="script-file" type="file" accept=".json,application/json"></label>
+    <label>Deck direction <select id="direction"><option value="ltr">Left to right</option><option value="rtl">Right to left</option></select></label>
+    <button id="example">Example script</button>
+  </section>
+  <p id="status" role="status">Load audio and an interlinear script to begin.</p>
+  <section aria-labelledby="wave-title">
+    <h2 id="wave-title">Spoken waveform</h2>
+    <p>Select a colored slice to adjust its handles. Grey slices are unassigned; select one and use “Attach selected” on a card.</p>
+    <canvas id="wave" height="160" tabindex="0" aria-label="Waveform with draggable selection boundaries"></canvas>
+    <div class="toolbar">
+      <button id="play-spoken">▶ Spoken order</button>
+      <button id="play-deck">▶ Card order</button>
+      <button id="stop">■ Stop</button>
+      <button id="add-blob">Add slice at cursor</button>
+      <span id="selection">No slice selected</span>
+    </div>
+    <div class="toolbar">
+      <label>Start (ms) <input id="start" type="number" min="0" step="1"></label>
+      <label>End (ms) <input id="end" type="number" min="0" step="1"></label>
+      <button id="apply-boundaries">Apply boundaries</button>
+      <button id="detach">Unassign selected</button>
+      <button id="delete-blob">Remove unassigned slice</button>
+    </div>
+  </section>
+  <section aria-labelledby="deck-title">
+    <h2 id="deck-title">Interlinear deck</h2>
+    <p>Drag a card to reorder it. Hold Shift while dragging its audio footer to move the audio to another card. Select a grey slice above to attach it.</p>
+    <label for="transcript">Optional spoken transcript (one token per detected slice)</label>
+    <textarea id="transcript" rows="2" placeholder="Original-language words in spoken order"></textarea>
+    <button id="match-transcript">Pair unique matching words</button>
+    <div class="toolbar">
+      <label>Reference word clips <input id="references" type="file" accept="audio/*" multiple></label>
+      <button id="match-references">Suggest acoustic matches</button>
+    </div>
+    <p>Optional: name each reference file after its ancient word, for example <code>λόγος.wav</code>. Same-speaker reference clips work best; suggestions always require review.</p>
+    <div class="toolbar">
+      <label>Pronunciation <select id="pronunciation">
+        <option value="greek-classical">Greek: Classical/Erasmian</option>
+        <option value="greek-koine">Greek: Koine</option>
+        <option value="hebrew-tiberian">Hebrew: Tiberian</option>
+        <option value="hebrew-modern">Hebrew: Modern</option>
+      </select></label>
+      <label>Phoneme ONNX model <input id="phoneme-model" type="file" accept=".onnx"></label>
+      <label>Model vocabulary <input id="phoneme-vocab" type="file" accept=".json,application/json"></label>
+      <button id="match-phones">Suggest phoneme matches</button>
+    </div>
+    <p>Optional local phoneme model and vocabulary required. Ancient pronunciations and model output are approximate; review all suggestions.</p>
+    <details><summary>Recognized phonemes from the last analysis</summary><ol id="phoneme-observations"></ol></details>
+    <div id="deck" class="deck"></div>
+    <button id="add-card">Add empty card</button>
+  </section>
+  <section class="toolbar" aria-label="Export">
+    <label>Breathing room (ms) <input id="padding" type="number" min="0" max="100" step="1" value="0"></label>
+    <button id="export">Export WAVs and alignment.json</button>
+  </section>
+  <p class="notice">Quiet-gap segmentation and reference matching are approximate, not phonetic recognition. Check every boundary and pairing. A spoken_index in the script is only a provisional blob assignment.</p>
+</main>
+<dialog id="review">
+  <form method="dialog">
+    <h2>Review audio replacement</h2>
+    <p>The current audio will not change unless you accept the replacement.</p>
+    <div class="toolbar"><button type="button" id="review-old">▶ Current</button><button type="button" id="review-new">▶ Proposed</button></div>
+    <div class="toolbar"><button value="cancel">Keep current</button><button value="replace">Replace</button></div>
+  </form>
+</dialog>
+<script type="module" src="app.mjs"></script>
+</body>
+</html>
