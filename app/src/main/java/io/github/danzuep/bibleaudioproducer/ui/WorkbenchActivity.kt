@@ -552,6 +552,8 @@ class WorkbenchActivity : AppCompatActivity() {
         selectedBook = preferences.getString("selected_book_${project.id}", null)
         selectedChapter = preferences.getInt("selected_chapter_${project.id}", 1)
         bookVerses = emptyList()
+        chapters.isEnabled = false
+        updateChapterButton()
         language.setText(preferences.getString(languageKey(project.id), ""))
         showStep(Step.BOOKS)
         val selectedId = project.id

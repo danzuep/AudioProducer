@@ -49,6 +49,7 @@ import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioDecoder
 import io.github.danzuep.bibleaudioproducer.data.RecordingPlanJson
 import io.github.danzuep.bibleaudioproducer.data.AudioProjectRepository
 import io.github.danzuep.bibleaudioproducer.data.MaculaVerseJson
+import io.github.danzuep.bibleaudioproducer.workbench.AudioVerse
 import java.io.File
 import android.widget.Button
 import org.hamcrest.Matchers.allOf
@@ -148,6 +149,11 @@ class WorkbenchLaunchTest {
                     refresh.invoke(activity, false)
                 }
                 assertTrue(awaitBookCount(scenario, 27, 15_000))
+                onView(withId(R.id.audio_workbench_chapter)).check(matches(withText("3")))
+                pressBack()
+                onView(allOf(withText("Project001"), isDisplayed())).perform(click())
+                assertTrue(awaitBookCount(scenario, 27, 15_000))
+                onView(withId(R.id.audio_verse_close)).perform(click())
                 onView(withId(R.id.audio_workbench_chapter)).check(matches(withText("3")))
                 scenario.onActivity { activity ->
                     val spinner = activity.findViewById<Spinner>(R.id.audio_workbench_books)
@@ -327,6 +333,51 @@ class WorkbenchLaunchTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val surface = context.assets.open("books/JHN.json").bufferedReader().use {
             MaculaVerseJson.parse(it.readText()).first().words.first { word -> !word.proper }.surface
+        }
+
+        @Test
+        fun chapterPlaybackStopsDuringPreparationAndResetsAfterCompletion() {
+            val context = ApplicationProvider.getApplicationContext<Context>()
+            val verse = context.assets.open("books/JHN.json").bufferedReader().use {
+                MaculaVerseJson.parse(it.readText()).first()
+            }
+            val word = verse.words.first { !it.disabled(emptySet()) }
+            val shortVerse = AudioVerse(verse.reference, listOf(word))
+            ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
+                awaitBooks(scenario, 27)
+                onView(withId(R.id.audio_verse_close)).perform(click())
+                val clip = AudioProjectRepository(directory).clipFile(word.surface)
+                check(clip.parentFile!!.mkdirs() || clip.parentFile!!.isDirectory)
+                clip.writeBytes(VerseAudio.encodeWav(FloatArray(VerseAudio.SAMPLE_RATE) { 0.1f }))
+                onView(withId(R.id.audio_choose_verse)).perform(click())
+                fun startShortChapter() {
+                    scenario.onActivity { activity ->
+                        val play = WorkbenchActivity::class.java.getDeclaredMethod(
+                            "playChapter", Int::class.javaPrimitiveType, List::class.java
+                        )
+                        play.isAccessible = true
+                        play.invoke(activity, 1, listOf(shortVerse))
+                    }
+                }
+                startShortChapter()
+                onView(withContentDescription(R.string.audio_stop_chapter)).perform(click())
+                onView(withContentDescription(R.string.audio_play_chapter)).check(matches(isDisplayed()))
+                startShortChapter()
+                onView(withContentDescription(R.string.audio_stop_chapter)).check(matches(isDisplayed()))
+                val deadline = System.currentTimeMillis() + 15_000
+                var completed = false
+                while (!completed && System.currentTimeMillis() < deadline) {
+                    scenario.onActivity { activity ->
+                        val views = ArrayList<View>()
+                        activity.window.decorView.findViewsWithText(
+                            views, context.getString(R.string.audio_play_chapter), View.FIND_VIEWS_WITH_CONTENT_DESCRIPTION
+                        )
+                        completed = views.any { it.isShown }
+                    }
+                    if (!completed) Thread.sleep(50)
+                }
+                assertTrue("Chapter playback did not complete", completed)
+            }
         }
         ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
             awaitBooks(scenario, 27)
