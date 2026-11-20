@@ -49,6 +49,7 @@ internal class VerseDialogs(
         fun playChapter(chapter: Int, verses: List<AudioVerse>)
         fun isPlayingChapter(chapter: Int): Boolean
         fun downloadVerse(verse: AudioVerse, strength: NeuralStrength?, format: VerseExportFormat)
+        fun exportInterlinear(reference: String, words: List<VerseWord>)
         fun saveVerseState(
             reference: String, order: List<Int>?, unspoken: Set<String>, neuralOff: Set<String>,
             selectedPreset: WordOrderMode? = null
@@ -391,6 +392,12 @@ internal class VerseDialogs(
         controls.addView(neural, LinearLayout.LayoutParams(0, dp(48), 1f))
         root.addView(controls)
         val editorContainer = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        val exportInterlinear = MaterialButton(activity).apply {
+            text = "Export interlinear script"
+            setOnClickListener {
+                actions.exportInterlinear(verse.reference, order.map(verse.words::get).filter { !it.disabled(unspoken) })
+            }
+        }
         val addRecording = MaterialButton(activity).apply {
             text = "Add verse recording"
             setOnClickListener {
@@ -522,6 +529,7 @@ internal class VerseDialogs(
         val verseContent = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             addView(flow)
+            addView(exportInterlinear)
             addView(addRecording)
             addView(editorContainer)
         }

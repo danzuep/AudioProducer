@@ -108,6 +108,50 @@ smoothing. Very short audio (under 128 ms) must be saved as WAV instead of AAC.
 The app reports how many missing words were skipped. Computer voice is not
 yet available.
 
+## Browser interlinear slicer
+
+The separate browser workspace in `web/` works locally without uploading audio. Start it
+from the repository root with `python3 -m http.server 8000`, then open
+`http://localhost:8000/web/` in a recent browser. Microphone recording requires a secure
+context (localhost or HTTPS). This is separate from the Android project's stored clips
+and its word-order presets.
+
+Load a WAV, MP3, M4A, or supported microphone recording and an interlinear JSON array
+in target reading order, for example:
+
+```json
+[
+  {"target_text": "word", "ancient_text": "λόγος", "spoken_index": 2},
+  {"target_text": "was", "ancient_text": "ἦν", "spoken_index": 1},
+  {"target_text": "implied word", "ancient_text": ""}
+]
+```
+
+`spoken_index` is optional and 1-based; it points to a detected waveform slice, not to
+a verified word. Duplicate indices are left unassigned. Alternatively, enter an
+original-order transcript with one token per detected slice to pair unique exact
+matches. Greek accent marks and Hebrew cantillation are ignored for this comparison;
+Hebrew vowel marks are retained. The detection uses quiet gaps, not speech recognition,
+and does **not** implement phonetic acoustic alignment. It may split syllables or join
+words. Check all pairings and boundaries; repeated words are intentionally not matched
+automatically. Select an unassigned slice to attach it, or add a slice at the waveform
+cursor. Drag the selected handles or enter milliseconds; the handles snap to nearby
+zero crossings. Cards can be reordered, split or merged, and audio can be moved separately.
+Overwriting an attachment or the whole recording requires reviewing the replacement.
+On Android, **Export interlinear script** in a verse exports the currently selected
+word order and English glosses as a compatible JSON array. Disabled words are omitted,
+and audio must be paired separately.
+
+Export produces a ZIP with lossless clips in card order, the original source audio and
+`alignment.json`. Empty cards have no WAV; merged cards include all their spans in
+playback order. To continue editing, load the exported source audio and then its
+`alignment.json`; the source hash must match. Edits are otherwise held only in the
+current browser session. Global padding is applied at export, and short fades are
+applied at clip edges. Neither the source recording nor the timestamp map is modified
+by padding or fades. Run the browser core tests with `node --test web/core.test.mjs`.
+With Google Chrome installed, `node --test web/browser.test.mjs` also exercises the
+browser workflow.
+
 On Android 7.0 or later, **Save with neural smoothing** optionally blends an on-device
 SpeechT5 HiFi-GAN reconstruction into verses up to 30 seconds long. Choose the standard
 35% blend or the stronger 65% blend. To enable it,
