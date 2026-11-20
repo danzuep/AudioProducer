@@ -940,18 +940,6 @@ class WorkbenchActivity : AppCompatActivity() {
             return
         }
 
-        private fun exportInterlinear(reference: String, words: List<VerseWord>) {
-            if (words.isEmpty()) {
-                Toast.makeText(this, "Enable at least one word before exporting.", Toast.LENGTH_LONG).show()
-                return
-            }
-            val json = JSONArray()
-            words.forEach { word ->
-                json.put(JSONObject().put("target_text", word.gloss).put("ancient_text", word.surface))
-            }
-            pendingInterlinear = json.toString(2)
-            saveInterlinear.launch("${reference.replace(Regex("[^A-Za-z0-9]+"), "-")}-interlinear.json")
-        }
         if (strength != null && !neuralModels.isInstalled()) {
             AlertDialog.Builder(this).setTitle(R.string.audio_neural_model_title)
                 .setMessage(R.string.audio_neural_model_required)
@@ -979,6 +967,19 @@ class WorkbenchActivity : AppCompatActivity() {
             VerseExportFormat.AAC -> saveVerseAac.launch(name)
             VerseExportFormat.OPUS -> saveVerseOpus.launch(name)
         }
+    }
+
+    private fun exportInterlinear(reference: String, words: List<VerseWord>) {
+        if (words.isEmpty()) {
+            Toast.makeText(this, "Enable at least one word before exporting.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val json = JSONArray()
+        words.forEach { word ->
+            json.put(JSONObject().put("target_text", word.gloss).put("ancient_text", word.surface))
+        }
+        pendingInterlinear = json.toString(2)
+        saveInterlinear.launch("${reference.replace(Regex("[^A-Za-z0-9]+"), "-")}-interlinear.json")
     }
 
     private fun exportVerse(uri: Uri, export: VerseExport) {
