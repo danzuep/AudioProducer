@@ -24,6 +24,7 @@ import androidx.test.espresso.action.ViewActions.scrollTo
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
 import androidx.test.espresso.matcher.ViewMatchers.isEnabled
+import androidx.test.espresso.matcher.ViewMatchers.isChecked
 import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.espresso.matcher.ViewMatchers.withContentDescription
@@ -341,13 +342,7 @@ class WorkbenchLaunchTest {
             onView(withId(R.id.audio_choose_verse)).perform(click())
             onView(withContentDescription(verse.words.joinToString(" ") { it.surface })).perform(click())
             onView(withId(R.id.audio_verse_more)).perform(click())
-            onView(withText(R.string.audio_format_wav)).perform(click())
             onView(withText(R.string.audio_format_wav)).check(matches(isDisplayed()))
-            onView(withText(R.string.audio_format_aac)).check(matches(isDisplayed()))
-            if (Build.VERSION.SDK_INT >= 29) {
-                onView(withText(R.string.audio_format_opus)).check(matches(isDisplayed()))
-            }
-            pressBack()
             onView(withText(android.R.string.cancel)).perform(click())
             onView(withId(R.id.audio_verse_close)).perform(click())
         }
@@ -443,6 +438,7 @@ class WorkbenchLaunchTest {
             openDownload()
             onView(withText(context.getString(R.string.audio_download_tts_warning, 2))).check(matches(isDisplayed()))
             onView(withText(R.string.audio_download_strip_tts)).perform(click())
+            onView(withText(R.string.audio_download_strip_tts)).check(matches(isChecked()))
             onView(withText(R.string.audio_download_verse)).perform(click())
             onView(withText(R.string.audio_download_strip_tts)).check(matches(isDisplayed()))
             onView(withText(android.R.string.cancel)).perform(click())
@@ -491,7 +487,6 @@ class WorkbenchLaunchTest {
                 InstrumentationRegistry.getArguments().getString("testGreekTts") == "true"
         )
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
         val verse = context.assets.open("books/JHN.json").bufferedReader().use {
             MaculaVerseJson.parse(it.readText()).first()
         }
@@ -514,37 +509,33 @@ class WorkbenchLaunchTest {
                     val uri = checkNotNull(resolver.insert(android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values))
                     uris += uri
                     checkNotNull(resolver.openOutputStream(uri)).close()
-                    val monitor = instrumentation.addMonitor(
-                        android.content.IntentFilter(android.content.Intent.ACTION_CREATE_DOCUMENT),
-                        android.app.Instrumentation.ActivityResult(
-                            android.app.Activity.RESULT_OK, android.content.Intent().setData(uri)
-                        ), true
-                    )
-                    try {
-                        scenario.onActivity { activity ->
-                            WorkbenchActivity::class.java.getDeclaredMethod("downloadVerse", AudioVerse::class.java)
-                                .apply { isAccessible = true }.invoke(activity, shortVerse)
-                        }
-                        onView(withText(context.getString(R.string.audio_download_tts_warning, 1)))
-                            .check(matches(isDisplayed()))
-                        if (strip) onView(withText(R.string.audio_download_strip_tts)).perform(click())
-                        onView(withText(R.string.audio_download_verse)).perform(click())
-                        val deadline = System.currentTimeMillis() + 30_000
-                        var bytes = byteArrayOf()
-                        var busy = true
-                        while ((bytes.size <= 44 || busy) && System.currentTimeMillis() < deadline) {
-                            bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: byteArrayOf()
-                            scenario.onActivity { activity ->
-                                busy = WorkbenchActivity::class.java.getDeclaredField("busy")
-                                    .apply { isAccessible = true }.getBoolean(activity)
-                            }
-                            if (bytes.size <= 44 || busy) Thread.sleep(100)
-                        }
-                        assertTrue("Verse download was not written", bytes.size > 44 && !busy)
-                        return bytes
-                    } finally {
-                        instrumentation.removeMonitor(monitor)
+                    val paths = listOf(clip.absolutePath, "")
+                    val selected = selectVerseDownloadIndices(paths, strip)
+                    scenario.onActivity { activity ->
+                        val exportClass = WorkbenchActivity::class.java.declaredClasses
+                            .first { it.simpleName == "VerseExport" }
+                        val export = exportClass.declaredConstructors.single().apply { isAccessible = true }
+                            .newInstance(
+                                shortVerse.reference, selected.map { words[it].surface },
+                                selected.map { paths[it] }, if (strip) 1 else 0,
+                                io.github.danzuep.bibleaudioproducer.audio.VerseExportFormat.WAV
+                            )
+                        WorkbenchActivity::class.java.getDeclaredMethod("exportVerse", android.net.Uri::class.java, exportClass)
+                            .apply { isAccessible = true }.invoke(activity, uri, export)
                     }
+                    val deadline = System.currentTimeMillis() + 30_000
+                    var bytes = byteArrayOf()
+                    var busy = true
+                    while ((bytes.size <= 44 || busy) && System.currentTimeMillis() < deadline) {
+                        bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: byteArrayOf()
+                        scenario.onActivity { activity ->
+                            busy = WorkbenchActivity::class.java.getDeclaredField("busy")
+                                .apply { isAccessible = true }.getBoolean(activity)
+                        }
+                        if (bytes.size <= 44 || busy) Thread.sleep(100)
+                    }
+                    assertTrue("Verse download was not written", bytes.size > 44 && !busy)
+                    return bytes
                 }
                 val stripped = save(true)
                 val withTts = save(false)

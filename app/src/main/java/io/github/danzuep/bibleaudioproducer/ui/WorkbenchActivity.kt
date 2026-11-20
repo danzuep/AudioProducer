@@ -61,6 +61,9 @@ import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.Executors
 
+internal fun selectVerseDownloadIndices(paths: List<String>, stripTts: Boolean): List<Int> =
+    paths.indices.filter { !stripTts || paths[it].isNotEmpty() }
+
 class WorkbenchActivity : AppCompatActivity() {
     private val projectsRoot by lazy { File(filesDir, "projects") }
     private var activeProjectId: String? = null
@@ -899,7 +902,7 @@ class WorkbenchActivity : AppCompatActivity() {
             .create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val selected = words.indices.filter { !strip.isChecked || paths[it].isNotEmpty() }
+                val selected = selectVerseDownloadIndices(paths, strip.isChecked)
                 if (selected.isEmpty()) {
                     Toast.makeText(this, R.string.audio_word_not_recorded, Toast.LENGTH_LONG).show()
                     return@setOnClickListener
