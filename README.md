@@ -61,25 +61,14 @@ affected words retain their source order. Greek and Custom remain unchanged. Sav
 and manually selected orders still take precedence; drag words to correct a preset.
 
 The chapter verse list and verse text show pronunciation above each Greek word and
-English and Chinese glosses below where available. Recorded forms are marked
-green and disabled forms grey. The chapter list can play or save each verse, and its header
-plays or stops the full chapter. Explicit Greek pronunciation previews are separate
-from target-language recording and playback. For natural neural speech with Classical/Erasmian pronunciation, the app can map
-polytonic Greek to IPA and embed it in Azure Speech SSML. Configure an Azure Speech
-subscription and region in Settings for IPA-based neural synthesis; the speech service
-receives the Greek text and generated IPA. The subscription key is encrypted with Android
-Keystore. Without a key, choose an installed Greek or Italian Android TTS voice in Settings.
-Greek voices speak the original text directly, including the Samsung Greek Classic voice
-when it is exposed by the active system TTS engine. On Samsung, set the engine that owns
-the downloaded voice as the preferred engine in Android's **Text-to-speech output**
-settings, then reopen the app and choose the voice in **Settings**. CI installs eSpeak NG
-and checks offline Greek synthesis on an Android emulator; it does not test Samsung's engine.
-Italian voices use a pronunciation
-respelling instead. This fallback is approximate (Android TTS
-does not standardize IPA or SSML support), depends on installed voice data, and the voice
-provider may process speech locally or over its network. The IPA transcription models
-Classical vowel quality, explicit macrons, breathing, diphthongs, and stress; it does not
-reproduce the pitch contour of ancient Greek pitch accent.
+English and Chinese glosses below where available. Recorded forms are marked green and
+disabled forms grey. Verse and chapter playback use target-language recordings where
+available and the selected Android modern Greek TTS voice for missing words. This is
+Greek source text, not a translation, and pronunciation depends on the voice. Choose an
+installed Greek voice in Settings; the voice provider may process speech locally or over
+its network. On Samsung, set the engine owning the downloaded voice as the preferred
+engine in Android's **Text-to-speech output** settings, then reopen the app and choose
+the voice in **Settings**.
 
 Inspired by BTT Recorder's take-review workflow, replacing an existing recording requires
 reviewing the new take first. The current take remains intact until the replacement is
@@ -100,15 +89,12 @@ shared by the lemma.
 When a word-list recording is saved, the next unrecorded card is brought to the same
 position in the list.
 
-Verse playback uses the recordings available on the device; missing words are skipped.
-Playback normalizes levels, trims silence, and crossfades joins. Enable neural smoothing
-globally in Settings, choose a per-verse opt-out, and select standard or strong blending.
-Choose **Save verse audio** from a verse to export its recorded words in the selected
-order, with normalized levels and crossfaded joins. Choose lossless WAV, compatible
-AAC (M4A), or compact Opus (Ogg, Android 10 or later). All formats also support neural
-smoothing. Very short audio (under 128 ms) must be saved as WAV instead of AAC.
-The app reports how many missing words were skipped. Computer voice is not
-yet available.
+Playback normalizes levels, trims silence, and crossfades joins. Choose **Save verse
+audio** to export in the selected order as lossless WAV, compatible AAC (M4A), or compact
+Opus (Ogg, Android 10 or later). When words lack recordings, the download dialog warns
+that modern Greek TTS will be included and offers a checkbox to strip it instead.
+If stripping leaves no recordings, the download cannot proceed. Very short audio (under
+128 ms) must be saved as WAV instead of AAC.
 
 ## Browser interlinear slicer
 
@@ -161,16 +147,6 @@ by padding or fades. Run the browser core tests with
 `node --test web/core.test.mjs web/acoustic.test.mjs`.
 With Google Chrome installed, `node --test web/browser.test.mjs` also exercises the
 browser workflow.
-
-On Android 7.0 or later, **Save with neural smoothing** optionally blends an on-device
-SpeechT5 HiFi-GAN reconstruction into verses up to 30 seconds long. Choose the standard
-35% blend or the stronger 65% blend. To enable it,
-download the [pinned ONNX model](https://huggingface.co/Xenova/speecht5_hifigan/resolve/cf980c3610d7b7f20919960031066ef7905737bd/onnx/model.onnx)
-(55,432,026 bytes) and choose **Import neural model** in Settings. The app verifies
-its SHA-256 before use. Processing happens on the device; recordings are never uploaded.
-The model may alter voice quality, so compare the result with the unsmoothed export.
-The SpeechT5 model and ONNX Runtime are provided under the MIT license by Microsoft;
-the model is distributed separately and ONNX Runtime license text is in app settings.
 
 ## Acknowledgements
 

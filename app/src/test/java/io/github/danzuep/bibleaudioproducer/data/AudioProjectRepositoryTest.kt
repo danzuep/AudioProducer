@@ -76,9 +76,6 @@ class AudioProjectRepositoryTest {
                 seedOrders = mapOf("JHN 1:1" to listOf(1, 0)),
                 unspoken = setOf("λόγος"),
                 wordOrders = mapOf("JHN 1:1" to listOf(2, 0, 1)),
-                neuralAudio = true,
-                neuralOff = setOf("JHN 1:1"),
-                neuralStrength = io.github.danzuep.bibleaudioproducer.audio.NeuralStrength.STRONG,
                 fullVerseReferences = setOf("JHN 3:16"),
                 defaultWordOrder = "ENGLISH_SVO"
             )

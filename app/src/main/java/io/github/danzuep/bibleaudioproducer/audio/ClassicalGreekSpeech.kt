@@ -1,20 +1,10 @@
 package io.github.danzuep.bibleaudioproducer.audio
 
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
-import android.util.Base64
 import java.io.File
-import java.io.IOException
-import java.net.HttpURLConnection
-import java.net.URL
-import java.security.KeyStore
 import java.text.Normalizer
-import javax.crypto.Cipher
-import javax.crypto.KeyGenerator
-import javax.crypto.SecretKey
 
 internal object ClassicalGreekG2p {
     private const val ACUTE = 0x0301
@@ -118,7 +108,6 @@ internal object ClassicalGreekG2p {
         }
         return phones.toString()
     }
-
     private fun stressPosition(phones: StringBuilder, lastVowelEnd: Int): Int {
         val start = if (lastVowelEnd == 0) 0 else lastVowelEnd
         val onset = phones.substring(start)
@@ -240,52 +229,6 @@ internal object ClassicalGreekG2p {
     private data class Cluster(val base: Char, val marks: MutableSet<Int> = mutableSetOf())
 }
 
-internal object AzureGreekSsml {
-    fun create(text: String, voice: String = "it-IT-DiegoNeural"): String {
-        require(text.isNotBlank()) { "Greek text cannot be empty." }
-        require(voice.matches(Regex("[A-Za-z0-9-]+"))) { "Invalid Azure voice name." }
-        val ipa = ClassicalGreekG2p.transcribe(text)
-        require(ipa.isNotBlank()) { "Unable to transcribe Greek text." }
-        val escapedText = text.xmlEscape()
-        val escapedIpa = ipa.xmlEscape()
-        val locale = voice.substringBeforeLast('-')
-        return """<speak version="1.0" xml:lang="$locale"><voice name="$voice"><phoneme alphabet="ipa" ph="$escapedIpa">$escapedText</phoneme></voice></speak>"""
-    }
-
-    private fun String.xmlEscape() = replace("&", "&amp;").replace("\"", "&quot;")
-        .replace("<", "&lt;").replace(">", "&gt;").replace("'", "&apos;")
-}
-
-internal class AzureGreekSpeech {
-    fun synthesize(text: String, region: String, key: String, destination: File) {
-        require(region.matches(Regex("[a-z0-9-]+"))) { "Enter a valid Azure Speech region." }
-        require(key.isNotBlank()) { "Enter an Azure Speech subscription key in Settings." }
-        val connection = URL("https://$region.tts.speech.microsoft.com/cognitiveservices/v1")
-            .openConnection() as HttpURLConnection
-        try {
-            connection.requestMethod = "POST"
-            connection.connectTimeout = 15_000
-            connection.readTimeout = 30_000
-            connection.doOutput = true
-            connection.setRequestProperty("Ocp-Apim-Subscription-Key", key)
-            connection.setRequestProperty("Content-Type", "application/ssml+xml")
-            connection.setRequestProperty("X-Microsoft-OutputFormat", "audio-24khz-48kbitrate-mono-mp3")
-            connection.outputStream.use { it.write(AzureGreekSsml.create(text).toByteArray(Charsets.UTF_8)) }
-            val status = connection.responseCode
-            if (status != HttpURLConnection.HTTP_OK) {
-                val detail = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                throw IOException("Azure Speech returned HTTP $status${if (detail.isBlank()) "." else ": $detail"}")
-            }
-
-            connection.inputStream.use { input ->
-                destination.outputStream().use { output -> input.copyTo(output) }
-            }
-        } finally {
-            connection.disconnect()
-        }
-    }
-}
-
 internal class AndroidGreekTts(
     context: android.content.Context,
     preferredVoiceName: String?,
@@ -333,7 +276,7 @@ internal class AndroidGreekTts(
                 .sortedWith(compareBy<Voice>({ it.name != preferredVoiceName }, { it.language() != "el" },
                     { it.isNetworkConnectionRequired }).thenByDescending { it.quality }.thenBy { it.name })
             val voice = voices.firstOrNull { engine.setVoice(it) == TextToSpeech.SUCCESS }
-            if (voice == null) "Install a Greek or Italian voice for the preferred system TTS engine."
+            if (voice == null) "Install a Greek voice for the preferred system TTS engine."
             else {
                 selectedVoice = voice
                 onVoiceChanged(voice.name)
@@ -355,7 +298,6 @@ internal class AndroidGreekTts(
 
     private fun Voice.language() = when (locale.language) {
         "el", "ell", "gre" -> "el"
-        "it", "ita" -> "it"
         else -> null
     }
 
@@ -376,15 +318,17 @@ internal class AndroidGreekTts(
         availableVoices { available ->
             val voice = selectedVoice
             if (closed || available.isEmpty() || voice == null) return@availableVoices done(null)
-            val file = File(directory, "tts-${voice.name.hashCode()}-${text.hashCode()}.wav")
-            if (file.length() > 0) return@availableVoices done(file)
+            val file = File.createTempFile("greek-tts-", ".wav", directory)
             val id = "greek-file-${System.nanoTime()}"
-            val spoken = if (voice.language() == "it") ClassicalGreekG2p.italianRespelling(text) else text
-            fileCallbacks[id] = { ok -> done(file.takeIf { ok && it.length() > 0 }) }
+            fileCallbacks[id] = { ok ->
+                if (ok && file.length() > 0) done(file)
+                else { file.delete(); done(null) }
+            }
             val params = android.os.Bundle()
             usedFileSynthesis = true
-            if (engine.synthesizeToFile(spoken, params, file, id) == TextToSpeech.ERROR) {
+            if (engine.synthesizeToFile(text, params, file, id) == TextToSpeech.ERROR) {
                 fileCallbacks.remove(id)
+                file.delete()
                 done(null)
             }
         }
@@ -450,7 +394,6 @@ internal class AndroidGreekTts(
             done(true)
             return
         }
-        val italian = selectedVoice?.language() == "it"
         val ids = texts.indices.map { "greek-${System.nanoTime()}-$it" }
         val remaining = java.util.concurrent.atomic.AtomicInteger(texts.size)
         val finished = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -463,7 +406,7 @@ internal class AndroidGreekTts(
         ids.forEach { speechCallbacks[it] = callback }
         texts.forEachIndexed { index, text ->
             val result = engine.speak(
-                if (italian) ClassicalGreekG2p.italianRespelling(text) else text,
+                text,
                 if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD,
                 null,
                 ids[index]
@@ -473,64 +416,5 @@ internal class AndroidGreekTts(
                 return
             }
         }
-    }
-}
-
-internal class SpeechCredentials(private val preferences: android.content.SharedPreferences) {
-    fun region() = preferences.getString(REGION, "").orEmpty()
-
-    fun save(region: String, key: String) {
-        require(region.matches(Regex("[a-z0-9-]+"))) { "Enter a valid Azure Speech region." }
-        val editor = preferences.edit().putString(REGION, region)
-        if (key.isNotBlank()) {
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.ENCRYPT_MODE, secretKey())
-            val encrypted = cipher.doFinal(key.toByteArray(Charsets.UTF_8))
-            val value = Base64.encodeToString(cipher.iv + encrypted, Base64.NO_WRAP)
-            editor.putString(ENCRYPTED_KEY, value)
-        }
-        check(editor.commit()) {
-            "Unable to save Azure Speech settings."
-        }
-    }
-
-    fun clearKey() {
-        check(preferences.edit().remove(ENCRYPTED_KEY).commit()) {
-            "Unable to clear the Azure Speech key."
-        }
-    }
-
-    fun key(): String {
-        val stored = preferences.getString(ENCRYPTED_KEY, null) ?: return ""
-        val bytes = Base64.decode(stored, Base64.NO_WRAP)
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(
-            Cipher.DECRYPT_MODE,
-            secretKey(),
-            javax.crypto.spec.GCMParameterSpec(128, bytes.copyOfRange(0, 12))
-        )
-        return String(cipher.doFinal(bytes.copyOfRange(12, bytes.size)), Charsets.UTF_8)
-    }
-
-    private fun secretKey(): SecretKey {
-        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        (store.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
-        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
-        generator.init(
-            KeyGenParameterSpec.Builder(
-                KEY_ALIAS,
-                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
-            ).setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setRandomizedEncryptionRequired(true)
-                .build()
-        )
-        return generator.generateKey()
-    }
-
-    private companion object {
-        const val REGION = "azure_speech_region"
-        const val ENCRYPTED_KEY = "azure_speech_key"
-        const val KEY_ALIAS = "azure_speech_key_encryption"
     }
 }

@@ -1,7 +1,6 @@
 package io.github.danzuep.bibleaudioproducer.audio
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ClassicalGreekSpeechTest {
@@ -20,13 +19,6 @@ class ClassicalGreekSpeechTest {
         assertEquals("ha", ClassicalGreekG2p.transcribe("ἁ"))
         assertEquals("tʰeˈos", ClassicalGreekG2p.transcribe("θεός"))
         assertEquals("ˈaŋɡelos", ClassicalGreekG2p.transcribe("ἄγγελος"))
-    }
-
-    @Test
-    fun createsEscapedAzureSsmlWithIpaPhonemes() {
-        val ssml = AzureGreekSsml.create("λόγος &")
-        assertTrue(ssml.contains("""<phoneme alphabet="ipa" ph="ˈloɡos &amp;">λόγος &amp;</phoneme>"""))
-        assertTrue(ssml.contains("""<voice name="it-IT-DiegoNeural">"""))
     }
 
     @Test

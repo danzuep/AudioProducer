@@ -201,46 +201,17 @@
             android:text="@string/audio_settings_description"
             android:textAppearance="?attr/textAppearanceBody1" />
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/audio_speech_settings"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/audio_speech_configure" />
-        <com.google.android.material.button.MaterialButton
             android:id="@+id/audio_tts_voice_settings"
             style="@style/Widget.MaterialComponents.Button.OutlinedButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/audio_tts_voice_choose" />
-        <LinearLayout
-            android:id="@+id/audio_neural_controls"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical">
-            <com.google.android.material.switchmaterial.SwitchMaterial
-                android:id="@+id/audio_neural_enabled"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/audio_neural_global_toggle" />
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/audio_neural_strength"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/audio_neural_strength_standard" />
-        </LinearLayout>
         <com.google.android.material.button.MaterialButton
             android:id="@+id/audio_workbench_import"
             style="@style/Widget.MaterialComponents.Button.OutlinedButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/audio_workbench_import" />
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/audio_import_neural_model"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/audio_neural_import" />
         <com.google.android.material.button.MaterialButton
             android:id="@+id/audio_clear_data"
             style="@style/Widget.MaterialComponents.Button.OutlinedButton"

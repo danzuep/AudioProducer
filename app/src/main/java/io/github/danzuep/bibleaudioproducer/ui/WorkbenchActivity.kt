@@ -7,7 +7,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.text.Editable
-import android.text.InputType
 import android.text.TextWatcher
 import android.view.Gravity
 import android.view.Menu
@@ -37,19 +36,14 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
-import com.google.android.material.switchmaterial.SwitchMaterial
+import com.google.android.material.checkbox.MaterialCheckBox
 import io.github.danzuep.bibleaudioproducer.R
 import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioDecoder
 import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioEncoder
 import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioPlayer
 import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioRecorder
 import io.github.danzuep.bibleaudioproducer.audio.AndroidGreekTts
-import io.github.danzuep.bibleaudioproducer.audio.AndroidNeuralSmoother
-import io.github.danzuep.bibleaudioproducer.audio.AzureGreekSpeech
 import io.github.danzuep.bibleaudioproducer.audio.GreekTransliterator
-import io.github.danzuep.bibleaudioproducer.audio.NeuralModelStore
-import io.github.danzuep.bibleaudioproducer.audio.NeuralStrength
-import io.github.danzuep.bibleaudioproducer.audio.SpeechCredentials
 import io.github.danzuep.bibleaudioproducer.audio.VerseAudio
 import io.github.danzuep.bibleaudioproducer.audio.VerseExportFormat
 import io.github.danzuep.bibleaudioproducer.data.RecordingPlanJson
@@ -75,8 +69,6 @@ class WorkbenchActivity : AppCompatActivity() {
     private val io = Executors.newSingleThreadExecutor()
     private val preferences by lazy { getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE) }
     private val audioRecorder by lazy { AndroidAudioRecorder(this) }
-    private val neuralModels by lazy { NeuralModelStore(File(filesDir, "audio-models")) }
-    private val speechCredentials by lazy { SpeechCredentials(preferences) }
     private var androidGreekTts: AndroidGreekTts? = null
     @Volatile private var speechGeneration = 0
     @Volatile private var speechFailed = false
@@ -97,20 +89,18 @@ class WorkbenchActivity : AppCompatActivity() {
             override val state get() = projectState
             override val busy get() = this@WorkbenchActivity.busy
             override val speechFailed get() = this@WorkbenchActivity.speechFailed
-            override fun playVerse(verse: AudioVerse, smoothOverride: Boolean?) =
-                this@WorkbenchActivity.playVerse(verse, smoothOverride)
+            override fun playVerse(verse: AudioVerse) = this@WorkbenchActivity.playVerse(verse)
             override fun isPlayingVerse(verse: AudioVerse) = playingVerseReference == verse.reference
             override fun playChapter(chapter: Int, verses: List<AudioVerse>) =
                 this@WorkbenchActivity.playChapter(chapter, verses)
             override fun isPlayingChapter(chapter: Int) = playingChapterKey == chapterKey(chapter)
-            override fun downloadVerse(verse: AudioVerse, strength: NeuralStrength?, format: VerseExportFormat) =
-                this@WorkbenchActivity.downloadVerse(verse, strength, format)
+            override fun downloadVerse(verse: AudioVerse) = this@WorkbenchActivity.downloadVerse(verse)
             override fun exportInterlinear(reference: String, words: List<VerseWord>) =
                 this@WorkbenchActivity.exportInterlinear(reference, words)
             override fun saveVerseState(
-                reference: String, order: List<Int>?, unspoken: Set<String>, neuralOff: Set<String>,
+                reference: String, order: List<Int>?, unspoken: Set<String>,
                 selectedPreset: WordOrderMode?
-            ) = this@WorkbenchActivity.saveVerseState(reference, order, unspoken, neuralOff, selectedPreset = selectedPreset)
+            ) = this@WorkbenchActivity.saveVerseState(reference, order, unspoken, selectedPreset = selectedPreset)
             override fun recordWord(word: VerseWord) {
                 if (!busy && hasRecordingPermission()) startRecording(word.surface, word)
             }
@@ -120,8 +110,8 @@ class WorkbenchActivity : AppCompatActivity() {
             override fun stopPlayback() = this@WorkbenchActivity.stopPlayback()
             override fun hasRecordingPermission() = this@WorkbenchActivity.hasRecordingPermission()
             override fun completeVerse(
-                verse: AudioVerse, order: List<Int>, unspoken: Set<String>, neuralOff: Set<String>
-            ) = this@WorkbenchActivity.completeVerse(verse, order, unspoken, neuralOff)
+                verse: AudioVerse, order: List<Int>, unspoken: Set<String>
+            ) = this@WorkbenchActivity.completeVerse(verse, order, unspoken)
         })
     }
     private var cards = emptyList<RecordingCard>()
@@ -140,7 +130,6 @@ class WorkbenchActivity : AppCompatActivity() {
     private var playbackTempFile: File? = null
     private var pendingCardFocus: String? = null
     private var pendingCardFocusOffset = 0
-    private var updatingAudioSettings = false
     private val waveformHandler = Handler(Looper.getMainLooper())
     private val waveformSampler = object : Runnable {
         override fun run() {
@@ -161,8 +150,8 @@ class WorkbenchActivity : AppCompatActivity() {
     private var refreshTakeReview: (() -> Unit)? = null
     private data class ProjectInfo(val id: String, val name: String)
     private data class VerseExport(
-        val reference: String, val greekForms: List<String>, val missing: Int,
-        val strength: NeuralStrength?, val format: VerseExportFormat
+        val reference: String, val greekForms: List<String>, val paths: List<String>,
+        val missing: Int, val format: VerseExportFormat
     )
     private var pendingVerseExport: VerseExport? = null
     private var pendingInterlinear: String? = null
@@ -180,9 +169,6 @@ class WorkbenchActivity : AppCompatActivity() {
     }
     private val importArchive = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) importArchive(uri)
-    }
-    private val importNeuralModel = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) importNeuralModel(uri)
     }
     private val chooseExportFolder = registerForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
@@ -232,10 +218,11 @@ class WorkbenchActivity : AppCompatActivity() {
         pendingInterlinear = savedInstanceState?.getString("pending_interlinear")
         val pendingReference = savedInstanceState?.getString("verse_export_reference")
         val pendingGreekForms = savedInstanceState?.getStringArrayList("verse_export_lemmas")
-        if (pendingReference != null && pendingGreekForms != null) {
+        val pendingPaths = savedInstanceState?.getStringArrayList("verse_export_paths")
+        if (pendingReference != null && pendingGreekForms != null && pendingPaths != null &&
+            pendingGreekForms.size == pendingPaths.size) {
             pendingVerseExport = VerseExport(
-                pendingReference, pendingGreekForms, savedInstanceState?.getInt("verse_export_missing") ?: 0,
-                savedInstanceState?.getString("verse_export_strength")?.let(NeuralStrength::valueOf),
+                pendingReference, pendingGreekForms, pendingPaths, savedInstanceState.getInt("verse_export_missing"),
                 savedInstanceState?.getString("verse_export_format")?.let(VerseExportFormat::valueOf)
                     ?: VerseExportFormat.WAV
             )
@@ -351,33 +338,14 @@ class WorkbenchActivity : AppCompatActivity() {
             importArchive.launch(arrayOf("application/zip", "application/octet-stream"))
         }
         findViewById<Button>(R.id.audio_clear_data).setOnClickListener { confirmClearData() }
-        findViewById<Button>(R.id.audio_speech_settings).setOnClickListener { showSpeechSettings() }
         findViewById<Button>(R.id.audio_tts_voice_settings).setOnClickListener { showDeviceVoicePicker() }
-        findViewById<SwitchMaterial>(R.id.audio_neural_enabled).setOnCheckedChangeListener { _, checked ->
-            if (!updatingAudioSettings && activeProjectId != null && checked != projectState.neuralAudio) {
-                stopPlayback()
-                saveProjectSettings(projectState.copy(neuralAudio = checked))
-            }
-        }
-        findViewById<Button>(R.id.audio_neural_strength).setOnClickListener { showNeuralStrengthPicker() }
         refreshAudioSettingControls()
-        findViewById<Button>(R.id.audio_import_neural_model).setOnClickListener {
-            if (busy) return@setOnClickListener
-            if (Build.VERSION.SDK_INT < 24) {
-                Toast.makeText(this, R.string.audio_neural_version, Toast.LENGTH_LONG).show()
-            } else {
-                importNeuralModel.launch(arrayOf("application/octet-stream", "*/*"))
-            }
-        }
         findViewById<Button>(R.id.audio_choose_verse).setOnClickListener { showChapters() }
         findViewById<Button>(R.id.audio_attribution).setOnClickListener {
             AlertDialog.Builder(this).setTitle(R.string.audio_attribution)
                 .setMessage(R.string.audio_data_attribution)
                 .setNeutralButton(R.string.audio_view_license) { _, _ ->
                     showLicense("MaculaScripta-LICENSE.txt", R.string.audio_view_license)
-                }
-                .setNegativeButton(R.string.audio_runtime_license) { _, _ ->
-                    showLicense("ONNX-Runtime-LICENSE.txt", R.string.audio_runtime_license)
                 }
                 .setPositiveButton(android.R.string.ok, null).show()
         }
@@ -436,8 +404,8 @@ class WorkbenchActivity : AppCompatActivity() {
         pendingVerseExport?.let {
             outState.putString("verse_export_reference", it.reference)
             outState.putStringArrayList("verse_export_lemmas", ArrayList(it.greekForms))
+            outState.putStringArrayList("verse_export_paths", ArrayList(it.paths))
             outState.putInt("verse_export_missing", it.missing)
-            outState.putString("verse_export_strength", it.strength?.name)
             outState.putString("verse_export_format", it.format.name)
         }
         super.onSaveInstanceState(outState)
@@ -637,9 +605,7 @@ class WorkbenchActivity : AppCompatActivity() {
             if (projectSettings) View.VISIBLE else View.GONE
         findViewById<View>(R.id.audio_settings_panel).visibility =
             if (settings) View.VISIBLE else View.GONE
-        findViewById<View>(R.id.audio_neural_controls).visibility =
-            if (projectSettings) View.VISIBLE else View.GONE
-        listOf(R.id.audio_workbench_import, R.id.audio_import_neural_model, R.id.audio_clear_data)
+        listOf(R.id.audio_workbench_import, R.id.audio_clear_data)
             .forEach { id ->
                 findViewById<View>(id).visibility = if (projectSettings) View.VISIBLE else View.GONE
             }
@@ -709,7 +675,6 @@ class WorkbenchActivity : AppCompatActivity() {
         reference: String,
         order: List<Int>?,
         unspoken: Set<String>,
-        neuralOff: Set<String>,
         fullVerse: Boolean = false,
         selectedPreset: WordOrderMode? = null,
         onSaved: (() -> Unit)? = null
@@ -717,7 +682,7 @@ class WorkbenchActivity : AppCompatActivity() {
         val targetProject = activeProjectId ?: return
         val orders = if (order == null) projectState.wordOrders - reference
             else projectState.wordOrders + (reference to order)
-        val updated = projectState.copy(wordOrders = orders, unspoken = unspoken, neuralOff = neuralOff,
+        val updated = projectState.copy(wordOrders = orders, unspoken = unspoken,
             fullVerseReferences = if (fullVerse) projectState.fullVerseReferences + reference
                 else projectState.fullVerseReferences,
             defaultWordOrder = VerseWorkflow.selectedDefault(reference, selectedPreset, projectState.defaultWordOrder))
@@ -758,10 +723,10 @@ class WorkbenchActivity : AppCompatActivity() {
     }
 
     private fun completeVerse(
-        verse: AudioVerse, order: List<Int>, unspoken: Set<String>, neuralOff: Set<String>
+        verse: AudioVerse, order: List<Int>, unspoken: Set<String>
     ) {
         val projectId = activeProjectId ?: return
-        saveVerseState(verse.reference, order, unspoken, neuralOff, fullVerse = true) {
+        saveVerseState(verse.reference, order, unspoken, fullVerse = true) {
             if (activeProjectId != projectId) return@saveVerseState
             val marker = File(projectDirectory(projectId), "verse-onboarding")
             val book = verse.reference.substringBefore(' ')
@@ -779,7 +744,7 @@ class WorkbenchActivity : AppCompatActivity() {
         }
     }
 
-    private fun playVerse(verse: AudioVerse, smoothOverride: Boolean? = null) {
+    private fun playVerse(verse: AudioVerse) {
         if (busy) return
         if (playingVerseReference == verse.reference) {
             stopPlayback()
@@ -791,15 +756,14 @@ class WorkbenchActivity : AppCompatActivity() {
             verse.words, projectState.rules, projectState.seedOrders[verse.reference], projectState.unspoken,
             VerseWorkflow.effectiveWordOrder(verse, projectState), verse.reference in projectState.fullVerseReferences
         )
-        val words = spoken.filter { repository.playableClip(it) != null }
-        if (words.isEmpty()) {
+        if (spoken.isEmpty()) {
             Toast.makeText(this, R.string.audio_word_not_recorded, Toast.LENGTH_LONG).show()
             return
         }
         if (pendingTake() == null) {
             playingVerseReference = verse.reference
             updateRows()
-            renderAndPlay(listOf(verse.reference to words), mapOf(verse.reference to smoothOverride))
+            renderAndPlay(listOf(spoken))
         }
     }
 
@@ -812,56 +776,28 @@ class WorkbenchActivity : AppCompatActivity() {
         }
         stopRecording()
         stopPlayback()
-        val spokenGroups = verses.map { verse ->
-            verse.reference to VerseWorkflow.spokenWords(
+        val groups = verses.map { verse ->
+            VerseWorkflow.spokenWords(
                 verse.words, projectState.rules, projectState.seedOrders[verse.reference], projectState.unspoken,
                 VerseWorkflow.effectiveWordOrder(verse, projectState), verse.reference in projectState.fullVerseReferences
             )
         }
-        val groups = spokenGroups.map { (reference, words) ->
-            reference to words.filter { repository.playableClip(it) != null }
-        }
-        val recorded = groups.flatMap { it.second }
-        if (recorded.isEmpty()) {
+        if (groups.all { it.isEmpty() }) {
             Toast.makeText(this, R.string.audio_word_not_recorded, Toast.LENGTH_LONG).show()
             return
         }
         if (pendingTake() == null) {
             playingChapterKey = key
             updateRows()
-            renderAndPlay(groups.filter { it.second.isNotEmpty() })
+            renderAndPlay(groups.filter { it.isNotEmpty() })
         }
     }
 
     private fun chapterKey(chapter: Int) = "${selectedBook.orEmpty()}:$chapter"
 
-    private fun renderAndPlay(
-        groups: List<Pair<String, List<VerseWord>>>,
-        smoothOverrides: Map<String, Boolean?> = emptyMap()
-    ) {
+    private fun renderAndPlay(groups: List<List<VerseWord>>) {
         val renderGeneration = ++playbackRenderGeneration
-        val neuralReferences = groups.map { it.first }
-            .filter { reference ->
-                smoothOverrides[reference] ?: (projectState.neuralAudio && reference !in projectState.neuralOff)
-            }
-            .toSet()
-        val smoothingStrength = projectState.neuralStrength
         val targetRepository = repository
-        val applyNeural = neuralReferences.isNotEmpty()
-        if (applyNeural && Build.VERSION.SDK_INT < 24) {
-            Toast.makeText(this, R.string.audio_neural_version, Toast.LENGTH_LONG).show()
-            playingVerseReference = null
-            playingChapterKey = null
-            updateRows()
-            return
-        }
-        if (applyNeural && !neuralModels.isInstalled()) {
-            playingVerseReference = null
-            playingChapterKey = null
-            updateRows()
-            showNeuralModelRequired()
-            return
-        }
         io.execute {
             var rendered: File? = null
             try {
@@ -869,27 +805,22 @@ class WorkbenchActivity : AppCompatActivity() {
                 val decoded = mutableMapOf<String, FloatArray>()
                 var sampleCount = 0L
                 val maxPlaybackSamples = VerseAudio.SAMPLE_RATE * if (groups.size > 1) 600L else 180L
-                val renderedVerses = groups.map { (reference, words) ->
+                val renderedVerses = groups.map { words ->
                     val clips = words.map { word ->
                         check(renderGeneration == playbackRenderGeneration) { "Playback was stopped." }
-                        val source = checkNotNull(targetRepository.playableClip(word)) {
-                            getString(R.string.audio_word_not_recorded)
-                        }
-                        decoded.getOrPut(source.path) { decoder.decode(source) }.also {
+                        val source = targetRepository.playableClip(word)
+                        val key = source?.path ?: "tts:${word.surface}"
+                        decoded.getOrPut(key) {
+                            if (source != null) decoder.decode(source)
+                            else decodeGreekSpeech(word.surface, decoder) { renderGeneration == playbackRenderGeneration }
+                        }.also {
                             sampleCount += it.size
                             require(sampleCount <= maxPlaybackSamples) {
                                 getString(R.string.audio_playback_too_long)
                             }
                         }
                     }
-                    val assembled = VerseAudio.assemble(clips)
-                    if (reference in neuralReferences) {
-                        AndroidNeuralSmoother().smooth(
-                            assembled, neuralModels.modelFile, smoothingStrength
-                        )
-                    } else {
-                        assembled
-                    }
+                    VerseAudio.assemble(clips)
                 }
                 val samples = if (renderedVerses.size == 1) renderedVerses.single()
                 else VerseAudio.assemble(renderedVerses)
@@ -927,43 +858,67 @@ class WorkbenchActivity : AppCompatActivity() {
         }
     }
 
-    private fun downloadVerse(verse: AudioVerse, strength: NeuralStrength?, format: VerseExportFormat) {
+    private fun downloadVerse(verse: AudioVerse) {
         if (busy) return
         stopRecording()
         stopPlayback()
         if (pendingTake() != null) return
-        if (strength != null && Build.VERSION.SDK_INT < 24) {
-            Toast.makeText(this, R.string.audio_neural_version, Toast.LENGTH_LONG).show()
-            return
-        }
-
-        if (strength != null && !neuralModels.isInstalled()) {
-            AlertDialog.Builder(this).setTitle(R.string.audio_neural_model_title)
-                .setMessage(R.string.audio_neural_model_required)
-                .setNegativeButton(android.R.string.cancel, null)
-                .setPositiveButton(R.string.audio_neural_import) { _, _ ->
-                    importNeuralModel.launch(arrayOf("application/octet-stream", "*/*"))
-                }.show()
-            return
-        }
         val words = VerseWorkflow.spokenWords(
             verse.words, projectState.rules, projectState.seedOrders[verse.reference], projectState.unspoken,
             VerseWorkflow.effectiveWordOrder(verse, projectState), verse.reference in projectState.fullVerseReferences
         )
-        val recorded = words.filter { repository.clipFile(it.surface).isFile }
-        if (recorded.isEmpty()) {
+        if (words.isEmpty()) {
             Toast.makeText(this, R.string.audio_word_not_recorded, Toast.LENGTH_LONG).show()
             return
         }
-        pendingVerseExport = VerseExport(
-            verse.reference, recorded.map { it.surface }, words.size - recorded.size, strength, format
-        )
-        val name = "${verse.reference.replace(Regex("[^A-Za-z0-9]+"), "-")}.${format.extension}"
-        when (format) {
-            VerseExportFormat.WAV -> saveVerseWav.launch(name)
-            VerseExportFormat.AAC -> saveVerseAac.launch(name)
-            VerseExportFormat.OPUS -> saveVerseOpus.launch(name)
+        val paths = words.map { repository.playableClip(it)?.absolutePath.orEmpty() }
+        val missing = paths.count { it.isEmpty() }
+        val formats = VerseExportFormat.entries.filter { Build.VERSION.SDK_INT >= it.minSdk }
+        val formatPicker = Spinner(this).apply {
+            adapter = ArrayAdapter(this@WorkbenchActivity, android.R.layout.simple_spinner_dropdown_item,
+                formats.map { getString(it.label) })
         }
+        val strip = MaterialCheckBox(this).apply {
+            setText(R.string.audio_download_strip_tts)
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(12), dp(24), 0)
+            if (missing > 0) {
+                addView(TextView(this@WorkbenchActivity).apply {
+                    text = getString(R.string.audio_download_tts_warning, missing)
+                })
+                addView(strip)
+            }
+            addView(formatPicker)
+        }
+        val dialog = AlertDialog.Builder(this).setTitle(R.string.audio_choose_format)
+            .setView(content)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.audio_download_verse, null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val selected = words.indices.filter { !strip.isChecked || paths[it].isNotEmpty() }
+                if (selected.isEmpty()) {
+                    Toast.makeText(this, R.string.audio_word_not_recorded, Toast.LENGTH_LONG).show()
+                    return@setOnClickListener
+                }
+                val format = formats[formatPicker.selectedItemPosition]
+                pendingVerseExport = VerseExport(
+                    verse.reference, selected.map { words[it].surface }, selected.map { paths[it] },
+                    if (strip.isChecked) missing else 0, format
+                )
+                val name = "${verse.reference.replace(Regex("[^A-Za-z0-9]+"), "-")}.${format.extension}"
+                dialog.dismiss()
+                when (format) {
+                    VerseExportFormat.WAV -> saveVerseWav.launch(name)
+                    VerseExportFormat.AAC -> saveVerseAac.launch(name)
+                    VerseExportFormat.OPUS -> saveVerseOpus.launch(name)
+                }
+            }
+        }
+        dialog.show()
     }
 
     private fun exportInterlinear(reference: String, words: List<VerseWord>) {
@@ -987,18 +942,20 @@ class WorkbenchActivity : AppCompatActivity() {
                 val decoder = AndroidAudioDecoder()
                 val decoded = mutableMapOf<String, FloatArray>()
                 var sampleCount = 0L
-                val clips = export.greekForms.map { surface ->
-                    decoded.getOrPut(surface) { decoder.decode(repository.clipFile(surface)) }.also {
+                val clips = export.greekForms.mapIndexed { index, surface ->
+                    val path = export.paths[index]
+                    val key = path.ifEmpty { "tts:$surface" }
+                    decoded.getOrPut(key) {
+                        if (path.isNotEmpty()) decoder.decode(File(path))
+                        else decodeGreekSpeech(surface, decoder) { !isDestroyed }
+                    }.also {
                         sampleCount += it.size
                         require(sampleCount <= VerseAudio.SAMPLE_RATE * 180L) {
                             getString(R.string.audio_download_too_long)
                         }
                     }
                 }
-                val assembled = VerseAudio.assemble(clips)
-                val samples = export.strength?.let {
-                    AndroidNeuralSmoother().smooth(assembled, neuralModels.modelFile, it)
-                } ?: assembled
+                val samples = VerseAudio.assemble(clips)
                 if (export.format == VerseExportFormat.WAV) {
                     val wav = VerseAudio.encodeWav(samples)
                     val output = contentResolver.openOutputStream(uri)
@@ -1030,28 +987,6 @@ class WorkbenchActivity : AppCompatActivity() {
                     busy = false
                     Toast.makeText(
                         this, exception.message ?: getString(R.string.audio_download_failed), Toast.LENGTH_LONG
-                    ).show()
-                }
-            }
-        }
-    }
-
-    private fun importNeuralModel(uri: Uri) {
-        busy = true
-        io.execute {
-            try {
-                val input = contentResolver.openInputStream(uri)
-                    ?: throw IllegalArgumentException(getString(R.string.audio_neural_import_failed))
-                input.use { neuralModels.install(it) }
-                runOnUiThread {
-                    busy = false
-                    Toast.makeText(this, R.string.audio_neural_imported, Toast.LENGTH_LONG).show()
-                }
-            } catch (exception: Exception) {
-                runOnUiThread {
-                    busy = false
-                    Toast.makeText(
-                        this, exception.message ?: getString(R.string.audio_neural_import_failed), Toast.LENGTH_LONG
                     ).show()
                 }
             }
@@ -1656,196 +1591,61 @@ class WorkbenchActivity : AppCompatActivity() {
         runOnUiThread { if (!isFinishing && !isDestroyed) verseDialogs.refreshControls() }
     }
 
-    private fun speakGreek(text: String) = speakGreek(listOf(text))
+    private fun decodeGreekSpeech(text: String, decoder: AndroidAudioDecoder, active: () -> Boolean): FloatArray {
+        val latch = java.util.concurrent.CountDownLatch(1)
+        val lock = Any()
+        var waiting = true
+        var result: File? = null
+        runOnUiThread {
+            if (!active() || isFinishing || isDestroyed) {
+                latch.countDown()
+            } else {
+                getAndroidGreekTts().synthesize(text, cacheDir) { file ->
+                    synchronized(lock) {
+                        if (waiting) result = file else file?.delete()
+                    }
+                    latch.countDown()
+                }
+            }
+        }
+        val completed = latch.await(30, java.util.concurrent.TimeUnit.SECONDS)
+        val file = synchronized(lock) {
+            waiting = false
+            result
+        }
+        try {
+            check(completed && active() && file != null) { getString(R.string.audio_tts_render_failed) }
+            setSpeechFailed(false)
+            return decoder.decode(file)
+        } finally {
+            file?.delete()
+        }
+    }
 
-    private fun speakGreek(texts: List<String>, onStart: () -> Unit = {}) {
+    private fun speakGreek(text: String) {
         if (busy) return
         stopRecording()
         if (pendingTake() != null) return
         stopPlayback()
-        val key = try {
-            speechCredentials.key()
-        } catch (exception: Exception) {
-            Toast.makeText(this, exception.message ?: getString(R.string.audio_speech_setup_failed), Toast.LENGTH_LONG).show()
-            setSpeechFailed(true)
-            return
-        }
         val generation = ++speechGeneration
-        onStart()
         updateRows()
-        fun complete(success: Boolean) {
+        getAndroidGreekTts().speak(listOf(text)) { success ->
             runOnUiThread {
                 if (generation == speechGeneration && !isFinishing && !isDestroyed) {
-                    playingVerseReference = null
-                    playingChapterKey = null
                     setSpeechFailed(!success)
                     updateRows()
                     if (!success) Toast.makeText(this, R.string.audio_workbench_playback_failed, Toast.LENGTH_LONG).show()
                 }
             }
         }
-        if (key.isBlank()) {
-            Toast.makeText(this, R.string.audio_speech_fallback_notice, Toast.LENGTH_LONG).show()
-            getAndroidGreekTts().speak(texts, ::complete)
-            return
-        }
-        val region = speechCredentials.region()
-        io.execute {
-            val audioFiles = texts.indices.map { File(cacheDir, "greek-speech-$it.mp3") }
-            try {
-                texts.forEachIndexed { index, text ->
-                    check(generation == speechGeneration) { "Playback was stopped." }
-                    AzureGreekSpeech().synthesize(text, region, key, audioFiles[index])
-                }
-                runOnUiThread {
-                    if (generation == speechGeneration && !isFinishing && !isDestroyed) {
-                        setSpeechFailed(false)
-                        audioPlayer.play(audioFiles) { complete(true) }
-                    }
-                }
-            } catch (exception: Exception) {
-                runOnUiThread {
-                    if (generation == speechGeneration && !isFinishing && !isDestroyed) {
-                        playingVerseReference = null
-                        playingChapterKey = null
-                        setSpeechFailed(true)
-                        updateRows()
-                        Toast.makeText(
-                            this,
-                            getString(R.string.audio_speech_failed, exception.message ?: ""),
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
-                }
-            }
-        }
-    }
-
-    private fun showSpeechSettings() {
-        val region = EditText(this).apply {
-            hint = getString(R.string.audio_speech_region)
-            setSingleLine(true)
-            setText(speechCredentials.region())
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
-        }
-        val key = EditText(this).apply {
-            hint = getString(R.string.audio_speech_key)
-            setSingleLine(true)
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-        }
-        val form = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(8), dp(24), 0)
-            addView(region)
-            addView(key)
-        }
-        val dialog = AlertDialog.Builder(this).setTitle(R.string.audio_speech_title)
-            .setView(form)
-            .setNegativeButton(android.R.string.cancel, null)
-            .setNeutralButton(R.string.audio_speech_use_device_voice, null)
-            .setPositiveButton(android.R.string.ok, null)
-            .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
-                try {
-                    speechCredentials.clearKey()
-                    setSpeechFailed(false)
-                    Toast.makeText(this, R.string.audio_speech_device_voice_enabled, Toast.LENGTH_LONG).show()
-                    dialog.dismiss()
-                } catch (exception: Exception) {
-                    Toast.makeText(this, exception.message ?: getString(R.string.audio_speech_setup_failed), Toast.LENGTH_LONG).show()
-                }
-            }
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                try {
-                    speechCredentials.save(region.text.toString().trim(), key.text.toString().trim())
-                    setSpeechFailed(false)
-                    Toast.makeText(this, R.string.audio_speech_saved, Toast.LENGTH_LONG).show()
-                    dialog.dismiss()
-                } catch (exception: Exception) {
-                    Toast.makeText(this, exception.message ?: getString(R.string.audio_speech_setup_failed), Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-        dialog.show()
     }
 
     private fun refreshAudioSettingControls() {
-        updatingAudioSettings = true
-        findViewById<SwitchMaterial>(R.id.audio_neural_enabled).isChecked = projectState.neuralAudio
-        updatingAudioSettings = false
-        findViewById<Button>(R.id.audio_neural_strength).setText(
-            if (projectState.neuralStrength == NeuralStrength.STRONG) {
-                R.string.audio_neural_strength_strong
-            } else {
-                R.string.audio_neural_strength_standard
-            }
-        )
         val savedVoice = preferences.getString(DEVICE_TTS_VOICE_KEY, null)
         val selectedVoice = androidGreekTts?.selectedVoiceName() ?: savedVoice
         findViewById<Button>(R.id.audio_tts_voice_settings).text = selectedVoice?.let {
             getString(R.string.audio_tts_voice_current, it)
         } ?: getString(R.string.audio_tts_voice_choose)
-    }
-
-    private fun saveProjectSettings(updated: AudioProjectState) {
-        if (busy || activeProjectId == null) {
-            refreshAudioSettingControls()
-            return
-        }
-        busy = true
-        val selectedProject = activeProjectId
-        val targetRepository = repository
-        io.execute {
-            try {
-                targetRepository.saveState(updated)
-                runOnUiThread {
-                    if (activeProjectId == selectedProject) projectState = updated
-                    busy = false
-                    refreshAudioSettingControls()
-                    updateRows()
-                }
-            } catch (exception: Exception) {
-                runOnUiThread {
-                    busy = false
-                    refreshAudioSettingControls()
-                    Toast.makeText(
-                        this, exception.message ?: getString(R.string.audio_order_failed), Toast.LENGTH_LONG
-                    ).show()
-                }
-            }
-        }
-    }
-
-    private fun showNeuralStrengthPicker() {
-        val selected = if (projectState.neuralStrength == NeuralStrength.STRONG) 1 else 0
-        AlertDialog.Builder(this)
-            .setTitle(R.string.audio_neural_strength_title)
-            .setSingleChoiceItems(
-                arrayOf(
-                    getString(R.string.audio_neural_strength_standard),
-                    getString(R.string.audio_neural_strength_strong)
-                ),
-                selected
-            ) { dialog, index ->
-                val strength = if (index == 1) NeuralStrength.STRONG else NeuralStrength.STANDARD
-                if (strength != projectState.neuralStrength) {
-                    stopPlayback()
-                    saveProjectSettings(projectState.copy(neuralStrength = strength))
-                }
-                dialog.dismiss()
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-    }
-
-    private fun showNeuralModelRequired() {
-        AlertDialog.Builder(this).setTitle(R.string.audio_neural_model_title)
-            .setMessage(R.string.audio_neural_model_required)
-            .setNegativeButton(android.R.string.cancel, null)
-            .setPositiveButton(R.string.audio_neural_import) { _, _ ->
-                importNeuralModel.launch(arrayOf("application/octet-stream", "*/*"))
-            }.show()
     }
 
     private fun getAndroidGreekTts(): AndroidGreekTts =

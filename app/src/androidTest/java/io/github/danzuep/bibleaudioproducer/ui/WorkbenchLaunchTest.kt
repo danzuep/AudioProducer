@@ -413,30 +413,73 @@ class WorkbenchLaunchTest {
     }
 
     @Test
-    fun verseAndChapterWithNoRecordingsDoNotSpeakTheGreekSource() {
+    fun downloadWarnsAboutMissingSpeechAndCanStripIt() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val verse = context.assets.open("books/JHN.json").bufferedReader().use {
             MaculaVerseJson.parse(it.readText()).first()
         }
+        val words = verse.words.filter { !it.disabled(emptySet()) }.distinctBy { it.surface }.take(2)
+        assertEquals(2, words.size)
+        val shortVerse = AudioVerse(verse.reference, words)
+        ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
+            awaitBooks(scenario, 27)
+            val clip = AudioProjectRepository(directory).clipFile(words.first().surface)
+            check(clip.parentFile!!.mkdirs() || clip.parentFile!!.isDirectory)
+            clip.writeBytes(VerseAudio.encodeWav(FloatArray(16000) { 0.1f }))
+            fun openDownload() {
+                scenario.onActivity { activity ->
+                    val download = WorkbenchActivity::class.java.getDeclaredMethod(
+                        "downloadVerse", AudioVerse::class.java
+                    ).apply { isAccessible = true }
+                    download.invoke(activity, shortVerse)
+                }
+            }
+            openDownload()
+            onView(withText(context.getString(R.string.audio_download_tts_warning, 1))).check(matches(isDisplayed()))
+            onView(withText(R.string.audio_download_strip_tts)).check(matches(isDisplayed()))
+            onView(withText(android.R.string.cancel)).perform(click())
+            check(clip.delete())
+            openDownload()
+            onView(withText(context.getString(R.string.audio_download_tts_warning, 2))).check(matches(isDisplayed()))
+            onView(withText(R.string.audio_download_strip_tts)).perform(click())
+            onView(withText(R.string.audio_download_verse)).perform(click())
+            onView(withText(R.string.audio_download_strip_tts)).check(matches(isDisplayed()))
+            onView(withText(android.R.string.cancel)).perform(click())
+        }
+    }
+
+    @Test
+    fun missingVerseUsesModernGreekFallback() {
+        org.junit.Assume.assumeTrue(
+            InstrumentationRegistry.getArguments().getString("testGreekTts") == "true"
+        )
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val verse = context.assets.open("books/JHN.json").bufferedReader().use {
+            MaculaVerseJson.parse(it.readText()).first()
+        }
+        val shortVerse = AudioVerse(verse.reference, listOf(verse.words.first { !it.disabled(emptySet()) }))
         ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
             awaitBooks(scenario, 27)
             scenario.onActivity { activity ->
                 val playVerse = WorkbenchActivity::class.java.getDeclaredMethod(
-                    "playVerse", AudioVerse::class.java, Boolean::class.javaObjectType
+                    "playVerse", AudioVerse::class.java
                 ).apply { isAccessible = true }
                 val versePlaying = WorkbenchActivity::class.java.getDeclaredField("playingVerseReference")
                     .apply { isAccessible = true }
-                playVerse.invoke(activity, verse, null)
-                assertEquals(null, versePlaying.get(activity))
-
-                val playChapter = WorkbenchActivity::class.java.getDeclaredMethod(
-                    "playChapter", Int::class.javaPrimitiveType, List::class.java
-                ).apply { isAccessible = true }
-                val chapterPlaying = WorkbenchActivity::class.java.getDeclaredField("playingChapterKey")
-                    .apply { isAccessible = true }
-                playChapter.invoke(activity, 1, listOf(verse))
-                assertEquals(null, chapterPlaying.get(activity))
+                playVerse.invoke(activity, shortVerse)
+                assertEquals(shortVerse.reference, versePlaying.get(activity))
             }
+            val deadline = System.currentTimeMillis() + 20_000
+            var rendered = false
+            while (!rendered && System.currentTimeMillis() < deadline) {
+                scenario.onActivity { activity ->
+                    val temporary = WorkbenchActivity::class.java.getDeclaredField("playbackTempFile")
+                        .apply { isAccessible = true }
+                    rendered = (temporary.get(activity) as? File)?.length()?.let { it > 44 } == true
+                }
+                if (!rendered) Thread.sleep(25)
+            }
+            assertTrue("Modern Greek fallback did not render", rendered)
         }
     }
 
