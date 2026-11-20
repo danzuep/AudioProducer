@@ -21,15 +21,16 @@ Imports in a different language are rejected to prevent mixing projects. Plans a
 recordings remain in private storage; export them before uninstalling.
 
 In a verse, select a word-order mode or drag individual words, then choose **Add verse
-recording** to expand the recording editor below the verse. Record the enabled words'
-translations in the target language, following the original source-word order shown in
-the gloss guide; omit disabled words. The app suggests boundaries at quiet points in
-that order and shows them on a chronological waveform above a horizontal deck in the
-selected card order. Tap a slice or card to select it; drag a waveform boundary, use
+recording** to open the recording editor. Record the enabled words' translations in the
+displayed card order; omit disabled words. Choose an English, Chinese, original Greek,
+transliteration, or custom recording guide. The app suggests boundaries at quiet points in
+recording order and shows them on a chronological waveform above the card deck. Card
+numbers show display position and original Greek position. Tap a slice or card to select it;
+drag a waveform boundary, use
 the sliders, or enter seconds. Adjacent spoken slices share their boundary: moving it
-changes both clips and requires reviewing both again. Hold and drag a card, or use its
-arrow buttons, to change the target order without changing spoken boundaries. Preview
-each clip and save it or keep its existing clip. Preview the whole take or card order.
+changes both clips and requires reviewing both again. Hold and drag a card to change
+the target order without moving its audio or changing spoken boundaries. Use **Next**
+to advance through the cards; preview each clip and save it or keep its existing clip.
 The Android editor currently maps one spoken slice to each enabled Greek form; editable
 card text, audio re-pairing, split/merge, unassigned blobs and alignment ZIP export
 remain available only in the separate browser slicer below.
@@ -38,7 +39,7 @@ or combined words need manual adjustment. They are not speech recognition and mu
 reviewed. Verse clips are saved as lossless WAV audio with
 short fades, including very short selections.
 Each saved clip is keyed by Greek surface form, so repeated forms share a
-recording: replacing any existing clip requires confirmation. Back or **Cancel recording**
+recording: replacing any existing clip requires confirmation. Back
 closes the editor and discards the unsaved verse take after confirmation, but keeps clips already saved.
 Once every word is reviewed, **Finish verse**
 saves the order and advances from John 3:16 to John 1:1, then through the following
@@ -58,8 +59,10 @@ All presets benefit from the same phrase and clause boundaries, but their orders
 approximations, not full grammars of English, German, Mandarin, Japanese or Arabic.
 German subordinate clauses are left in source order rather than forced into V2;
 Japanese postpositions are approximated only for intact prepositional phrases.
-The English preset places a simple postpositive adjective before its noun when MACULA
-identifies an intact noun-adjective phrase; more complex modifiers are left alone.
+The English preset places a simple postpositive adjective before its noun in an intact
+MACULA noun-adjective phrase, including a noun followed by an article and adjective.
+It preserves both Greek articles if present; omit or adapt them when translating.
+More complex modifiers are left alone.
 Other noun modifiers, negation, implicit subjects, discourse and idioms require
 human review. Where syntax is missing, malformed, crosses verse boundaries,
 is discontinuous or ambiguous, the

@@ -36,7 +36,7 @@ data class AudioVerse(val reference: String, val words: List<VerseWord>) {
     val chapter: Int get() = reference.substringAfter(' ').substringBefore(':').toInt()
 }
 
-data class VerseRecordingWord(val word: VerseWord, val spokenIndex: Int)
+data class VerseRecordingWord(val word: VerseWord, val originalIndex: Int)
 
 data class GrammarChunk(val slot: String, val words: List<VerseWord>)
 data class GrammarRule(val keep: Int = 0, val flip: Int = 0)
@@ -57,12 +57,10 @@ enum class WordOrderMode(
 }
 
 object VerseWorkflow {
-    /** Map enabled cards to their positions when their translations are spoken in source order. */
+    /** Keep display order while retaining each card's position in the complete source verse. */
     fun recordingWords(words: List<VerseWord>, order: List<Int>, unspoken: Set<String>): List<VerseRecordingWord> {
         require(validOrder(order, words.size)) { "Invalid verse word order." }
-        val spoken = words.indices.filter { !words[it].disabled(unspoken) }
-        val positions = spoken.withIndex().associate { it.value to it.index }
-        return order.filter { it in positions }.map { VerseRecordingWord(words[it], positions.getValue(it)) }
+        return order.filter { !words[it].disabled(unspoken) }.map { VerseRecordingWord(words[it], it) }
     }
 
     fun defaultMode(name: String?): WordOrderMode? =
@@ -319,6 +317,23 @@ object VerseWorkflow {
                 ) {
                     val determiner = nounWords.takeWhile { words[it].pos == "det" }
                     replace(all, determiner + adjectiveWords + nounWords.drop(determiner.size))
+                }
+            }
+            if (mode == WordOrderMode.ENGLISH_SVO && !partial && node.category == "np" &&
+                node.rule.equals("NPDetAdj", ignoreCase = true) && node.children.size == 2 && contiguous(all)
+            ) {
+                val noun = node.children[0]
+                val modifier = node.children[1]
+                val nounIndex = noun.word
+                val modifierWords = members(modifier)
+                if (nounIndex != null && words[nounIndex].pos == "noun" &&
+                    modifier.category == "np" && modifier.rule.equals("DetAdj", ignoreCase = true) &&
+                    modifier.children.size == 2 && modifier.children.all { it.word != null } &&
+                    modifier.children.map { words[it.word!!].pos } == listOf("det", "adj") &&
+                    contiguous(modifierWords) &&
+                    positions(listOf(nounIndex)).last() + 1 == positions(modifierWords).first()
+                ) {
+                    replace(all, result.filter { it in modifierWords } + nounIndex)
                 }
             }
             if (mode.postpositions && node.category == "pp" && contiguous(all) &&

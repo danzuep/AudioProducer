@@ -359,8 +359,6 @@ internal class VerseDialogs(
             setOnClickListener {
                 val cards = VerseWorkflow.recordingWords(verse.words, order, unspoken)
                 if (cards.isEmpty()) return@setOnClickListener
-                val enabledIndices = order.filter { !verse.words[it].disabled(unspoken) }
-                val sourceIndices = enabledIndices.sorted()
                 actions.stopPlayback()
                 lateinit var editor: VerseTakeEditor
                 fun closeEditor() {
@@ -379,8 +377,8 @@ internal class VerseDialogs(
                     }
                 }
                 editor = VerseTakeEditor(activity, repository, cards,
-                    actions::hasRecordingPermission, { spokenOrder ->
-                        val reordered = spokenOrder.map { sourceIndices[it] }.iterator()
+                    actions::hasRecordingPermission, { originalOrder ->
+                        val reordered = originalOrder.iterator()
                         order = order.map {
                             if (verse.words[it].disabled(unspoken)) it else reordered.next()
                         }.toMutableList()
