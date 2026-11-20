@@ -13,7 +13,7 @@ to navigate its verses. Changing books resets the chapter to 1 (or the first ava
 returns to the previous screen. Tap a word to
 inspect its Macula metadata and English gloss, then record or play that Greek form.
 Hold a word until it lifts, drag it into place, and release to drop it. Reset restores the
-original Greek order. Disable or restore a form from its word details.
+original order with the **Original order** preset. Disable or restore a form from its word details.
 Closing the verse returns to the chapter list or recording cards. Select a book and chapter side by side;
 cards are sorted by frequency within that chapter. Open **Settings** from the gear
 icon to set the recording language, import plans or audio, export archives, or manage data.
@@ -31,8 +31,10 @@ recording: replacing any existing clip requires confirmation. Back or **Cancel r
 closes the editor and discards the unsaved verse take after confirmation, but keeps clips already saved.
 Once every word is reviewed, **Finish verse**
 saves the order and advances from John 3:16 to John 1:1, then through the following
-verses. The selected preset is used for subsequent verses unless they already have a
-saved order; a custom order is specific to its verse.
+verses. Selecting a preset in John 3:16 saves it immediately as this project's default,
+even without recording. Original order and Custom do not replace that default.
+Subsequent verses use it for the editor, recorded playback and export unless they
+already have a saved order; a custom order is specific to its verse.
 
 Word-order presets are starting points, not translations. The bundled Greek data uses
 [MACULA's pinned syntax trees](https://github.com/Clear-Bible/macula-greek/tree/8423afe47b9e8f24b7772e808af45c7159a6fe7e/SBLGNT/lowfat)
@@ -45,6 +47,8 @@ All presets benefit from the same phrase and clause boundaries, but their orders
 approximations, not full grammars of English, German, Mandarin, Japanese or Arabic.
 German subordinate clauses are left in source order rather than forced into V2;
 Japanese postpositions are approximated only for intact prepositional phrases.
+The English preset places a simple postpositive adjective before its noun when MACULA
+identifies an intact noun-adjective phrase; more complex modifiers are left alone.
 Other noun modifiers, negation, implicit subjects, discourse and idioms require
 human review. Where syntax is missing, malformed, crosses verse boundaries,
 is discontinuous or ambiguous, the

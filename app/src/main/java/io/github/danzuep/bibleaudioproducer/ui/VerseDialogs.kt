@@ -49,7 +49,10 @@ internal class VerseDialogs(
         fun playChapter(chapter: Int, verses: List<AudioVerse>)
         fun isPlayingChapter(chapter: Int): Boolean
         fun downloadVerse(verse: AudioVerse, strength: NeuralStrength?, format: VerseExportFormat)
-        fun saveVerseState(reference: String, order: List<Int>?, unspoken: Set<String>, neuralOff: Set<String>)
+        fun saveVerseState(
+            reference: String, order: List<Int>?, unspoken: Set<String>, neuralOff: Set<String>,
+            selectedPreset: WordOrderMode? = null
+        )
         fun recordWord(word: VerseWord)
         fun isPlaying(card: RecordingCard): Boolean
         fun playRecording(card: RecordingCard)
@@ -57,8 +60,7 @@ internal class VerseDialogs(
         fun stopPlayback()
         fun hasRecordingPermission(): Boolean
         fun completeVerse(
-            verse: AudioVerse, order: List<Int>, unspoken: Set<String>, neuralOff: Set<String>,
-            mode: WordOrderMode
+            verse: AudioVerse, order: List<Int>, unspoken: Set<String>, neuralOff: Set<String>
         )
     }
 
@@ -242,7 +244,7 @@ internal class VerseDialogs(
             val chapterRecorded = verses.any { verse ->
                 VerseWorkflow.spokenWords(
                     verse.words, state.rules, state.seedOrders[verse.reference], state.unspoken,
-                    state.wordOrders[verse.reference], verse.reference in state.fullVerseReferences
+                    VerseWorkflow.effectiveWordOrder(verse, state), verse.reference in state.fullVerseReferences
                 ).any { repository.playableClip(it) != null }
             }
             val chapterPlayable = actions.isPlayingChapter(chapter) || chapterRecorded || !actions.speechFailed
@@ -257,7 +259,7 @@ internal class VerseDialogs(
             verseButtons.forEach { (verse, button) ->
                 val recorded = VerseWorkflow.spokenWords(
                     verse.words, state.rules, state.seedOrders[verse.reference], state.unspoken,
-                    state.wordOrders[verse.reference], verse.reference in state.fullVerseReferences
+                    VerseWorkflow.effectiveWordOrder(verse, state), verse.reference in state.fullVerseReferences
                 ).any { repository.playableClip(it) != null }
                 val playable = actions.isPlayingVerse(verse) || recorded || !actions.speechFailed
                 button.isEnabled = playable
@@ -279,14 +281,10 @@ internal class VerseDialogs(
 
     fun openVerse(verse: AudioVerse) {
         if (actions.busy) return
-        val defaultMode = actions.state.defaultWordOrder
-            ?.let { name -> runCatching { WordOrderMode.valueOf(name) }.getOrNull() }
-            ?.takeIf { it != WordOrderMode.CUSTOM }
+        val defaultMode = VerseWorkflow.defaultMode(actions.state.defaultWordOrder)
         val hasSavedOrder = verse.reference in actions.state.wordOrders || verse.reference in actions.state.seedOrders
-        var order = if (!hasSavedOrder && defaultMode != null) {
-            VerseWorkflow.modeOrder(verse.words, defaultMode).toMutableList()
-        } else VerseWorkflow.orderedWordIndices(
-            verse.words, actions.state.rules, actions.state.wordOrders[verse.reference],
+        var order = VerseWorkflow.orderedWordIndices(
+            verse.words, actions.state.rules, VerseWorkflow.effectiveWordOrder(verse, actions.state),
             actions.state.seedOrders[verse.reference]
         ).toMutableList()
         val unspoken = actions.state.unspoken.toMutableSet()
@@ -352,6 +350,7 @@ internal class VerseDialogs(
         ).map(activity::getString)
         var selecting = false
         val orderMode = Spinner(activity).apply {
+            id = R.id.audio_verse_word_order
             adapter = ArrayAdapter(activity, android.R.layout.simple_spinner_dropdown_item, modeLabels)
             val current = selectedMode ?: modes.firstOrNull {
                 it != WordOrderMode.CUSTOM && VerseWorkflow.modeOrder(verse.words, it) == order
@@ -361,13 +360,17 @@ internal class VerseDialogs(
             onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
                 override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                     val mode = modes[position]
-                    if (selecting || mode == WordOrderMode.CUSTOM) return
+                    if (selecting || mode == selectedMode) return
                     selectedMode = mode
+                    if (mode == WordOrderMode.CUSTOM) return
                     val next = VerseWorkflow.modeOrder(verse.words, mode)
                     if (next != order) {
                         order = next.toMutableList()
-                        changed = true
                         renderWords()
+                    }
+                    changed = true
+                    if (verse.reference == "JHN 3:16") {
+                        actions.saveVerseState(verse.reference, order.toList(), unspoken.toSet(), neuralOff.toSet(), mode)
                     }
                 }
 
@@ -411,10 +414,7 @@ internal class VerseDialogs(
                         changed = false
                         neuralChanged = false
                         back()
-                        actions.completeVerse(
-                            verse, order.toList(), unspoken.toSet(), neuralOff.toSet(),
-                            selectedMode ?: WordOrderMode.CUSTOM
-                        )
+                        actions.completeVerse(verse, order.toList(), unspoken.toSet(), neuralOff.toSet())
                     })
                 takeEditor = editor
                 isEnabled = false

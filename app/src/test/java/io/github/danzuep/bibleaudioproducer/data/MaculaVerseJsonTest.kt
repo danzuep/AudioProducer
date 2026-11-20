@@ -57,6 +57,7 @@ class MaculaVerseJsonTest {
         assertTrue(before(order, 20, 21))
         assertTrue(before(order, 21, 22))
         assertTrue(before(order, 22, 23))
+        assertTrue(before(order, 25, 24))
         for (verse in listOf(first, second)) for (mode in WordOrderMode.entries) {
             assertEquals(verse.indices.toList(), VerseWorkflow.modeOrder(verse, mode).sorted())
         }

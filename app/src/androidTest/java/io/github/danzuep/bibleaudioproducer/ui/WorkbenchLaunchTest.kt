@@ -15,6 +15,7 @@ import android.widget.TextView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.onView
+import androidx.test.espresso.Espresso.onData
 import androidx.test.espresso.Espresso.closeSoftKeyboard
 import androidx.test.espresso.Espresso.pressBack
 import androidx.test.espresso.action.ViewActions.replaceText
@@ -50,9 +51,12 @@ import io.github.danzuep.bibleaudioproducer.data.RecordingPlanJson
 import io.github.danzuep.bibleaudioproducer.data.AudioProjectRepository
 import io.github.danzuep.bibleaudioproducer.data.MaculaVerseJson
 import io.github.danzuep.bibleaudioproducer.workbench.AudioVerse
+import io.github.danzuep.bibleaudioproducer.workbench.VerseWorkflow
+import io.github.danzuep.bibleaudioproducer.workbench.WordOrderMode
 import java.io.File
 import android.widget.Button
 import org.hamcrest.Matchers.allOf
+import org.hamcrest.Matchers.`is`
 
 @RunWith(AndroidJUnit4::class)
 class WorkbenchLaunchTest {
@@ -71,6 +75,86 @@ class WorkbenchLaunchTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         File(context.filesDir, "projects").deleteRecursively()
         check(context.getSharedPreferences("audio-project", Context.MODE_PRIVATE).edit().clear().commit())
+    }
+
+    @Test
+    fun johnPresetSelectionPersistsWithoutRecordingAndRespectsSavedOrders() {
+            val context = ApplicationProvider.getApplicationContext<Context>()
+            val verses = context.assets.open("books/JHN.json").bufferedReader().use {
+                MaculaVerseJson.parse(it.readText())
+            }
+            val first = verses.first { it.reference == "JHN 1:1" }
+            val repository = AudioProjectRepository(directory)
+            fun select(label: Int) {
+                onView(withId(R.id.audio_verse_word_order)).perform(click())
+                onData(`is`(context.getString(label))).perform(click())
+            }
+            fun waitForDefault(expected: String) {
+                val deadline = System.currentTimeMillis() + 15_000
+                while (System.currentTimeMillis() < deadline) {
+                    if (repository.loadState().defaultWordOrder == expected) return
+                    Thread.sleep(50)
+                }
+                throw AssertionError("Default was not saved: $expected")
+            }
+            fun waitForSave(scenario: ActivityScenario<WorkbenchActivity>) {
+                val busy = WorkbenchActivity::class.java.getDeclaredField("busy").apply { isAccessible = true }
+                val deadline = System.currentTimeMillis() + 15_000
+                while (System.currentTimeMillis() < deadline) {
+                    var saving = true
+                    scenario.onActivity { saving = busy.getBoolean(it) }
+                    if (!saving) return
+                    Thread.sleep(50)
+                }
+                throw AssertionError("Verse save did not finish")
+            }
+            ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
+                awaitBooks(scenario, 27)
+                onView(withText("JHN 3:16")).check(matches(isDisplayed()))
+                assertEquals(null, repository.loadState().defaultWordOrder)
+                select(R.string.audio_word_order_english)
+                waitForDefault("ENGLISH_SVO")
+                scenario.recreate()
+                awaitBooks(scenario, 27)
+                onView(withText("JHN 3:16")).check(matches(isDisplayed()))
+                select(R.string.audio_word_order_greek)
+                select(R.string.audio_word_order_custom)
+                onView(withText("Add verse recording")).perform(scrollTo(), click())
+                onView(withText("Cancel recording")).perform(scrollTo(), click())
+                onView(withId(R.id.audio_verse_close)).perform(click())
+                waitForSave(scenario)
+                waitForDefault("ENGLISH_SVO")
+                onView(withId(R.id.audio_choose_verse)).perform(click())
+                onView(withContentDescription(first.words.joinToString(" ") { it.surface })).perform(click())
+                onView(withId(R.id.audio_verse_word_order)).check { view, _ ->
+                    assertEquals(context.getString(R.string.audio_word_order_english), (view as Spinner).selectedItem)
+                }
+                select(R.string.audio_word_order_japanese)
+                onView(withId(R.id.audio_verse_close)).perform(click())
+                waitForSave(scenario)
+                onView(withContentDescription(first.words.joinToString(" ") { it.surface })).perform(click())
+                onView(withId(R.id.audio_verse_word_order)).check { view, _ ->
+                    assertEquals(context.getString(R.string.audio_word_order_japanese), (view as Spinner).selectedItem)
+                }
+                onView(withId(R.id.audio_verse_close)).perform(click())
+                waitForSave(scenario)
+                scenario.recreate()
+                awaitBooks(scenario, 27)
+                assertEquals("ENGLISH_SVO", repository.loadState().defaultWordOrder)
+                assertEquals(VerseWorkflow.modeOrder(first.words, WordOrderMode.JAPANESE_SOV),
+                    repository.loadState().wordOrders[first.reference])
+                val other = File(context.filesDir, "projects/project-002").apply { mkdirs() }
+                File(other, "project-name.txt").writeText("Project002")
+                File(other, "verse-onboarding").writeText("JHN 3:16")
+                onView(withId(R.id.audio_verse_close)).perform(click())
+                pressBack()
+                onView(withText("Project002")).perform(click())
+                assertTrue(awaitBookCount(scenario, 27, 15_000))
+                assertEquals(null, AudioProjectRepository(other).loadState().defaultWordOrder)
+                select(R.string.audio_word_order_japanese)
+                assertEquals("JAPANESE_SOV", AudioProjectRepository(other).loadState().defaultWordOrder)
+                assertEquals("ENGLISH_SVO", repository.loadState().defaultWordOrder)
+            }
     }
 
     @Test

@@ -55,6 +55,16 @@ enum class WordOrderMode(
 }
 
 object VerseWorkflow {
+    fun defaultMode(name: String?): WordOrderMode? =
+        WordOrderMode.entries.firstOrNull { it.name == name && it != WordOrderMode.GREEK && it != WordOrderMode.CUSTOM }
+
+    fun selectedDefault(reference: String, mode: WordOrderMode?, previous: String?): String? =
+        if (reference == "JHN 3:16" && mode != null && defaultMode(mode.name) != null) mode.name else previous
+
+    fun effectiveWordOrder(verse: AudioVerse, state: AudioProjectState): List<Int>? =
+        state.wordOrders[verse.reference] ?: if (verse.reference in state.seedOrders) null
+        else defaultMode(state.defaultWordOrder)?.let { modeOrder(verse.words, it) }
+
     private val nominal = setOf("noun", "pron", "det", "adj", "num")
     private val heads = setOf("noun", "pron", "num")
     private val cases = mapOf(
@@ -258,9 +268,10 @@ object VerseWorkflow {
             val positions = result.indices.filter { result[it] in indices }
             positions.zip(ordered).forEach { (position, index) -> result[position] = index }
         }
-        fun visit(node: Node, inNominal: Boolean, subordinate: Boolean) {
+        fun visit(node: Node, inNominal: Boolean, subordinate: Boolean, incomplete: Boolean) {
             val nominal = inNominal || node.category.removePrefix("!") == "np"
             val sub = subordinate || node.rule.equals("sub-CL", ignoreCase = true)
+            val partial = incomplete || node.category.startsWith("!")
             // MACULA can place a postpositive conjunction before its clause in the
             // tree even though it interrupts the clause's first adverb in the text.
             if (node.category == "cl" && !nominal && !(mode.verbSecond && sub) && node.children.size == 2) {
@@ -277,8 +288,29 @@ object VerseWorkflow {
                     }
                 }
             }
-            node.children.forEach { visit(it, nominal, sub) }
+            node.children.forEach { visit(it, nominal, sub, partial) }
             val all = members(node)
+            if (mode == WordOrderMode.ENGLISH_SVO && !partial && node.category == "np" &&
+                node.rule.equals("NpAdjp", ignoreCase = true) && node.children.size == 2 && contiguous(all)
+            ) {
+                val noun = node.children[0]
+                val adjective = node.children[1]
+                val nounWords = members(noun)
+                val adjectiveWords = members(adjective)
+                val simpleNoun = noun.word?.let { words[it].pos == "noun" } == true ||
+                    (noun.category == "np" && noun.rule.equals("DetNP", ignoreCase = true) &&
+                        noun.children.size == 2 && noun.children.all { it.word != null } &&
+                        noun.children.map { words[it.word!!].pos } == listOf("det", "noun"))
+                val simpleAdjective = adjective.word?.let { words[it].pos == "adj" } == true ||
+                    (adjective.category == "adjp" && adjectiveWords.size == 1 &&
+                        adjective.children.singleOrNull()?.word?.let { words[it].pos == "adj" } == true)
+                if (simpleNoun && simpleAdjective && contiguous(nounWords) && contiguous(adjectiveWords) &&
+                    positions(nounWords).last() + 1 == positions(adjectiveWords).first()
+                ) {
+                    val determiner = nounWords.takeWhile { words[it].pos == "det" }
+                    replace(all, determiner + adjectiveWords + nounWords.drop(determiner.size))
+                }
+            }
             if (mode.postpositions && node.category == "pp" && contiguous(all) &&
                 words[all.first()].pos == "prep" && all.size > 1
             ) {
@@ -343,7 +375,7 @@ object VerseWorkflow {
             }
             reorder(segment)
         }
-        visit(root, false, false)
+        visit(root, false, false, false)
         return result
     }
 
