@@ -78,14 +78,7 @@ class WorkbenchLaunchTest {
     }
 
     @Test
-    fun newInstallLoadsTheFullGreekPlan() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val cards = context.assets.open("recording-plan.json").bufferedReader().use {
-            RecordingPlanJson.parse(it.readText())
-        }
-
-        @Test
-        fun johnPresetSelectionPersistsWithoutRecordingAndRespectsSavedOrders() {
+    fun johnPresetSelectionPersistsWithoutRecordingAndRespectsSavedOrders() {
             val context = ApplicationProvider.getApplicationContext<Context>()
             val verses = context.assets.open("books/JHN.json").bufferedReader().use {
                 MaculaVerseJson.parse(it.readText())
@@ -162,6 +155,13 @@ class WorkbenchLaunchTest {
                 assertEquals("JAPANESE_SOV", AudioProjectRepository(other).loadState().defaultWordOrder)
                 assertEquals("ENGLISH_SVO", repository.loadState().defaultWordOrder)
             }
+    }
+
+    @Test
+    fun newInstallLoadsTheFullGreekPlan() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val cards = context.assets.open("recording-plan.json").bufferedReader().use {
+            RecordingPlanJson.parse(it.readText())
         }
         assertEquals(4917, cards.size)
         assertEquals(27, cards.map { it.book }.distinct().size)
