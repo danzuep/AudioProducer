@@ -6,7 +6,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve, extname } from "node:path";
 
-test("browser workflow: import, pair, review, split, merge, and export", { timeout: 30000 }, async () => {
+test("browser workflow: import, pair, review, split, merge, and export", { timeout: process.env.PHONEME_MODEL ? 240000 : 30000 }, async () => {
     const root = resolve("web");
     const server = createServer(async (req, res) => {
         const name = new URL(req.url, "http://localhost").pathname.replace(/^\/web\/?/, "") || "index.html";
@@ -71,6 +71,24 @@ test("browser workflow: import, pair, review, split, merge, and export", { timeo
             await new Promise(resolve => setTimeout(resolve, 50));
         }
         assert.match(await evaluate("document.querySelector('#status').textContent"), /detected 2/);
+        if (process.env.PHONEME_MODEL && process.env.PHONEME_VOCAB) {
+            await evaluate("document.querySelector('#example').click()");
+            await send("DOM.enable");
+            const root = (await send("DOM.getDocument")).root.nodeId;
+            for (const [selector, file] of [["#phoneme-model", process.env.PHONEME_MODEL], ["#phoneme-vocab", process.env.PHONEME_VOCAB]]) {
+                const nodeId = (await send("DOM.querySelector", { nodeId: root, selector })).nodeId;
+                await send("DOM.setFileInputFiles", { nodeId, files: [file] });
+            }
+            await evaluate("document.querySelector('#match-phones').click()");
+            let result = "";
+            for (let i = 0; i < 1800; i++) {
+                result = await evaluate("document.querySelector('#status').textContent");
+                if (result.includes("Suggested") || /error|failed|unable/i.test(result)) break;
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            assert.match(result, /Suggested \d+ phoneme matches/);
+            await evaluate("window.confirm = () => true");
+        }
         await evaluate(`document.querySelector('#example').click();
             (async () => {
                 const core = await import('/web/core.mjs'), data = new Float32Array(3000);
@@ -151,11 +169,45 @@ test("browser workflow: import, pair, review, split, merge, and export", { timeo
         }
         assert.match(await evaluate("document.querySelector('#status').textContent"), /Loaded 3 cards/);
         assert.equal(await evaluate("document.querySelector('.card input').value"), "was");
+        if (process.env.PHONEME_SPEECH && process.env.PHONEME_MODEL && process.env.PHONEME_VOCAB) {
+            const root = (await send("DOM.getDocument")).root.nodeId;
+            const audioNode = (await send("DOM.querySelector", { nodeId: root, selector: "#audio-file" })).nodeId;
+            await send("DOM.setFileInputFiles", { nodeId: audioNode, files: [process.env.PHONEME_SPEECH] });
+            for (let i = 0; i < 100; i++) {
+                if (await evaluate("document.querySelector('#review').open")) break;
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+            assert.equal(await evaluate("document.querySelector('#review').open"), true);
+            await evaluate(`document.querySelector('#review button[value="replace"]').click()`);
+            for (let i = 0; i < 100; i++) {
+                if ((await evaluate("document.querySelector('#status').textContent")).includes("detected 1")) break;
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+            assert.match(await evaluate("document.querySelector('#status').textContent"), /detected 1/);
+            await evaluate(`{
+                const transfer = new DataTransfer();
+                transfer.items.add(new File([JSON.stringify([{target_text:"world",ancient_text:"κόσμος"}])], 'script.json', {type:'application/json'}));
+                const input = document.querySelector('#script-file'); input.files = transfer.files;
+                input.dispatchEvent(new Event('change'));
+            }`);
+            for (let i = 0; i < 100; i++) {
+                if ((await evaluate("document.querySelector('#status').textContent")).includes("Loaded 1 cards")) break;
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+            await evaluate("document.querySelector('#match-phones').click()");
+            let result = "";
+            for (let i = 0; i < 1800; i++) {
+                result = await evaluate("document.querySelector('#status').textContent");
+                if (result.includes("Suggested") || /error|failed|unable/i.test(result)) break;
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            assert.match(result, /Suggested 1 phoneme matches/, await evaluate("document.querySelector('#phoneme-observations').textContent"));
+        }
     } finally {
         socket?.close();
         chrome.kill();
         await new Promise(resolve => chrome.once("exit", resolve));
         await new Promise(resolve => server.close(resolve));
-        await rm(profile, { recursive: true, force: true });
+        await rm(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
 });

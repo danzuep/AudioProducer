@@ -30,6 +30,24 @@ function action(fn) {
         try { await fn(event); } catch (error) { status(error.message || String(error)); }
     };
 }
+function runWorker(path, payload, timeout, button, onProgress = () => {}) {
+    const worker = new Worker(path, { type: "module" });
+    button.disabled = true;
+    let timer;
+    return new Promise((resolve, reject) => {
+        timer = setTimeout(() => reject(new Error("Matching took too long.")), timeout);
+        worker.onmessage = event => {
+            if (event.data.progress) onProgress(event.data.progress);
+            else resolve(event.data);
+        };
+        worker.onerror = event => reject(new Error(event.message || "Matching failed."));
+        worker.postMessage(payload);
+    }).finally(() => {
+        clearTimeout(timer);
+        worker.terminate();
+        button.disabled = false;
+    });
+}
 function owner(blob) { return cards.find(card => card.spans.includes(blob)); }
 function setSelection(blob) {
     blobs.sort((a, b) => a.start - b.start);
@@ -291,14 +309,8 @@ $("match-references").addEventListener("click", action(async () => {
     if (!samples || !references.length) throw new Error("Load source audio and reference clips first.");
     if (blobs.length > 100) throw new Error("Acoustic matching supports at most 100 waveform slices at a time.");
     const snapshot = JSON.stringify({ cards, blobs });
-    const worker = new Worker("acoustic-worker.mjs", { type: "module" });
-    const result = await new Promise((resolve, reject) => {
-        const timer = setTimeout(() => { worker.terminate(); reject(new Error("Acoustic matching took too long.")); }, 60000);
-        worker.onmessage = event => { clearTimeout(timer); worker.terminate(); resolve(event.data); };
-        worker.onerror = event => { clearTimeout(timer); worker.terminate(); reject(new Error(event.message || "Acoustic matching failed.")); };
-        worker.postMessage({ cards, blobs, samples, references });
-        status("Comparing reference clips to waveform slices locally…");
-    });
+    status("Comparing reference clips to waveform slices locally…");
+    const result = await runWorker("acoustic-worker.mjs", { cards, blobs, samples, references }, 60000, $("match-references"));
     if (result.error) throw new Error(result.error);
     if (snapshot !== JSON.stringify({ cards, blobs })) throw new Error("The deck changed during matching; try again.");
     for (const pair of result.pairs) {
@@ -307,6 +319,29 @@ $("match-references").addEventListener("click", action(async () => {
     }
     setSelection(selected);
     status(`Suggested ${result.pairs.length} acoustic matches. Compare each clip and review every pairing.`);
+}));
+$("match-phones").addEventListener("click", action(async () => {
+    const model = $("phoneme-model").files[0], vocabulary = $("phoneme-vocab").files[0];
+    const language = $("pronunciation").value;
+    if (!samples || !model || !vocabulary) throw new Error("Load source audio, a phoneme model, and its vocabulary first.");
+    if (blobs.length > 100) throw new Error("Phoneme matching supports at most 100 waveform slices at a time.");
+    const snapshot = JSON.stringify({ cards, blobs });
+    status("Loading the local phoneme model…");
+    const result = await runWorker("phoneme-worker.mjs", { cards, blobs, samples, model, vocabulary, language }, 300000, $("match-phones"), status);
+    if (result.error) throw new Error(result.error);
+    if (snapshot !== JSON.stringify({ cards, blobs })) throw new Error("The deck changed during matching; try again.");
+    if (language !== $("pronunciation").value || model !== $("phoneme-model").files[0] || vocabulary !== $("phoneme-vocab").files[0]) {
+        throw new Error("The model or pronunciation changed during matching; try again.");
+    }
+    $("phoneme-observations").replaceChildren(...result.observations.map(phones => {
+        const item = document.createElement("li"); item.textContent = phones || "∅"; return item;
+    }));
+    for (const pair of result.pairs) {
+        const card = cards.find(item => item.id === pair.cardId), blob = blobs.find(item => item.id === pair.blobId);
+        if (card && blob && !card.spans.length && !owner(blob)) card.spans = [blob];
+    }
+    setSelection(selected);
+    status(`Suggested ${result.pairs.length} phoneme matches. Model predictions are approximate; review every pairing.`);
 }));
 $("match-transcript").addEventListener("click", action(() => {
     if (!samples) throw new Error("Load audio first.");

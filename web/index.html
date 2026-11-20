@@ -50,6 +50,19 @@
       <button id="match-references">Suggest acoustic matches</button>
     </div>
     <p>Optional: name each reference file after its ancient word, for example <code>λόγος.wav</code>. Same-speaker reference clips work best; suggestions always require review.</p>
+    <div class="toolbar">
+      <label>Pronunciation <select id="pronunciation">
+        <option value="greek-classical">Greek: Classical/Erasmian</option>
+        <option value="greek-koine">Greek: Koine</option>
+        <option value="hebrew-tiberian">Hebrew: Tiberian</option>
+        <option value="hebrew-modern">Hebrew: Modern</option>
+      </select></label>
+      <label>Phoneme ONNX model <input id="phoneme-model" type="file" accept=".onnx"></label>
+      <label>Model vocabulary <input id="phoneme-vocab" type="file" accept=".json,application/json"></label>
+      <button id="match-phones">Suggest phoneme matches</button>
+    </div>
+    <p>Optional local phoneme model and vocabulary required. Ancient pronunciations and model output are approximate; review all suggestions.</p>
+    <details><summary>Recognized phonemes from the last analysis</summary><ol id="phoneme-observations"></ol></details>
     <div id="deck" class="deck"></div>
     <button id="add-card">Add empty card</button>
   </section>
