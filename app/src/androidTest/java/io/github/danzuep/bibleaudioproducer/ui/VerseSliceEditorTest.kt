@@ -454,6 +454,12 @@ class VerseSliceEditorTest {
                     words, { true }, {}, {}, {}
                 )
                 val root = editor.view()
+                fun containsSeekBar(view: View): Boolean =
+                    view is android.widget.SeekBar || (view is android.view.ViewGroup &&
+                        (0 until view.childCount).any { containsSeekBar(view.getChildAt(it)) })
+                assertTrue(!containsSeekBar(root))
+                assertTrue(root.findViewById<EditText>(R.id.clip_start) != null)
+                assertTrue(root.findViewById<EditText>(R.id.clip_end) != null)
                 fun field(name: String) = VerseTakeEditor::class.java.getDeclaredField(name).apply { isAccessible = true }
                 fun invoke(name: String) = VerseTakeEditor::class.java.getDeclaredMethod(name)
                     .apply { isAccessible = true }.invoke(editor)

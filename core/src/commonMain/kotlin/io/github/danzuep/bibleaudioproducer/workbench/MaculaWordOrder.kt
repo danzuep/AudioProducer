@@ -34,10 +34,11 @@ internal object MaculaWordOrder {
             is SyntaxWord -> words[node.index].head
             is SyntaxGroup -> node.head || node.children.any(::head)
         }
-        fun visit(group: SyntaxGroup, incomplete: Boolean, subordinate: Boolean) {
+        fun visit(group: SyntaxGroup, incomplete: Boolean, subordinate: Boolean, inNominal: Boolean) {
             val partial = incomplete || group.partial
             val sub = subordinate || group.rule.equals("sub-CL", ignoreCase = true)
-            group.children.filterIsInstance<SyntaxGroup>().forEach { visit(it, partial, sub) }
+            val nominal = inNominal || group.category == "np"
+            group.children.filterIsInstance<SyntaxGroup>().forEach { visit(it, partial, sub, nominal) }
             val all = members(group)
             if (partial || !contiguous(all)) return
             if (group.children.size == 2) {
@@ -47,7 +48,7 @@ internal object MaculaWordOrder {
                 if (particle != null && clause != null) {
                     val remaining = current(clause)
                     replace(all, listOf(particle.index) + remaining)
-                    visit(clause, partial, sub)
+                    visit(clause, partial, sub, nominal)
                 }
             }
             val children = group.children.sortedBy { positions(members(it)).firstOrNull() ?: Int.MAX_VALUE }
@@ -63,7 +64,9 @@ internal object MaculaWordOrder {
                     replace(all, children.drop(1).flatMap(::current) + current(prep))
                 }
             }
-            if ((mode.headFinal || mode == WordOrderMode.ENGLISH_SVO) && group.category == "np" && !coordinated) {
+            if ((mode.headFinal || mode == WordOrderMode.ENGLISH_SVO || mode.verbSecond) &&
+                group.category == "np" && !coordinated
+            ) {
                 val headIndex = children.indexOfFirst(::head)
                 if (headIndex >= 0 && children.count(::head) == 1) {
                     val before = children.take(headIndex)
@@ -80,11 +83,26 @@ internal object MaculaWordOrder {
                     (children[1] as SyntaxGroup).rule.equals("DetAdj", ignoreCase = true)
                 ) {
                     replace(all, current(children[1]) + current(children[0]))
+                } else if (group.rule.equals("DetNP", ignoreCase = true) && children.size == 2 &&
+                    category(children[0]) == "det" && children[1] is SyntaxGroup
+                ) {
+                    val nounPhrase = children[1] as SyntaxGroup
+                    val noun = nounPhrase.children.firstOrNull()
+                    val modifier = nounPhrase.children.getOrNull(1) as? SyntaxGroup
+                    if (nounPhrase.rule.equals("NPDetAdj", ignoreCase = true) &&
+                        nounPhrase.children.size == 2 && noun is SyntaxWord &&
+                        category(noun) == "noun" && modifier != null &&
+                        modifier.rule.equals("DetAdj", ignoreCase = true)
+                    ) {
+                        replace(all, current(modifier) + current(children[0]) + current(noun))
+                    }
                 }
             }
-            if (group.category != "cl" || (mode.verbSecond && sub)) return
+            if (group.category != "cl" || (mode.verbSecond && nominal)) return
             val orderedChildren = group.children.sortedBy { positions(members(it)).firstOrNull() ?: Int.MAX_VALUE }
-            fun slot(node: SyntaxNode): String = if (
+            fun slot(node: SyntaxNode): String = if (mode.verbSecond && node is SyntaxGroup && node.category == "cl") {
+                ""
+            } else if (
                 node is SyntaxWord && words[node.index].lemma in setOf("γάρ", "δέ")
             ) "CONJ" else when (role(node)) {
                 "s" -> "S"
@@ -96,6 +114,7 @@ internal object MaculaWordOrder {
             }
             fun sort(segment: List<SyntaxNode>) {
                 if (segment.size < 2) return
+                if (mode.verbSecond && segment.none { slot(it) == "V" }) return
                 val indices = segment.flatMap(::members)
                 data class Part(val nodes: List<SyntaxNode>, val slot: String)
                 val parts = mutableListOf<Part>()
@@ -113,12 +132,14 @@ internal object MaculaWordOrder {
                 }
                 val sorted = parts.filter { it !== leading }.sortedBy {
                     if (it.slot == "CONJ") -1
+                    else if (mode.verbSecond && sub && it.slot == "V") slots.size
                     else slots.indexOf(it.slot).let { rank -> if (rank < 0) slots.size else rank }
                 }
-                val reordered = if (mode.verbSecond && sorted.any { it.slot == "V" }) {
-                    val lead = sorted.firstOrNull { it.slot != "V" }
-                    if (lead == null) sorted else listOf(lead) + sorted.filter { it.slot == "V" } +
-                        sorted.filter { it !== lead && it.slot != "V" }
+                val reordered = if (mode.verbSecond && !sub && sorted.any { it.slot == "V" }) {
+                    val conjunctions = sorted.filter { it.slot == "CONJ" }
+                    val lead = parts.firstOrNull { it.slot != "V" && it.slot != "CONJ" }
+                    conjunctions + listOfNotNull(lead) + sorted.filter { it.slot == "V" } +
+                        sorted.filter { it !== lead && it.slot != "V" && it.slot != "CONJ" }
                 } else sorted
                 replace(indices, (listOfNotNull(leading) + reordered).flatMap { it.nodes.flatMap(::current) })
             }
@@ -131,7 +152,7 @@ internal object MaculaWordOrder {
             }
             sort(segment)
         }
-        visit(root, false, false)
+        visit(root, false, false, false)
         return result
     }
 }

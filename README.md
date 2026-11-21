@@ -26,8 +26,8 @@ displayed card order; omit disabled words. Choose an English, Chinese, original 
 transliteration, or custom recording guide. The app suggests boundaries at quiet points in
 recording order and shows them on a chronological waveform above the card deck. A live
 microphone waveform appears during recording. Tap a guide chip, slice or card to select it;
-drag its waveform handles, use the 10 ms nudge buttons,
-the sliders, or enter seconds. The nudge buttons move the selected slice's end boundary
+drag its waveform handles, use the 10 ms nudge buttons, or enter seconds. The nudge
+buttons move the selected slice's end boundary
 (or its start for the last slice). The app suggests skipping leading silence while keeping
 the original take; adjust the first start handle or time to restore audio if needed.
 The recording end is fixed. The waveform initially shows one second around the first word;
@@ -68,12 +68,16 @@ change words, so they cannot generally be obtained by permuting Greek tokens.
 All presets benefit from the same phrase and clause boundaries, but their orders are
 approximations, not full grammars of English, German, Mandarin, Japanese, Korean,
 Arabic or Hebrew.
-German subordinate clauses are left in source order rather than forced into V2;
+German uses a fronted constituent followed by the finite verb in main clauses,
+and approximates verb-final order in subordinate clauses; it cannot add auxiliaries.
+The [Freie Lutherbibel's John 3:16](https://github.com/bibliadelpueblo/BibliaLibre/blob/bed6a5c56de7db4895304553c6d7c3e763480f10/Bibles/German.FreieLuther/43-Johannes.md)
+is an ordering reference, not a word-for-word target.
 Japanese postpositions are approximated only for intact prepositional phrases.
 English, Mandarin and Japanese move post-head modifiers in explicitly headed noun
-phrases. For the bundled data, which has no explicit head annotations, these modes also
-handle MACULA's noun-adjective and noun-article-adjective rules. Both Greek articles
-are retained if present; omit or adapt them when translating.
+phrases; German also moves these modifiers before nouns. For the bundled data, which
+has no explicit head annotations, these modes also handle MACULA's noun-adjective and
+noun-article-adjective rules. Both Greek articles are retained if present, with each
+kept alongside its noun or adjective; omit or adapt them when translating.
 Other noun modifiers, negation, implicit subjects, discourse and idioms require
 human review. Where syntax is missing, malformed, crosses verse boundaries,
 is discontinuous or ambiguous, the

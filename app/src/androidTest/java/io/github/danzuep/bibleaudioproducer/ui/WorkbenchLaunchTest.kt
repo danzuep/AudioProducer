@@ -80,6 +80,24 @@ class WorkbenchLaunchTest {
     }
 
     @Test
+    fun john316PresetsKeepArticlesWithTheirWordsAndGermanClausesInOrder() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val verse = context.assets.open("books/JHN.xml").bufferedReader().use {
+            MaculaXml.parse(it.readText()).first { item -> item.reference == "JHN 3:16" }
+        }
+        fun numbers(mode: WordOrderMode) = VerseWorkflow.modeOrder(verse, mode).map { it + 1 }
+        val english = numbers(WordOrderMode.ENGLISH_SVO)
+        assertEquals(listOf(13, 11, 12, 9, 10), english.filter { it in 9..13 })
+        val german = numbers(WordOrderMode.GERMAN_V2)
+        // Freie Lutherbibel, John 3:16: fronted adverb, verb, subject and object;
+        // the embedded object precedes its verb, followed by the purpose clause.
+        // https://github.com/bibliadelpueblo/BibliaLibre/blob/bed6a5c56de7db4895304553c6d7c3e763480f10/Bibles/German.FreieLuther/43-Johannes.md
+        assertEquals(listOf(2, 1, 3, 4, 5, 6, 7), german.filter { it in 1..7 })
+        assertEquals(listOf(11, 12, 9, 10, 13, 14), german.filter { it in 9..14 })
+        assertEquals(listOf(25, 24, 23), german.filter { it in 23..25 })
+    }
+
+    @Test
     fun johnPresetSelectionPersistsWithoutRecordingAndRespectsSavedOrders() {
             val context = ApplicationProvider.getApplicationContext<Context>()
             val verses = context.assets.open("books/JHN.xml").bufferedReader().use {

@@ -139,6 +139,32 @@ class MaculaXmlTest {
               </wg>
             </wg></book>
         """.trimIndent()).single()
-        assertEquals(listOf(0, 1, 3, 4, 2), VerseWorkflow.modeOrder(verse, WordOrderMode.ENGLISH_SVO))
+        assertEquals(listOf(0, 3, 4, 1, 2), VerseWorkflow.modeOrder(verse, WordOrderMode.ENGLISH_SVO))
+        assertEquals(listOf(3, 4, 1, 2), VerseWorkflow.modeOrder(verse, WordOrderMode.GERMAN_V2).filter { it != 0 })
+    }
+
+    @Test
+    fun germanKeepsTheFrontedAdverbBeforeTheFiniteVerb() {
+        val verse = MaculaXml.parse("""
+            <book><wg class="cl"><w ref="JHN 1:1!2" class="conj" lemma="γάρ">for</w>
+              <wg class="cl"><w ref="JHN 1:1!1" role="adv">thus</w>
+                <w ref="JHN 1:1!3" role="v">loved</w>
+                <wg class="np" role="s"><w ref="JHN 1:1!4">God</w></wg>
+                <wg class="np" role="o"><w ref="JHN 1:1!5">world</w></wg>
+                <wg class="cl" role="o" rule="sub-CL"><w ref="JHN 1:1!6">that</w>
+                  <wg class="cl"><w ref="JHN 1:1!7" role="v">gave</w>
+                    <wg class="np" role="o"><w ref="JHN 1:1!8">son</w></wg>
+                    <wg class="cl" rule="sub-CL" role="adv">
+                      <w ref="JHN 1:1!9">so that</w><wg class="cl">
+                        <w ref="JHN 1:1!10" role="v">have</w>
+                        <w ref="JHN 1:1!11" role="o">life</w></wg>
+                    </wg>
+                  </wg>
+                </wg>
+              </wg>
+            </wg></book>
+        """.trimIndent()).single()
+        assertEquals(listOf(1, 0, 2, 3, 4, 5, 7, 6, 8, 10, 9),
+            VerseWorkflow.modeOrder(verse, WordOrderMode.GERMAN_V2))
     }
 }
