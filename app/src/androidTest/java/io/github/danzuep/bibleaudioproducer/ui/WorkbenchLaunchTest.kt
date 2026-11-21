@@ -122,7 +122,7 @@ class WorkbenchLaunchTest {
                 select(R.string.audio_word_order_greek)
                 select(R.string.audio_word_order_custom)
                 onView(withText("Add verse recording")).perform(scrollTo(), click())
-                onView(withId(R.id.audio_verse_close)).perform(click())
+                pressBack()
                 onView(withId(R.id.audio_verse_close)).perform(click())
                 waitForSave(scenario)
                 waitForDefault("ENGLISH_SVO")
@@ -696,10 +696,15 @@ class WorkbenchLaunchTest {
             onView(withId(R.id.clip_next)).perform(click())
             onView(withText(android.R.string.cancel)).perform(click())
             assertArrayEquals(original, clip.readBytes())
-            onView(withText("Keep existing")).perform(click())
+            onView(withText("Keep & next")).perform(click())
             onView(withText("1 / ${words.size} reviewed"))
                 .check(matches(isDisplayed()))
             val label = words[1].gloss.ifBlank { words[1].mandarin.ifBlank { "[translation needed]" } }
+            scenario.onActivity { activity ->
+                val scroll = activity.findViewById<androidx.core.widget.NestedScrollView>(R.id.clip_scroll)
+                val cards = activity.findViewById<View>(R.id.clip_cards)
+                scroll.scrollTo(0, cards.top)
+            }
             onView(withContentDescription("Play $label slice")).perform(click())
             onView(withId(R.id.clip_next)).perform(click())
             val saved = AudioProjectRepository(directory).clipFile(words[1].surface)

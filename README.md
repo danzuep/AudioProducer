@@ -31,7 +31,7 @@ the sliders, or enter seconds. The nudge buttons move the selected slice's end b
 selected slice. Adjacent spoken slices share their boundary: moving it
 changes both clips and requires reviewing both again. Hold and drag a card to change
 the target order using its drag handle without moving its audio or changing spoken boundaries.
-Preview each clip and use **Next** to save it, or **Keep existing** to keep its existing clip.
+Preview each clip and use **Next** to save it, or **Keep & next** to keep its existing clip.
 The Android editor currently maps one spoken slice to each enabled Greek form; editable
 card text, audio re-pairing, split/merge, unassigned blobs and alignment ZIP export
 remain available only in the separate browser slicer below.

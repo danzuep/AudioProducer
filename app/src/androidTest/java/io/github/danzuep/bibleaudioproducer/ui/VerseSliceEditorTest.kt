@@ -202,7 +202,7 @@ class VerseSliceEditorTest {
                     }
                     assertTrue("Activity did not regain focus after replacement dialog", focused)
                 }
-                onView(withText(android.R.string.cancel)).perform(click())
+                onView(withText(android.R.string.cancel)).inRoot(isDialog()).perform(click())
                 waitForActivityFocus()
                 scenario.onActivity {
                     assertEquals(0, reviewedCount())

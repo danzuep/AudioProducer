@@ -312,6 +312,7 @@ internal class VerseTakeEditor(
         next.isEnabled = ready
         previewExisting.isEnabled = ready && repository.clipFile(words[index].word.surface).isFile
         keep.isEnabled = ready && repository.clipFile(words[index].word.surface).isFile
+        keep.visibility = if (keep.isEnabled) View.VISIBLE else View.GONE
         finish.isEnabled = ready && reviewed.size == words.size
         nudgeBack.isEnabled = ready && words.size > 1
         nudgeForward.isEnabled = nudgeBack.isEnabled
