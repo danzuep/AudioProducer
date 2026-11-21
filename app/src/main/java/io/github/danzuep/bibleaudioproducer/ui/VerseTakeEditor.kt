@@ -36,6 +36,8 @@ import io.github.danzuep.bibleaudioproducer.audio.VerseBoundaries
 import io.github.danzuep.bibleaudioproducer.data.AudioProjectRepository
 import io.github.danzuep.bibleaudioproducer.workbench.VerseRecordingWord
 import java.io.File
+import java.text.DecimalFormat
+import java.text.DecimalFormatSymbols
 import java.util.Locale
 import java.util.concurrent.Executors
 import kotlin.math.roundToInt
@@ -330,8 +332,11 @@ internal class VerseTakeEditor(
         timing.text = if (points == null) "No recording" else {
             val first = points.start(spoken)
             val last = points.end(spoken)
-            String.format(Locale.US, "%.2fs – %.2fs (%d ms)", first.toDouble() / VerseAudio.SAMPLE_RATE,
-                last.toDouble() / VerseAudio.SAMPLE_RATE, (last - first) * 1000L / VerseAudio.SAMPLE_RATE)
+            val secondsFormat = DecimalFormat("0.#######", DecimalFormatSymbols(Locale.US))
+            val millisFormat = DecimalFormat("0.####", DecimalFormatSymbols(Locale.US))
+            "${secondsFormat.format(first.toDouble() / VerseAudio.SAMPLE_RATE)}s – " +
+                "${secondsFormat.format(last.toDouble() / VerseAudio.SAMPLE_RATE)}s " +
+                "(${millisFormat.format((last - first) * 1000.0 / VerseAudio.SAMPLE_RATE)} ms)"
         }
         if (!reordering) cards.notifyDataSetChanged()
         updateGuide()

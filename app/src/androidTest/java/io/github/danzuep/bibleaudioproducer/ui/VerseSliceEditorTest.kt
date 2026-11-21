@@ -78,6 +78,7 @@ class VerseSliceEditorTest {
                 touch(MotionEvent.ACTION_UP, 310f)
                 assertEquals(620, boundaries.end(0))
                 assertEquals(620, boundaries.start(1))
+                assertEquals("0s – 0.03875s (38.75 ms)", (field("timing").get(editor) as TextView).text.toString())
                 VerseTakeEditor::class.java.getDeclaredMethod("moveCard", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
                     .apply { isAccessible = true }.invoke(editor, 0, 1)
                 assertEquals(listOf(1, 0, 2), reordered)
