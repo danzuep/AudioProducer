@@ -58,9 +58,9 @@ already have a saved order; a custom order is specific to its verse.
 Word-order presets are starting points, not translations. The bundled Greek data uses
 [MACULA's pinned lowfat XML syntax trees](https://github.com/Clear-Bible/macula-greek/tree/8423afe47b9e8f24b7772e808af45c7159a6fe7e/SBLGNT/lowfat)
 directly to keep coordinated phrases and nested clauses together and distinguish subjects
-from predicates. The separate recording plan still uses MACULA's TSV; for seven forms
-whose TSV spelling differs from the XML text, it also preserves the historical spelling
-as the recording key.
+from predicates. The bundled recording plan is generated from the same XML words.
+Recording keys now use XML surface forms, so recordings saved under the former
+spellings of seven forms will need to be recorded again.
 For example, the English preset uses the ordering relationships in the
 [Berean Standard Bible, John 1:1 and 3:16](https://github.com/usfm-bible/examples.bsb/blob/50a493b1a6a7828f15833f95920bed81c69fb710/44JHNBSB.usfm)
 as a grammar reference, not as a word-for-word target. Translations add, omit and

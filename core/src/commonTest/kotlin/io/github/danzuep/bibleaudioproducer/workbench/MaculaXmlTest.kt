@@ -27,7 +27,6 @@ class MaculaXmlTest {
         assertEquals("JHN 1:1", verse.reference)
         assertEquals("v1", word.id)
         assertEquals("λέγει", word.surface)
-        assertEquals("λέγει", word.sourceText)
         assertEquals("λέγω", word.lemma)
         assertEquals("verb", word.pos)
         assertEquals("v", word.role)
@@ -109,15 +108,6 @@ class MaculaXmlTest {
     }
 
     @Test
-    fun legacyFormPreservesRecordingKeyWithoutLosingXmlText() {
-        val word = MaculaXml.parse("""
-            <book><w ref="JHN 1:1!1" legacy-text="old">source</w></book>
-        """.trimIndent()).single().words.single()
-        assertEquals("old", word.surface)
-        assertEquals("source", word.sourceText)
-    }
-
-    @Test
     fun nestedHeadMovesWholeModifierBeforeItsConstituent() {
         val verse = MaculaXml.parse("""
             <book><wg class="np"><wg class="np"><w ref="JHN 1:1!1" class="det">the</w>
@@ -126,5 +116,29 @@ class MaculaXmlTest {
             </wg></book>
         """.trimIndent()).single()
         assertEquals(listOf(2, 3, 0, 1), VerseWorkflow.modeOrder(verse, WordOrderMode.JAPANESE_SOV))
+    }
+
+    @Test
+    fun sourceSurfaceIsUsedAsRecordingKey() {
+        val word = MaculaXml.parse("""
+            <book><w ref="JHN 8:4!9" lemma="ἐπί">ἐπ</w></book>
+        """.trimIndent()).single().words.single()
+        assertEquals("ἐπ", word.surface)
+        assertEquals("ἐπ", word.unspokenKey)
+    }
+
+    @Test
+    fun nestedArticleAdjectiveMovesWithinNounPhrase() {
+        val verse = MaculaXml.parse("""
+            <book><wg class="cl"><w ref="JHN 1:1!1" role="v">verb</w>
+              <wg class="np" role="o" rule="DetNP"><w ref="JHN 1:1!2" class="det">article</w>
+                <wg class="np" rule="NPDetAdj"><w ref="JHN 1:1!3" class="noun">noun</w>
+                  <wg class="np" rule="DetAdj"><w ref="JHN 1:1!4" class="det">article</w>
+                    <w ref="JHN 1:1!5" class="adj">adjective</w></wg>
+                </wg>
+              </wg>
+            </wg></book>
+        """.trimIndent()).single()
+        assertEquals(listOf(0, 1, 3, 4, 2), VerseWorkflow.modeOrder(verse, WordOrderMode.ENGLISH_SVO))
     }
 }
