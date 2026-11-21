@@ -20,8 +20,8 @@ icon to set the recording language, import plans or audio, export archives, or m
 Imports in a different language are rejected to prevent mixing projects. Plans and
 recordings remain in private storage; export them before uninstalling.
 
-In a verse, select a word-order mode or drag individual words, then choose **Add verse
-recording** to open the recording editor. Record the enabled words' translations in the
+In a verse, select a word-order mode or drag individual words, then tap the record
+button beside playback to open the recording editor. Record the enabled words' translations in the
 displayed card order; omit disabled words. Choose an English, Chinese, original Greek,
 transliteration, or custom recording guide. The app suggests boundaries at quiet points in
 recording order and shows them on a chronological waveform above the card deck. Tap a guide
@@ -143,9 +143,7 @@ cursor. Drag the selected handles or enter milliseconds; the handles snap to nea
 zero crossings. Cards can be reordered, split or merged, and audio can be moved separately.
 Overwriting an attachment or the whole recording requires reviewing the replacement.
 The ancient text is a label for its translated equivalent; it is not compared with
-the recording. On Android, **Export interlinear script** in a verse exports the currently selected
-word order and English glosses as a compatible JSON array. Disabled words are omitted,
-and audio must be paired separately.
+the recording.
 
 Export produces a ZIP with lossless clips in card order, the original source audio and
 `alignment.json`. Empty cards have no WAV; merged cards include all their spans in
