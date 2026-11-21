@@ -182,6 +182,10 @@ internal class VerseTakeEditor(
                 return true
             }
             override fun onSwiped(holder: RecyclerView.ViewHolder, direction: Int) = Unit
+            override fun clearView(recyclerView: RecyclerView, holder: RecyclerView.ViewHolder) {
+                super.clearView(recyclerView, holder)
+                cards.notifyDataSetChanged()
+            }
         })
         dragHelper.attachToRecyclerView(deck)
         next = content.findViewById<Button>(R.id.clip_next).apply { setOnClickListener { saveSelection() } }
@@ -352,7 +356,6 @@ internal class VerseTakeEditor(
         index = words.indexOfFirst { it.originalIndex == selected }
         onReorder(words.map { it.originalIndex })
         cards.notifyItemMoved(from, to)
-        cards.notifyItemRangeChanged(minOf(from, to), kotlin.math.abs(from - to) + 1)
         showSelection()
         reordering = true
         refresh()
@@ -526,6 +529,7 @@ internal class VerseTakeEditor(
 
     private fun saveSelection() {
         if (!rememberSelection()) return
+        refresh()
         val points = checkNotNull(boundaries)
         val first = points.start(audioIndex(words[index]))
         val last = points.end(audioIndex(words[index]))
@@ -611,8 +615,12 @@ internal class VerseTakeEditor(
     }
 
     fun stopForBackground() {
+        val wasPlayingTake = playingTake
         stopPlayback()
-        if (!recording) return
+        if (!recording) {
+            if (wasPlayingTake && !closed) refresh()
+            return
+        }
         recording = false
         runCatching { recorder.stop() }
         draft?.delete()

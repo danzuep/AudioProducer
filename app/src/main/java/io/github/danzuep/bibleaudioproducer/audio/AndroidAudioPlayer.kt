@@ -6,6 +6,7 @@ import java.io.File
 internal class AndroidAudioPlayer(private val onError: () -> Unit) {
     private var player: MediaPlayer? = null
     private var generation = 0
+    private var prepared = false
 
     fun play(files: List<File>, onComplete: () -> Unit = {}) {
         require(files.isNotEmpty())
@@ -15,19 +16,21 @@ internal class AndroidAudioPlayer(private val onError: () -> Unit) {
 
     fun stop() {
         generation++
+        prepared = false
         player?.release()
         player = null
     }
 
     fun pause(): Boolean {
         val current = player ?: return false
-        if (!current.isPlaying) return false
+        if (!prepared) return false
         current.pause()
         return true
     }
 
     fun resume(): Boolean {
         val current = player ?: return false
+        if (!prepared) return false
         current.start()
         return true
     }
@@ -42,10 +45,16 @@ internal class AndroidAudioPlayer(private val onError: () -> Unit) {
             val instance = MediaPlayer()
             player = instance
             instance.setDataSource(files[index].absolutePath)
-            instance.setOnPreparedListener { if (player === it) it.start() }
+            instance.setOnPreparedListener {
+                if (player === it) {
+                    it.start()
+                    prepared = true
+                }
+            }
             instance.setOnCompletionListener {
                 if (player === it) {
                     player = null
+                    prepared = false
                     it.release()
                     playNext(files, index + 1, expectedGeneration, onComplete)
                 }

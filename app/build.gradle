@@ -21,7 +21,8 @@ android {
     compileSdk 35
 
     defaultConfig {
-        applicationId 'io.github.danzuep.bibleaudioproducer'
+        applicationId clipDemo ? 'io.github.danzuep.bibleaudioproducer.clipdemo' :
+            'io.github.danzuep.bibleaudioproducer'
         minSdk 23
         targetSdk 35
         versionCode appVersionCode

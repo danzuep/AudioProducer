@@ -71,10 +71,17 @@ class VerseSliceEditorTest {
                 assertEquals(true, invoke("rememberSelection"))
                 assertEquals(560, boundaries.end(0))
                 assertEquals(560, boundaries.start(1))
+                waveform.show(samples, boundaries.snapshot(), 0)
+                waveform.zoomBy(2)
+                touch(MotionEvent.ACTION_DOWN, 280f)
+                touch(MotionEvent.ACTION_MOVE, 310f)
+                touch(MotionEvent.ACTION_UP, 310f)
+                assertEquals(620, boundaries.end(0))
+                assertEquals(620, boundaries.start(1))
                 VerseTakeEditor::class.java.getDeclaredMethod("moveCard", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
                     .apply { isAccessible = true }.invoke(editor, 0, 1)
                 assertEquals(listOf(1, 0, 2), reordered)
-                assertEquals(560, boundaries.start(1))
+                assertEquals(620, boundaries.start(1))
                 editor.dispose()
             }
         }
