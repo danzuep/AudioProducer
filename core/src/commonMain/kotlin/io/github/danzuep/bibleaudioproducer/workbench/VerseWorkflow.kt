@@ -240,6 +240,9 @@ object VerseWorkflow {
     fun modeOrder(verse: AudioVerse, mode: WordOrderMode): List<Int> =
         verse.syntax?.let { MaculaWordOrder.order(verse.words, it, mode) } ?: modeOrder(verse.words, mode)
 
+    fun reorder(verse: AudioVerse, mode: WordOrderMode): List<VerseWord> =
+        modeOrder(verse, mode).map(verse.words::get)
+
     fun modeOrder(words: List<VerseWord>, mode: WordOrderMode): List<Int> {
         val original = words.indices.toList()
         val slots = mode.slots ?: return original

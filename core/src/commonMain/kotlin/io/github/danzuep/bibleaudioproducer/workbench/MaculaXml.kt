@@ -73,7 +73,7 @@ object MaculaXml {
                                 pos = attrs["class"].orEmpty(), type = attrs["type"].orEmpty(),
                                 grammaticalCase = attrs["case"].orEmpty(), mood = attrs["mood"].orEmpty(),
                                 gloss = attrs["english"] ?: attrs["gloss"].orEmpty(), role = role,
-                                mandarin = attrs["mandarin"] ?: attrs["chinese"].orEmpty(),
+                                mandarin = attrs["chinese"] ?: attrs["mandarin"].orEmpty(),
                                 morphology = attrs["morph"].orEmpty(), reference = ref,
                                 id = attrs["id"].orEmpty(), head = attrs["head"] == "true",
                                 sourceGloss = attrs["gloss"].orEmpty(), sourceText = sourceText

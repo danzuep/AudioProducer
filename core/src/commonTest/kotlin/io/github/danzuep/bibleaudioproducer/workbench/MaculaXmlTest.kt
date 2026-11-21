@@ -8,7 +8,7 @@ class MaculaXmlTest {
     private val xml = """
         <book><sentence><wg class="cl">
           <w ref="JHN 1:1!1" xml:id="v1" class="verb" role="v" lemma="λέγω"
-             english="say" gloss="says" chinese="说" morph="V">λέγει</w>
+             english="say" gloss="says" mandarin="" chinese="说" morph="V">λέγει</w>
           <wg class="np" role="s"><w ref="JHN 1:1!2" class="noun">A</w>
             <w ref="JHN 1:1!3" class="conj" lemma="καί">and</w>
             <w ref="JHN 1:1!4" class="noun">B</w></wg>
@@ -47,6 +47,8 @@ class MaculaXmlTest {
         assertEquals(listOf(8, 1, 2, 3, 5, 4, 7, 6, 0), VerseWorkflow.modeOrder(verse, WordOrderMode.JAPANESE_SOV))
         assertEquals(listOf(8, 0, 1, 2, 3, 6, 7, 4, 5), VerseWorkflow.modeOrder(verse, WordOrderMode.ARABIC_VSO))
         assertEquals(verse.words.indices.toList(), VerseWorkflow.modeOrder(verse, WordOrderMode.GREEK))
+        assertEquals(listOf("s", "s", "s"),
+            VerseWorkflow.reorder(verse, WordOrderMode.ENGLISH_SVO).slice(1..3).map { it.role })
     }
 
     @Test
@@ -64,6 +66,17 @@ class MaculaXmlTest {
         """.trimIndent()).single()
         assertEquals(listOf("thus", "for", "verb", "inner verb", "inner subject"), verse.words.map { it.surface })
         assertEquals(listOf(1, 0, 2, 4, 3), VerseWorkflow.modeOrder(verse, WordOrderMode.ENGLISH_SVO))
+    }
+
+    @Test
+    fun postpositiveInUnclassifiedCoordinateGroupIsFronted() {
+        val verse = MaculaXml.parse("""
+            <book><wg type="group"><w ref="JHN 1:1!2" class="conj" lemma="δέ">but</w>
+              <wg class="cl"><w ref="JHN 1:1!1" role="s">subject</w>
+                <w ref="JHN 1:1!3" role="v">verb</w></wg>
+            </wg></book>
+        """.trimIndent()).single()
+        assertEquals(listOf(1, 0, 2), VerseWorkflow.modeOrder(verse, WordOrderMode.ENGLISH_SVO))
     }
 
     @Test

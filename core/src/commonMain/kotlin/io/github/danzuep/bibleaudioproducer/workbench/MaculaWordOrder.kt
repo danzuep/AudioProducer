@@ -40,7 +40,7 @@ internal object MaculaWordOrder {
             group.children.filterIsInstance<SyntaxGroup>().forEach { visit(it, partial, sub) }
             val all = members(group)
             if (partial || !contiguous(all)) return
-            if (group.category == "cl" && group.children.size == 2) {
+            if (group.children.size == 2) {
                 val particle = group.children.filterIsInstance<SyntaxWord>()
                     .singleOrNull { words[it.index].lemma in setOf("γάρ", "δέ") }
                 val clause = group.children.filterIsInstance<SyntaxGroup>().singleOrNull { it.category == "cl" }
