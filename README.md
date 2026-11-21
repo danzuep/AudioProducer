@@ -24,13 +24,14 @@ In a verse, select a word-order mode or drag individual words, then choose **Add
 recording** to open the recording editor. Record the enabled words' translations in the
 displayed card order; omit disabled words. Choose an English, Chinese, original Greek,
 transliteration, or custom recording guide. The app suggests boundaries at quiet points in
-recording order and shows them on a chronological waveform above the card deck. Card
-numbers show display position and original Greek position. Tap a slice or card to select it;
-drag a waveform boundary, use
-the sliders, or enter seconds. Adjacent spoken slices share their boundary: moving it
+recording order and shows them on a chronological waveform above the card deck. Tap a guide
+chip, slice or card to select it; drag a waveform handle, use the 10 ms nudge buttons,
+the sliders, or enter seconds. The nudge buttons move the selected slice's end boundary
+(or its start for the last slice); recording endpoints are fixed. Zoom is centered on the
+selected slice. Adjacent spoken slices share their boundary: moving it
 changes both clips and requires reviewing both again. Hold and drag a card to change
-the target order without moving its audio or changing spoken boundaries. Use **Next**
-to advance through the cards; preview each clip and save it or keep its existing clip.
+the target order using its drag handle without moving its audio or changing spoken boundaries.
+Preview each clip and use **Next** to save it, or **Keep & next** to keep its existing clip.
 The Android editor currently maps one spoken slice to each enabled Greek form; editable
 card text, audio re-pairing, split/merge, unassigned blobs and alignment ZIP export
 remain available only in the separate browser slicer below.
@@ -156,6 +157,14 @@ by padding or fades. Run the browser core tests with
 `node --test web/core.test.mjs web/acoustic.test.mjs`.
 With Google Chrome installed, `node --test web/browser.test.mjs` also exercises the
 browser workflow.
+
+## John 3:16 editor demo
+
+The Android CI workflow has a manual `clip_demo` option. Select it to build and upload
+only the standalone `john-3-16-clip-demo` debug APK; it skips the full Greek assets and
+other CI jobs. The demo opens the production verse editor directly with a synthetic
+waveform, not speech. Record a verse to replace it; demo clips are isolated from the
+normal app. Locally, build the same APK with `./gradlew -PclipDemo :app:assembleDebug`.
 
 ## Acknowledgements
 

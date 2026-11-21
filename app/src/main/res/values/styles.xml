@@ -8,4 +8,7 @@
         <item name="android:statusBarColor">@color/workbench_surface</item>
         <item name="android:navigationBarColor">@color/workbench_primary_dark</item>
     </style>
+    <style name="Theme.ClipEditor" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/workbench_primary</item>
+    </style>
 </resources>

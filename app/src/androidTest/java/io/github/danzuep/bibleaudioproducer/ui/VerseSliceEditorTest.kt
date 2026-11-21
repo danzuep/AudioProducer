@@ -1,15 +1,14 @@
 package io.github.danzuep.bibleaudioproducer.ui
 
 import android.content.Context
-import android.content.pm.ApplicationInfo
 import android.view.MotionEvent
 import android.view.View
 import android.widget.EditText
 import android.widget.Button
-import android.widget.HorizontalScrollView
-import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
+import androidx.constraintlayout.widget.ConstraintLayout
+import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.chip.ChipGroup
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -18,6 +17,7 @@ import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.espresso.matcher.RootMatchers.isDialog
 import io.github.danzuep.bibleaudioproducer.audio.VerseAudio
+import io.github.danzuep.bibleaudioproducer.R
 import io.github.danzuep.bibleaudioproducer.audio.VerseBoundaries
 import io.github.danzuep.bibleaudioproducer.data.AudioProjectRepository
 import io.github.danzuep.bibleaudioproducer.data.MaculaVerseJson
@@ -71,10 +71,24 @@ class VerseSliceEditorTest {
                 assertEquals(true, invoke("rememberSelection"))
                 assertEquals(560, boundaries.end(0))
                 assertEquals(560, boundaries.start(1))
+                waveform.show(samples, boundaries.snapshot(), 0)
+                waveform.zoomBy(2)
+                touch(MotionEvent.ACTION_DOWN, 280f)
+                touch(MotionEvent.ACTION_MOVE, 310f)
+                touch(MotionEvent.ACTION_UP, 310f)
+                assertEquals(620, boundaries.end(0))
+                assertEquals(620, boundaries.start(1))
+                assertEquals("0s – 0.03875s (38.75 ms)", (field("timing").get(editor) as TextView).text.toString())
                 VerseTakeEditor::class.java.getDeclaredMethod("moveCard", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
                     .apply { isAccessible = true }.invoke(editor, 0, 1)
                 assertEquals(listOf(1, 0, 2), reordered)
-                assertEquals(560, boundaries.start(1))
+                assertEquals(620, boundaries.start(1))
+                (field("end").get(editor) as EditText).setText("0")
+                val rejected = VerseTakeEditor::class.java.getDeclaredMethod(
+                    "moveCard", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType
+                ).apply { isAccessible = true }.invoke(editor, 1, 0)
+                assertEquals(false, rejected)
+                assertEquals(listOf(1, 0, 2), reordered)
                 editor.dispose()
             }
         }
@@ -96,17 +110,20 @@ class VerseSliceEditorTest {
                     activity, AudioProjectRepository(File(context.cacheDir, "slice-order-test")),
                     words, { true }, { reordered = it }, {}, {}
                 )
-                val root = editor.view()
+                editor.view()
                 fun field(name: String) = VerseTakeEditor::class.java.getDeclaredField(name).apply { isAccessible = true }
                 fun invoke(name: String) = VerseTakeEditor::class.java.getDeclaredMethod(name)
                     .apply { isAccessible = true }.invoke(editor)
                 fun move(from: Int, to: Int) =
                     VerseTakeEditor::class.java.getDeclaredMethod("moveCard", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
                         .apply { isAccessible = true }.invoke(editor, from, to)
-                val guide = field("guide").get(editor) as TextView
+                val guide = field("tokens").get(editor) as ChipGroup
+                fun guideText() = (0 until guide.childCount).joinToString(" · ") {
+                    (guide.getChildAt(it) as TextView).text.toString()
+                }
                 move(0, 2)
                 assertEquals(listOf(2, 4, 0), reordered)
-                assertEquals("english1 · english2 · english0", guide.text.toString())
+                assertEquals("english1 · english2 · english0", guideText())
                 VerseTakeEditor::class.java.getDeclaredMethod("selectCard", Int::class.javaPrimitiveType)
                     .apply { isAccessible = true }.invoke(editor, 0)
                 invoke("freezeAudioOrder")
@@ -118,15 +135,12 @@ class VerseSliceEditorTest {
                 move(0, 2)
                 assertEquals(listOf(4, 0, 2), reordered)
                 assertEquals(listOf(0, 400, 900, 1600), boundaries.snapshot())
-                assertEquals("english1 · english2 · english0", guide.text.toString())
-                val labels = ArrayList<View>()
-                root.findViewsWithText(labels, "⠿  3-3", View.FIND_VIEWS_WITH_TEXT)
-                assertEquals(1, labels.size)
+                assertEquals("english1 · english2 · english0", guideText())
                 assertEquals("0.000000", (field("start").get(editor) as EditText).text.toString())
                 assertEquals("0.025000", (field("end").get(editor) as EditText).text.toString())
                 field("guideMode").setInt(editor, 1)
                 invoke("updateGuide")
-                assertEquals("[translation needed] · chinese2 · chinese0", guide.text.toString())
+                assertEquals("[translation needed] · chinese2 · chinese0", guideText())
                 val custom = field("customGuide").get(editor) as EditText
                 field("guideMode").setInt(editor, 4)
                 invoke("updateGuide")
@@ -141,7 +155,7 @@ class VerseSliceEditorTest {
                 val reviewed = field("reviewed").get(editor) as MutableSet<Int>
                 reviewed.addAll(listOf(0, 1))
                 (field("end").get(editor) as EditText).setText("0.031250")
-                (field("next").get(editor) as Button).performClick()
+                guide.getChildAt(1).performClick()
                 assertEquals(1, field("index").getInt(editor))
                 assertEquals(emptySet<Int>(), reviewed)
                 assertEquals(500, boundaries.end(0))
@@ -188,9 +202,10 @@ class VerseSliceEditorTest {
                     field("boundaries").set(editor, VerseBoundaries(listOf(0, 800, 1600)))
                     invoke("showSelection")
                     invoke("refresh")
-                    (field("next").get(editor) as Button).performClick()
+                    VerseTakeEditor::class.java.getDeclaredMethod("selectCard", Int::class.javaPrimitiveType)
+                        .apply { isAccessible = true }.invoke(editor, 1)
                     assertEquals(0, reviewedCount())
-                    (field("save").get(editor) as Button).performClick()
+                    (field("next").get(editor) as Button).performClick()
                 }
                 fun waitForActivityFocus() {
                     val deadline = System.currentTimeMillis() + 10_000
@@ -201,12 +216,12 @@ class VerseSliceEditorTest {
                     }
                     assertTrue("Activity did not regain focus after replacement dialog", focused)
                 }
-                onView(withText(android.R.string.cancel)).perform(click())
+                onView(withText(android.R.string.cancel)).inRoot(isDialog()).perform(click())
                 waitForActivityFocus()
                 scenario.onActivity {
                     assertEquals(0, reviewedCount())
                     assertArrayEquals(original, clip.readBytes())
-                    (field("save").get(editor) as Button).performClick()
+                    (field("next").get(editor) as Button).performClick()
                 }
                 onView(withText("Replace")).inRoot(isDialog()).perform(click())
                 fun waitForReviewed(count: Int) {
@@ -226,9 +241,10 @@ class VerseSliceEditorTest {
                     VerseTakeEditor::class.java.getDeclaredMethod("moveCard", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
                         .apply { isAccessible = true }.invoke(editor, 1, 0)
                     assertEquals("0.050000", (field("start").get(editor) as EditText).text.toString())
-                    (field("next").get(editor) as Button).performClick()
+                    VerseTakeEditor::class.java.getDeclaredMethod("selectCard", Int::class.javaPrimitiveType)
+                        .apply { isAccessible = true }.invoke(editor, 1)
                     assertEquals(1, reviewedCount())
-                    (field("save").get(editor) as Button).performClick()
+                    (field("next").get(editor) as Button).performClick()
                 }
                 onView(withText("Replace")).inRoot(isDialog()).perform(click())
                 waitForReviewed(2)
@@ -241,69 +257,49 @@ class VerseSliceEditorTest {
     }
 
     @Test
-    fun nextAlignsFinalCardAtLeadingEdgeInBothDirections() {
+    fun chipsHelpAndNudgesKeepSharedBoundariesAndStickyControls() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val words = context.assets.open("books/JHN.json").bufferedReader().use {
-            MaculaVerseJson.parse(it.readText()).first().words.filter { !it.disabled(emptySet()) }.take(5)
+            MaculaVerseJson.parse(it.readText()).first().words.filter { !it.disabled(emptySet()) }.take(3)
         }.mapIndexed { index, word -> VerseRecordingWord(word, index) }
-        assertEquals(5, words.size)
-        for (direction in listOf(View.LAYOUT_DIRECTION_LTR, View.LAYOUT_DIRECTION_RTL)) {
-            ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
-                lateinit var editor: VerseTakeEditor
-                lateinit var deck: LinearLayout
-                lateinit var deckScroll: HorizontalScrollView
-                lateinit var next: Button
-                var originalFlags = 0
-                scenario.onActivity { activity ->
-                    originalFlags = activity.applicationInfo.flags
-                    activity.applicationInfo.flags = originalFlags or ApplicationInfo.FLAG_SUPPORTS_RTL
-                    editor = VerseTakeEditor(
-                        activity, AudioProjectRepository(File(context.cacheDir, "slice-scroll-test")),
-                        words, { true }, {}, {}, {}
-                    )
-                    val root = editor.view()
-                    fun field(name: String) = VerseTakeEditor::class.java.getDeclaredField(name).apply { isAccessible = true }
-                    deck = field("deck").get(editor) as LinearLayout
-                    deckScroll = field("deckScroll").get(editor) as HorizontalScrollView
-                    next = field("next").get(editor) as Button
-                    root.layoutDirection = direction
-                    activity.setContentView(ScrollView(activity).apply { addView(root) })
-                }
-                try {
-                    fun waitFor(condition: () -> Boolean) {
-                        val deadline = System.currentTimeMillis() + 10_000
-                        while (System.currentTimeMillis() < deadline) {
-                            var done = false
-                            scenario.onActivity { done = condition() }
-                            if (done) return
-                            Thread.sleep(50)
-                        }
-                        var details = ""
-                        scenario.onActivity {
-                            val card = deck.getChildAt(words.lastIndex)
-                            details = "resolved=${deck.layoutDirection}, scroll=${deckScroll.scrollX}, " +
-                                "viewport=${deckScroll.width}, deck=${deck.width}, " +
-                                "padding=${deck.paddingLeft}/${deck.paddingRight}, card=${card.left}..${card.right}"
-                        }
-                        throw AssertionError("Card did not align for layout direction $direction: $details")
-                    }
-                    waitFor { deckScroll.width > 0 && deck.getChildAt(0).isLaidOut }
-                    scenario.onActivity {
-                        assertEquals("Requested deck direction was not resolved", direction, deck.layoutDirection)
-                    }
-                    scenario.onActivity { repeat(words.lastIndex) { next.performClick() } }
-                    waitFor {
-                        val card = deck.getChildAt(words.lastIndex)
-                        card.isLaidOut && if (direction == View.LAYOUT_DIRECTION_RTL) {
-                            card.right - deckScroll.scrollX == deckScroll.width
-                        } else card.left == deckScroll.scrollX
-                    }
-                } finally {
-                    scenario.onActivity {
-                        editor.dispose()
-                        it.applicationInfo.flags = originalFlags
-                    }
-                }
+        ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val editor = VerseTakeEditor(
+                    activity, AudioProjectRepository(File(context.cacheDir, "slice-nudge-test")),
+                    words, { true }, {}, {}, {}
+                )
+                val root = editor.view()
+                fun field(name: String) = VerseTakeEditor::class.java.getDeclaredField(name).apply { isAccessible = true }
+                fun invoke(name: String) = VerseTakeEditor::class.java.getDeclaredMethod(name)
+                    .apply { isAccessible = true }.invoke(editor)
+                val boundaries = VerseBoundaries(listOf(0, 800, 1600, 2400))
+                field("samples").set(editor, FloatArray(2400))
+                field("boundaries").set(editor, boundaries)
+                invoke("showSelection")
+                invoke("refresh")
+                @Suppress("UNCHECKED_CAST")
+                val reviewed = field("reviewed").get(editor) as MutableSet<Int>
+                reviewed.addAll(listOf(0, 1, 2))
+                root.findViewById<View>(R.id.clip_nudge_forward).performClick()
+                assertEquals(960, boundaries.end(0))
+                assertEquals(960, boundaries.start(1))
+                assertEquals(setOf(2), reviewed)
+                val chips = root.findViewById<ChipGroup>(R.id.clip_tokens)
+                chips.getChildAt(2).performClick()
+                assertEquals(2, field("index").getInt(editor))
+                root.findViewById<View>(R.id.clip_nudge_back).performClick()
+                assertEquals(1440, boundaries.start(2))
+                assertEquals(1440, boundaries.end(1))
+                assertTrue(reviewed.isEmpty())
+                val help = root.findViewById<View>(R.id.clip_help)
+                assertEquals(View.GONE, help.visibility)
+                val toolbar = root.findViewById<MaterialToolbar>(R.id.clip_toolbar)
+                toolbar.menu.performIdentifierAction(R.id.clip_help_action, 0)
+                assertEquals(View.VISIBLE, help.visibility)
+                val bottom = root.findViewById<View>(R.id.clip_bottom)
+                assertTrue(bottom.parent is ConstraintLayout)
+                assertEquals(root, bottom.parent)
+                editor.dispose()
             }
         }
     }

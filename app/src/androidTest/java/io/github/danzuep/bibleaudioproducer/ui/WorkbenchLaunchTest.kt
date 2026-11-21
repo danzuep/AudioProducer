@@ -122,7 +122,7 @@ class WorkbenchLaunchTest {
                 select(R.string.audio_word_order_greek)
                 select(R.string.audio_word_order_custom)
                 onView(withText("Add verse recording")).perform(scrollTo(), click())
-                onView(withId(R.id.audio_verse_close)).perform(click())
+                pressBack()
                 onView(withId(R.id.audio_verse_close)).perform(click())
                 waitForSave(scenario)
                 waitForDefault("ENGLISH_SVO")
@@ -677,32 +677,36 @@ class WorkbenchLaunchTest {
             onView(withId(R.id.audio_verse_word_order)).perform(click())
             onData(`is`(context.getString(R.string.audio_word_order_greek))).perform(click())
             onView(withText("Add verse recording")).perform(scrollTo(), click())
-            onView(withId(R.id.audio_verse_close)).check(matches(isDisplayed()))
+            onView(withId(R.id.clip_toolbar)).check(matches(isDisplayed()))
             onView(withId(R.id.audio_workbench_toolbar)).check(matches(org.hamcrest.Matchers.not(isDisplayed())))
-            onView(withText("Record verse")).perform(scrollTo(), click())
+            onView(withText("Record verse")).perform(click())
             Thread.sleep(1000)
-            onView(withText("Stop recording")).perform(scrollTo(), click())
+            onView(withText("Stop recording")).perform(click())
             val deadline = System.currentTimeMillis() + 15_000
             var ready = false
             while (!ready && System.currentTimeMillis() < deadline) {
                 scenario.onActivity { activity ->
                     val views = ArrayList<View>()
-                    activity.window.decorView.findViewsWithText(views, "Save clip and next", View.FIND_VIEWS_WITH_TEXT)
+                    activity.window.decorView.findViewsWithText(views, "Next", View.FIND_VIEWS_WITH_TEXT)
                     ready = views.any { it is Button && it.isEnabled }
                 }
                 if (!ready) Thread.sleep(50)
             }
             assertTrue("Verse take was not decoded", ready)
-            onView(withText("Save clip and next")).perform(scrollTo(), click())
+            onView(withId(R.id.clip_next)).perform(click())
             onView(withText(android.R.string.cancel)).perform(click())
             assertArrayEquals(original, clip.readBytes())
-            onView(withText("Keep existing clip and next")).perform(scrollTo(), click())
-            onView(withText("1 / ${words.size} clips reviewed"))
-                .perform(scrollTo())
+            onView(withText("Keep & next")).perform(click())
+            onView(withText("1 / ${words.size} reviewed"))
                 .check(matches(isDisplayed()))
             val label = words[1].gloss.ifBlank { words[1].mandarin.ifBlank { "[translation needed]" } }
-            onView(withContentDescription("Play $label slice")).perform(scrollTo(), click())
-            onView(withText("Save clip and next")).perform(scrollTo(), click())
+            scenario.onActivity { activity ->
+                val scroll = activity.findViewById<androidx.core.widget.NestedScrollView>(R.id.clip_scroll)
+                val cards = activity.findViewById<View>(R.id.clip_cards)
+                scroll.scrollTo(0, cards.top)
+            }
+            onView(withContentDescription("Play $label slice")).perform(click())
+            onView(withId(R.id.clip_next)).perform(click())
             val saved = AudioProjectRepository(directory).clipFile(words[1].surface)
             val saveDeadline = System.currentTimeMillis() + 15_000
             while (!saved.isFile && System.currentTimeMillis() < saveDeadline) Thread.sleep(50)
@@ -712,7 +716,7 @@ class WorkbenchLaunchTest {
                 scenario.onActivity { activity ->
                     val views = ArrayList<View>()
                     activity.window.decorView.findViewsWithText(
-                        views, "2 / ${words.size} clips reviewed", View.FIND_VIEWS_WITH_TEXT
+                        views, "2 / ${words.size} reviewed", View.FIND_VIEWS_WITH_TEXT
                     )
                     advanced = views.isNotEmpty()
                 }

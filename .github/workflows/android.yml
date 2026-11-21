@@ -5,13 +5,19 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      clip_demo:
+        description: Build only the John 3:16 clipping demo APK
+        type: boolean
+        default: false
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ inputs.clip_demo || false }}
   cancel-in-progress: true
 
 jobs:
   build:
+    if: ${{ !inputs.clip_demo }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -35,6 +41,7 @@ jobs:
           if-no-files-found: ignore
 
   launch:
+    if: ${{ !inputs.clip_demo }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -74,3 +81,21 @@ jobs:
             app/build/reports/androidTests/connected
             app/build/outputs/androidTest-results/connected
           if-no-files-found: ignore
+
+  clip-demo:
+    if: ${{ inputs.clip_demo }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6.3.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v6.4.1
+      - run: ./gradlew -PclipDemo :app:assembleDebug
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: john-3-16-clip-demo
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
