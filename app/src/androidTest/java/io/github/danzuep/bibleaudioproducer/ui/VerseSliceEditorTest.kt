@@ -1,8 +1,11 @@
 package io.github.danzuep.bibleaudioproducer.ui
 
 import android.content.Context
+import android.graphics.Rect
 import android.view.MotionEvent
+import android.view.InputDevice
 import android.view.View
+import android.os.SystemClock
 import android.widget.EditText
 import android.widget.Button
 import android.widget.TextView
@@ -12,6 +15,8 @@ import com.google.android.material.chip.ChipGroup
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.recyclerview.widget.RecyclerView
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.matcher.ViewMatchers.withText
@@ -31,6 +36,107 @@ import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class VerseSliceEditorTest {
+    @Test
+    fun droppingWordOnWaveformSwapsAssignmentsAndInvalidatesBothReviews() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val words = context.assets.open("books/JHN.json").bufferedReader().use {
+            MaculaVerseJson.parse(it.readText()).first().words.filter { !it.disabled(emptySet()) }.take(3)
+        }.mapIndexed { index, word -> VerseRecordingWord(word, index) }
+        ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
+            lateinit var editor: VerseTakeEditor
+            lateinit var points: VerseBoundaries
+            lateinit var waveform: VerseSliceWaveform
+            lateinit var root: View
+            scenario.onActivity { activity ->
+                editor = VerseTakeEditor(
+                    activity, AudioProjectRepository(File(context.cacheDir, "slice-swap-test")),
+                    words, { true }, {}, {}, {}
+                )
+                root = editor.view()
+                activity.setContentView(root)
+                fun field(name: String) = VerseTakeEditor::class.java.getDeclaredField(name).apply { isAccessible = true }
+                fun invoke(name: String) = VerseTakeEditor::class.java.getDeclaredMethod(name)
+                    .apply { isAccessible = true }.invoke(editor)
+                val samples = FloatArray(2400) { 0.1f }
+                points = VerseBoundaries(listOf(0, 800, 1600, 2400))
+                field("samples").set(editor, samples)
+                field("boundaries").set(editor, points)
+                invoke("showSelection")
+                invoke("refresh")
+                @Suppress("UNCHECKED_CAST")
+                val reviewed = field("reviewed").get(editor) as MutableSet<Int>
+                reviewed.addAll(listOf(0, 1, 2))
+                waveform = root.findViewById(R.id.clip_waveform)
+            }
+            val instrumentation = InstrumentationRegistry.getInstrumentation()
+            instrumentation.waitForIdleSync()
+            var startX = 0f
+            var startY = 0f
+            var endX = 0f
+            var endY = 0f
+            scenario.onActivity {
+                val recycler = root.findViewById<RecyclerView>(R.id.clip_cards)
+                val scroll = root.findViewById<androidx.core.widget.NestedScrollView>(R.id.clip_scroll)
+                scroll.scrollTo(0, (recycler.top - scroll.height + 80).coerceAtLeast(0))
+            }
+            instrumentation.waitForIdleSync()
+            scenario.onActivity {
+                val recycler = root.findViewById<RecyclerView>(R.id.clip_cards)
+                val card = checkNotNull(recycler.findViewHolderForAdapterPosition(0)).itemView
+                val waveLocation = IntArray(2)
+                waveform.getLocationOnScreen(waveLocation)
+                val cardVisible = Rect()
+                val waveVisible = Rect()
+                assertTrue(card.getGlobalVisibleRect(cardVisible))
+                assertTrue(waveform.getGlobalVisibleRect(waveVisible))
+                startX = cardVisible.left + cardVisible.width() / 4f
+                startY = cardVisible.top + minOf(cardVisible.height() / 2f, 20f)
+                endX = waveLocation[0] + waveform.width * 5f / 6f
+                endY = waveVisible.centerY().toFloat()
+            }
+            val downTime = SystemClock.uptimeMillis()
+            fun touch(action: Int, x: Float, y: Float) {
+                val event = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, x, y, 0)
+                event.source = InputDevice.SOURCE_TOUCHSCREEN
+                assertTrue(instrumentation.uiAutomation.injectInputEvent(event, true))
+                event.recycle()
+            }
+            touch(MotionEvent.ACTION_DOWN, startX, startY)
+            SystemClock.sleep(900)
+            for (step in 1..10) {
+                val fraction = step / 10f
+                touch(MotionEvent.ACTION_MOVE, startX + (endX - startX) * fraction, startY + (endY - startY) * fraction)
+                SystemClock.sleep(30)
+            }
+            touch(MotionEvent.ACTION_UP, endX, endY)
+            instrumentation.waitForIdleSync()
+            scenario.onActivity {
+                fun field(name: String) = VerseTakeEditor::class.java.getDeclaredField(name).apply { isAccessible = true }
+                @Suppress("UNCHECKED_CAST")
+                val reviewed = field("reviewed").get(editor) as MutableSet<Int>
+                assertEquals(listOf(2, 1, 0), field("audioOrder").get(editor))
+                assertEquals(listOf(0, 800, 1600, 2400), points.snapshot())
+                assertEquals(setOf(1), reviewed)
+                assertEquals("0.100000", (field("start").get(editor) as EditText).text.toString())
+                root.findViewById<RecyclerView>(R.id.clip_cards).scrollToPosition(1)
+            }
+            instrumentation.waitForIdleSync()
+            scenario.onActivity {
+                fun field(name: String) = VerseTakeEditor::class.java.getDeclaredField(name).apply { isAccessible = true }
+                val recycler = root.findViewById<RecyclerView>(R.id.clip_cards)
+                val card = checkNotNull(recycler.findViewHolderForAdapterPosition(1)).itemView
+                val assign = card.findViewById<Button>(R.id.word_assign)
+                assertTrue(assign.isEnabled)
+                assertTrue(assign.performClick())
+                assertEquals(listOf(2, 0, 1), field("audioOrder").get(editor))
+                @Suppress("UNCHECKED_CAST")
+                val reviewed = field("reviewed").get(editor) as MutableSet<Int>
+                assertTrue(reviewed.isEmpty())
+                editor.dispose()
+            }
+        }
+    }
+
     @Test
     fun waveformAndTypedBoundariesStaySharedWhenCardsReorder() {
         val context = ApplicationProvider.getApplicationContext<Context>()

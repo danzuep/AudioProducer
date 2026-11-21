@@ -121,7 +121,7 @@ class WorkbenchLaunchTest {
                 onView(withText("JHN 3:16")).check(matches(isDisplayed()))
                 select(R.string.audio_word_order_greek)
                 select(R.string.audio_word_order_custom)
-                onView(withText("Add verse recording")).perform(scrollTo(), click())
+                onView(withId(R.id.audio_verse_record)).perform(click())
                 pressBack()
                 onView(withId(R.id.audio_verse_close)).perform(click())
                 waitForSave(scenario)
@@ -178,6 +178,15 @@ class WorkbenchLaunchTest {
             awaitBooks(scenario, 27)
             onView(withText("JHN 3:16")).check(matches(isDisplayed()))
             onView(withId(R.id.audio_verse_close)).check(matches(isDisplayed()))
+            onView(withId(R.id.audio_verse_record))
+                .check(matches(isDisplayed()))
+                .check(matches(withContentDescription(R.string.audio_record_verse_words)))
+                .check { view, _ ->
+                    val header = view.parent as ViewGroup
+                    val play = header.getChildAt(header.indexOfChild(view) - 1)
+                    assertEquals(context.getString(R.string.audio_play_verse), play.contentDescription)
+                    assertEquals(context.getString(R.string.audio_record_symbol), (view as TextView).text.toString())
+                }
             onView(withId(R.id.audio_verse_close)).perform(click())
             onView(withId(R.id.audio_workbench_chapter)).check(matches(withText("1")))
             onView(withId(R.id.audio_workbench_chapter)).perform(click())
@@ -676,7 +685,7 @@ class WorkbenchLaunchTest {
             clip.writeBytes(original)
             onView(withId(R.id.audio_verse_word_order)).perform(click())
             onData(`is`(context.getString(R.string.audio_word_order_greek))).perform(click())
-            onView(withText("Add verse recording")).perform(scrollTo(), click())
+            onView(withId(R.id.audio_verse_record)).perform(click())
             onView(withId(R.id.clip_toolbar)).check(matches(isDisplayed()))
             onView(withId(R.id.audio_workbench_toolbar)).check(matches(org.hamcrest.Matchers.not(isDisplayed())))
             onView(withText("Record verse")).perform(click())
@@ -731,7 +740,7 @@ class WorkbenchLaunchTest {
             onView(withText("Discard")).perform(click())
             assertArrayEquals(original, clip.readBytes())
             onView(withId(R.id.audio_verse_close)).check(matches(isDisplayed()))
-            onView(withText("Add verse recording")).perform(scrollTo()).check(matches(isEnabled()))
+            onView(withId(R.id.audio_verse_record)).check(matches(isDisplayed())).check(matches(isEnabled()))
         }
     }
 

@@ -5,7 +5,7 @@ class VerseBoundaries(initial: List<Int>) {
     private val points = initial.toMutableList()
 
     init {
-        require(points.size >= 2 && points.first() == 0 &&
+        require(points.size >= 2 && points.first() >= 0 &&
             points.zipWithNext().all { (a, b) -> a < b }) { "Invalid verse boundaries." }
     }
 
@@ -16,14 +16,14 @@ class VerseBoundaries(initial: List<Int>) {
 
     fun setRange(index: Int, start: Int, end: Int): Set<Int> {
         require(index in 0 until count && start < end &&
-            (if (index == 0) start == points.first() else start > points[index - 1]) &&
+            (if (index == 0) start >= 0 else start > points[index - 1]) &&
             (if (index == count - 1) end == points.last() else end < points[index + 2])) {
             "The selection must remain between its neighboring boundaries."
         }
         val changed = mutableSetOf<Int>()
         if (points[index] != start) {
             points[index] = start
-            changed.add(index - 1)
+            if (index > 0) changed.add(index - 1)
             changed.add(index)
         }
         if (points[index + 1] != end) {
@@ -35,12 +35,13 @@ class VerseBoundaries(initial: List<Int>) {
     }
 
     fun move(boundary: Int, sample: Int): Set<Int> {
-        require(boundary in 1 until points.lastIndex) { "The recording endpoints cannot be moved." }
-        require(sample > points[boundary - 1] && sample < points[boundary + 1]) {
+        require(boundary in 0 until points.lastIndex) { "The recording end cannot be moved." }
+        require((if (boundary == 0) sample >= 0 else sample > points[boundary - 1]) &&
+            sample < points[boundary + 1]) {
             "A boundary must stay between its neighboring boundaries."
         }
         if (points[boundary] == sample) return emptySet()
         points[boundary] = sample
-        return setOf(boundary - 1, boundary)
+        return if (boundary == 0) setOf(0) else setOf(boundary - 1, boundary)
     }
 }

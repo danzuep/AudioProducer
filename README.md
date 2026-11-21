@@ -20,20 +20,25 @@ icon to set the recording language, import plans or audio, export archives, or m
 Imports in a different language are rejected to prevent mixing projects. Plans and
 recordings remain in private storage; export them before uninstalling.
 
-In a verse, select a word-order mode or drag individual words, then choose **Add verse
-recording** to open the recording editor. Record the enabled words' translations in the
+In a verse, select a word-order mode or drag individual words, then tap the record
+button beside playback to open the recording editor. Record the enabled words' translations in the
 displayed card order; omit disabled words. Choose an English, Chinese, original Greek,
 transliteration, or custom recording guide. The app suggests boundaries at quiet points in
 recording order and shows them on a chronological waveform above the card deck. Tap a guide
 chip, slice or card to select it; drag a waveform handle, use the 10 ms nudge buttons,
 the sliders, or enter seconds. The nudge buttons move the selected slice's end boundary
-(or its start for the last slice); recording endpoints are fixed. Zoom is centered on the
+(or its start for the last slice). The app suggests skipping leading silence while keeping
+the original take; adjust the first start handle or time to restore audio if needed.
+The recording end is fixed. Zoom is centered on the
 selected slice. Adjacent spoken slices share their boundary: moving it
 changes both clips and requires reviewing both again. Hold and drag a card to change
 the target order using its drag handle without moving its audio or changing spoken boundaries.
+Hold a card and drop it onto a waveform segment to swap its audio with the card already
+assigned there. Alternatively select a segment and tap **Use selected** on the desired card.
+Both assignments require review again; previously saved clips remain unchanged until saved again.
 Preview each clip and use **Next** to save it, or **Keep & next** to keep its existing clip.
 The Android editor currently maps one spoken slice to each enabled Greek form; editable
-card text, audio re-pairing, split/merge, unassigned blobs and alignment ZIP export
+card text, split/merge, unassigned blobs and alignment ZIP export
 remain available only in the separate browser slicer below.
 Suggestions assume one spoken segment per enabled card; translations with extra, missing,
 or combined words need manual adjustment. They are not speech recognition and must be
@@ -143,9 +148,7 @@ cursor. Drag the selected handles or enter milliseconds; the handles snap to nea
 zero crossings. Cards can be reordered, split or merged, and audio can be moved separately.
 Overwriting an attachment or the whole recording requires reviewing the replacement.
 The ancient text is a label for its translated equivalent; it is not compared with
-the recording. On Android, **Export interlinear script** in a verse exports the currently selected
-word order and English glosses as a compatible JSON array. Disabled words are omitted,
-and audio must be paired separately.
+the recording.
 
 Export produces a ZIP with lossless clips in card order, the original source audio and
 `alignment.json`. Empty cards have no WAV; merged cards include all their spans in

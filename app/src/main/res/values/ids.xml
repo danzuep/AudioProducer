@@ -1,6 +1,7 @@
 <resources>
     <item name="audio_verse_close" type="id" />
     <item name="audio_verse_more" type="id" />
+    <item name="audio_verse_record" type="id" />
     <item name="audio_verse_word_order" type="id" />
     <item name="clip_help_action" type="id" />
 </resources>

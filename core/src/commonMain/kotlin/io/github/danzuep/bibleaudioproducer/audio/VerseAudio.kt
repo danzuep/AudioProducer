@@ -21,10 +21,14 @@ object VerseAudio {
             val end = minOf(start + window, samples.size)
             (start until end).sumOf { samples[it].toDouble() * samples[it] } / (end - start)
         }
-        val boundaries = mutableListOf(0)
+        val peakEnergy = energies.maxOrNull() ?: 0.0
+        val firstAudible = if (peakEnergy == 0.0) 0 else
+            energies.indexOfFirst { it >= peakEnergy * 0.0025 }.coerceAtLeast(0) * window
+        val start = (firstAudible - SAMPLE_RATE / 25).coerceIn(0, samples.size - wordCount)
+        val boundaries = mutableListOf(start)
         for (i in 1 until wordCount) {
-            val target = samples.size.toLong() * i / wordCount
-            val radius = samples.size / wordCount / 3
+            val target = start + (samples.size - start).toLong() * i / wordCount
+            val radius = (samples.size - start) / wordCount / 3
             val minimum = boundaries.last() + 1
             val maximum = samples.size - (wordCount - i)
             val first = maxOf(minimum, (target - radius).toInt())

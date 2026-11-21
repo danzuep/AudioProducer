@@ -45,7 +45,6 @@ internal class VerseDialogs(
         fun playChapter(chapter: Int, verses: List<AudioVerse>)
         fun isPlayingChapter(chapter: Int): Boolean
         fun downloadVerse(verse: AudioVerse)
-        fun exportInterlinear(reference: String, words: List<VerseWord>)
         fun saveVerseState(
             reference: String, order: List<Int>?, unspoken: Set<String>,
             selectedPreset: WordOrderMode? = null
@@ -279,6 +278,11 @@ internal class VerseDialogs(
         val play = roundButton(R.color.workbench_primary).apply {
             setOnClickListener { actions.playVerse(verse) }
         }
+        val addRecording = roundButton(R.color.workbench_record).apply {
+            id = R.id.audio_verse_record
+            setText(R.string.audio_record_symbol)
+            contentDescription = activity.getString(R.string.audio_record_verse_words)
+        }
         val more = Button(activity).apply {
             id = R.id.audio_verse_more
             text = "⋮"
@@ -295,6 +299,7 @@ internal class VerseDialogs(
         header.addView(close, LinearLayout.LayoutParams(dp(48), dp(56)))
         header.addView(reference, LinearLayout.LayoutParams(0, dp(56), 1f))
         header.addView(play)
+        header.addView(addRecording)
         header.addView(more, LinearLayout.LayoutParams(dp(48), dp(56)))
         root.addView(header)
         val hint = TextView(activity).apply {
@@ -355,68 +360,57 @@ internal class VerseDialogs(
             scroll.visibility = View.VISIBLE
             root.setPadding(dp(16), dp(12), dp(16), dp(12))
         }
-        val exportInterlinear = MaterialButton(activity).apply {
-            text = "Export interlinear script"
-            setOnClickListener {
-                actions.exportInterlinear(verse.reference, order.map(verse.words::get).filter { !it.disabled(unspoken) })
-            }
-        }
-        val addRecording = MaterialButton(activity).apply {
-            text = "Add verse recording"
-            setOnClickListener {
-                val cards = VerseWorkflow.recordingWords(verse.words, order, unspoken)
-                if (cards.isEmpty()) return@setOnClickListener
-                actions.stopPlayback()
-                lateinit var editor: VerseTakeEditor
-                fun closeEditor() {
-                    if (editor.close()) {
-                        takeEditor = null
-                        showVersePage()
-                        isEnabled = true
-                        visibility = View.VISIBLE
-                        flow.visibility = View.VISIBLE
-                        exportInterlinear.visibility = View.VISIBLE
-                        controls.visibility = View.VISIBLE
-                        hint.visibility = View.VISIBLE
-                        orderMode.isEnabled = true
-                        renderWords()
-                        refreshControls()
-                    }
+        addRecording.setOnClickListener {
+            val cards = VerseWorkflow.recordingWords(verse.words, order, unspoken)
+            if (cards.isEmpty()) return@setOnClickListener
+            actions.stopPlayback()
+            lateinit var editor: VerseTakeEditor
+            fun closeEditor() {
+                if (editor.close()) {
+                    takeEditor = null
+                    showVersePage()
+                    addRecording.isEnabled = true
+                    addRecording.visibility = View.VISIBLE
+                    flow.visibility = View.VISIBLE
+                    controls.visibility = View.VISIBLE
+                    hint.visibility = View.VISIBLE
+                    orderMode.isEnabled = true
+                    renderWords()
+                    refreshControls()
                 }
-                editor = VerseTakeEditor(activity, repository, cards,
-                    actions::hasRecordingPermission, { originalOrder ->
-                        val reordered = originalOrder.iterator()
-                        order = order.map {
-                            if (verse.words[it].disabled(unspoken)) it else reordered.next()
-                        }.toMutableList()
-                        selecting = true
-                        orderMode.setSelection(WordOrderMode.CUSTOM.ordinal)
-                        selecting = false
-                        selectedMode = WordOrderMode.CUSTOM
-                        changed = true
-                    }, { closeEditor() }, {
-                        closeEditor()
-                        changed = false
-                        back()
-                        actions.completeVerse(verse, order.toList(), unspoken.toSet())
-                    }, verse.reference)
-                takeEditor = editor
-                header.visibility = View.GONE
-                scroll.visibility = View.GONE
-                root.setPadding(0, 0, 0, 0)
-                editorContainer.visibility = View.VISIBLE
-                isEnabled = false
-                visibility = View.GONE
-                flow.visibility = View.GONE
-                exportInterlinear.visibility = View.GONE
-                controls.visibility = View.GONE
-                hint.visibility = View.GONE
-                orderMode.isEnabled = false
-                editorContainer.addView(editor.view(), FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
-                ))
-                scroll.post { scroll.scrollTo(0, 0) }
             }
+            editor = VerseTakeEditor(activity, repository, cards,
+                actions::hasRecordingPermission, { originalOrder ->
+                    val reordered = originalOrder.iterator()
+                    order = order.map {
+                        if (verse.words[it].disabled(unspoken)) it else reordered.next()
+                    }.toMutableList()
+                    selecting = true
+                    orderMode.setSelection(WordOrderMode.CUSTOM.ordinal)
+                    selecting = false
+                    selectedMode = WordOrderMode.CUSTOM
+                    changed = true
+                }, { closeEditor() }, {
+                    closeEditor()
+                    changed = false
+                    back()
+                    actions.completeVerse(verse, order.toList(), unspoken.toSet())
+                }, verse.reference)
+            takeEditor = editor
+            header.visibility = View.GONE
+            scroll.visibility = View.GONE
+            root.setPadding(0, 0, 0, 0)
+            editorContainer.visibility = View.VISIBLE
+            addRecording.isEnabled = false
+            addRecording.visibility = View.GONE
+            flow.visibility = View.GONE
+            controls.visibility = View.GONE
+            hint.visibility = View.GONE
+            orderMode.isEnabled = false
+            editorContainer.addView(editor.view(), FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+            ))
+            scroll.post { scroll.scrollTo(0, 0) }
         }
 
         renderWords = {
@@ -515,8 +509,6 @@ internal class VerseDialogs(
         val verseContent = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             addView(flow)
-            addView(exportInterlinear)
-            addView(addRecording)
         }
         scroll = ScrollView(activity).apply {
             setFillViewport(true)
@@ -563,7 +555,6 @@ internal class VerseDialogs(
                     addRecording.isEnabled = true
                     addRecording.visibility = View.VISIBLE
                     flow.visibility = View.VISIBLE
-                    exportInterlinear.visibility = View.VISIBLE
                     controls.visibility = View.VISIBLE
                     hint.visibility = View.VISIBLE
                     orderMode.isEnabled = true

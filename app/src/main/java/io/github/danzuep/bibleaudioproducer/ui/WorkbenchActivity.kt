@@ -56,8 +56,6 @@ import io.github.danzuep.bibleaudioproducer.workbench.VerseWorkflow
 import io.github.danzuep.bibleaudioproducer.workbench.VerseWord
 import io.github.danzuep.bibleaudioproducer.workbench.WordOrderMode
 import io.github.danzuep.bibleaudioproducer.workbench.RecordingPlan
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.Executors
 
@@ -98,8 +96,6 @@ class WorkbenchActivity : AppCompatActivity() {
                 this@WorkbenchActivity.playChapter(chapter, verses)
             override fun isPlayingChapter(chapter: Int) = playingChapterKey == chapterKey(chapter)
             override fun downloadVerse(verse: AudioVerse) = this@WorkbenchActivity.downloadVerse(verse)
-            override fun exportInterlinear(reference: String, words: List<VerseWord>) =
-                this@WorkbenchActivity.exportInterlinear(reference, words)
             override fun saveVerseState(
                 reference: String, order: List<Int>?, unspoken: Set<String>,
                 selectedPreset: WordOrderMode?
@@ -157,7 +153,6 @@ class WorkbenchActivity : AppCompatActivity() {
         val missing: Int, val format: VerseExportFormat
     )
     private var pendingVerseExport: VerseExport? = null
-    private var pendingInterlinear: String? = null
 
     private lateinit var language: EditText
     private lateinit var books: Spinner
@@ -187,22 +182,6 @@ class WorkbenchActivity : AppCompatActivity() {
     private val saveVerseOpus = registerForActivityResult(ActivityResultContracts.CreateDocument("audio/ogg")) {
         completeVerseSave(it)
     }
-    private val saveInterlinear = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        val json = pendingInterlinear
-        pendingInterlinear = null
-        if (uri != null && json != null) {
-            try {
-                val output = contentResolver.openOutputStream(uri) ?: error("Unable to open the export file.")
-                output.use { it.write(json.toByteArray(Charsets.UTF_8)) }
-                Toast.makeText(this, "Interlinear script saved.", Toast.LENGTH_LONG).show()
-            } catch (exception: Exception) {
-                Toast.makeText(this, exception.message ?: "Unable to save the interlinear script.", Toast.LENGTH_LONG).show()
-            }
-        } else if (uri != null) {
-            Toast.makeText(this, "The interlinear export was interrupted. Try again.", Toast.LENGTH_LONG).show()
-        }
-    }
-
     private fun completeVerseSave(uri: Uri?) {
         val export = pendingVerseExport
         pendingVerseExport = null
@@ -218,7 +197,6 @@ class WorkbenchActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        pendingInterlinear = savedInstanceState?.getString("pending_interlinear")
         val pendingReference = savedInstanceState?.getString("verse_export_reference")
         val pendingGreekForms = savedInstanceState?.getStringArrayList("verse_export_lemmas")
         val pendingPaths = savedInstanceState?.getStringArrayList("verse_export_paths")
@@ -403,7 +381,6 @@ class WorkbenchActivity : AppCompatActivity() {
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
-        outState.putString("pending_interlinear", pendingInterlinear)
         pendingVerseExport?.let {
             outState.putString("verse_export_reference", it.reference)
             outState.putStringArrayList("verse_export_lemmas", ArrayList(it.greekForms))
@@ -922,19 +899,6 @@ class WorkbenchActivity : AppCompatActivity() {
             }
         }
         dialog.show()
-    }
-
-    private fun exportInterlinear(reference: String, words: List<VerseWord>) {
-        if (words.isEmpty()) {
-            Toast.makeText(this, "Enable at least one word before exporting.", Toast.LENGTH_LONG).show()
-            return
-        }
-        val json = JSONArray()
-        words.forEach { word ->
-            json.put(JSONObject().put("target_text", word.gloss).put("ancient_text", word.surface))
-        }
-        pendingInterlinear = json.toString(2)
-        saveInterlinear.launch("${reference.replace(Regex("[^A-Za-z0-9]+"), "-")}-interlinear.json")
     }
 
     private fun exportVerse(uri: Uri, export: VerseExport) {

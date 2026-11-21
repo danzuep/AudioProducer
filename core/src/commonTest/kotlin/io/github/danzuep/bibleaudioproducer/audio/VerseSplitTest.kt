@@ -14,13 +14,27 @@ class VerseSplitTest {
         assertEquals(120, boundaries.start(1))
         assertEquals(emptySet(), boundaries.move(1, 120))
         assertFailsWith<IllegalArgumentException> { boundaries.move(1, 200) }
-        assertFailsWith<IllegalArgumentException> { boundaries.move(0, 10) }
+        assertFailsWith<IllegalArgumentException> { boundaries.move(0, -1) }
         assertEquals(listOf(0, 120, 200, 300), boundaries.snapshot())
         assertEquals(setOf(0, 1, 2), boundaries.setRange(1, 130, 220))
         assertEquals(listOf(0, 130, 220, 300), boundaries.snapshot())
         assertFailsWith<IllegalArgumentException> { boundaries.setRange(1, 220, 220) }
-        assertFailsWith<IllegalArgumentException> { boundaries.setRange(0, 1, 100) }
+        assertFailsWith<IllegalArgumentException> { boundaries.setRange(0, -1, 100) }
         assertEquals(listOf(0, 130, 220, 300), boundaries.snapshot())
+    }
+
+    @Test
+    fun leadingSilenceIsSkippedWithoutLosingTheOriginalAudio() {
+        val samples = FloatArray(24000) { if (it >= 16000) 0.4f else 0f }
+        val suggested = VerseAudio.suggestBoundaries(samples, 2)
+        assertEquals(15360, suggested.first())
+        assertEquals(24000, suggested.last())
+        val boundaries = VerseBoundaries(suggested)
+        assertEquals(setOf(0), boundaries.move(0, 0))
+        assertEquals(setOf(0), boundaries.setRange(0, 12000, boundaries.end(0)))
+        assertEquals(0f, samples[0])
+        assertEquals(0.4f, samples[16000])
+        assertEquals(0, VerseAudio.suggestBoundaries(FloatArray(1000), 2).first())
     }
 
     @Test
