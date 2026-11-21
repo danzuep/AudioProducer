@@ -347,7 +347,14 @@ internal class VerseDialogs(
         root.addView(controls)
         lateinit var flow: VerseFlowLayout
         lateinit var scroll: ScrollView
-        val editorContainer = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        val editorContainer = FrameLayout(activity).apply { visibility = View.GONE }
+        fun showVersePage() {
+            editorContainer.removeAllViews()
+            editorContainer.visibility = View.GONE
+            header.visibility = View.VISIBLE
+            scroll.visibility = View.VISIBLE
+            root.setPadding(dp(16), dp(12), dp(16), dp(12))
+        }
         val exportInterlinear = MaterialButton(activity).apply {
             text = "Export interlinear script"
             setOnClickListener {
@@ -364,7 +371,7 @@ internal class VerseDialogs(
                 fun closeEditor() {
                     if (editor.close()) {
                         takeEditor = null
-                        editorContainer.removeAllViews()
+                        showVersePage()
                         isEnabled = true
                         visibility = View.VISIBLE
                         flow.visibility = View.VISIBLE
@@ -392,8 +399,12 @@ internal class VerseDialogs(
                         changed = false
                         back()
                         actions.completeVerse(verse, order.toList(), unspoken.toSet())
-                    })
+                    }, verse.reference)
                 takeEditor = editor
+                header.visibility = View.GONE
+                scroll.visibility = View.GONE
+                root.setPadding(0, 0, 0, 0)
+                editorContainer.visibility = View.VISIBLE
                 isEnabled = false
                 visibility = View.GONE
                 flow.visibility = View.GONE
@@ -401,7 +412,9 @@ internal class VerseDialogs(
                 controls.visibility = View.GONE
                 hint.visibility = View.GONE
                 orderMode.isEnabled = false
-                editorContainer.addView(editor.view())
+                editorContainer.addView(editor.view(), FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                ))
                 scroll.post { scroll.scrollTo(0, 0) }
             }
         }
@@ -504,7 +517,6 @@ internal class VerseDialogs(
             addView(flow)
             addView(exportInterlinear)
             addView(addRecording)
-            addView(editorContainer)
         }
         scroll = ScrollView(activity).apply {
             setFillViewport(true)
@@ -515,6 +527,9 @@ internal class VerseDialogs(
             ))
         }
         root.addView(scroll, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+        ))
+        root.addView(editorContainer, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
         ))
         renderWords()
@@ -544,7 +559,7 @@ internal class VerseDialogs(
             if (editor != null) {
                 if (editor.close()) {
                     takeEditor = null
-                    editorContainer.removeAllViews()
+                    showVersePage()
                     addRecording.isEnabled = true
                     addRecording.visibility = View.VISIBLE
                     flow.visibility = View.VISIBLE

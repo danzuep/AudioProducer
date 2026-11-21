@@ -19,6 +19,19 @@ internal class AndroidAudioPlayer(private val onError: () -> Unit) {
         player = null
     }
 
+    fun pause(): Boolean {
+        val current = player ?: return false
+        if (!current.isPlaying) return false
+        current.pause()
+        return true
+    }
+
+    fun resume(): Boolean {
+        val current = player ?: return false
+        current.start()
+        return true
+    }
+
     private fun playNext(files: List<File>, index: Int, expectedGeneration: Int, onComplete: () -> Unit) {
         if (generation != expectedGeneration) return
         if (index >= files.size) {

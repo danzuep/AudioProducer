@@ -5,6 +5,7 @@ def keystorePropertiesFile = rootProject.file('keystore.properties')
 def appVersionName = (project.findProperty('appVersion') ?: '1.0.0').toString()
 def appVersionCode = (project.findProperty('appVersionCode') ?: '10000').toString().toInteger()
 def maculaAssets = layout.buildDirectory.dir('generated/maculaAudioAssets')
+def clipDemo = project.hasProperty('clipDemo')
 
 tasks.register('generateMaculaAssets', Exec) {
     inputs.files(rootProject.file('scripts/generate-macula-assets.sh'),
@@ -26,6 +27,9 @@ android {
         versionCode appVersionCode
         versionName appVersionName
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        manifestPlaceholders = [launcherActivity: clipDemo ?
+            'io.github.danzuep.bibleaudioproducer.ui.ClipDemoActivity' :
+            'io.github.danzuep.bibleaudioproducer.ui.WorkbenchActivity']
     }
 
     compileOptions {
@@ -62,7 +66,7 @@ android {
     }
     splits {
         abi {
-            enable true
+            enable !clipDemo
             reset()
             include 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
             universalApk false
@@ -80,16 +84,23 @@ android {
         }
     }
     testOptions { unitTests.includeAndroidResources = true }
-    sourceSets.main.assets.srcDir(maculaAssets)
+    if (clipDemo) {
+        sourceSets.main.java.srcDir('src/clipDemo/java')
+    } else {
+        sourceSets.main.assets.srcDir(maculaAssets)
+    }
 }
 
-tasks.named('preBuild').configure { dependsOn tasks.named('generateMaculaAssets') }
+if (!clipDemo) {
+    tasks.named('preBuild').configure { dependsOn tasks.named('generateMaculaAssets') }
+}
 
 dependencies {
     implementation project(':core')
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'androidx.core:core-ktx:1.15.0'
     implementation 'androidx.recyclerview:recyclerview:1.4.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
     implementation 'androidx.documentfile:documentfile:1.0.1'
     implementation 'com.google.android.material:material:1.12.0'
     implementation 'com.google.code.gson:gson:2.12.1'
