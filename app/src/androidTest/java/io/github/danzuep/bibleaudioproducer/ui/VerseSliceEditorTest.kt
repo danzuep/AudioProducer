@@ -1,6 +1,7 @@
 package io.github.danzuep.bibleaudioproducer.ui
 
 import android.content.Context
+import android.graphics.Rect
 import android.view.MotionEvent
 import android.view.View
 import android.os.SystemClock
@@ -74,20 +75,28 @@ class VerseSliceEditorTest {
             var endY = 0f
             scenario.onActivity {
                 val recycler = root.findViewById<RecyclerView>(R.id.clip_cards)
+                val scroll = root.findViewById<androidx.core.widget.NestedScrollView>(R.id.clip_scroll)
+                scroll.scrollTo(0, (recycler.top - scroll.height + 80).coerceAtLeast(0))
+            }
+            instrumentation.waitForIdleSync()
+            scenario.onActivity {
+                val recycler = root.findViewById<RecyclerView>(R.id.clip_cards)
                 val card = checkNotNull(recycler.findViewHolderForAdapterPosition(0)).itemView
-                val cardLocation = IntArray(2)
                 val waveLocation = IntArray(2)
-                card.getLocationOnScreen(cardLocation)
                 waveform.getLocationOnScreen(waveLocation)
-                startX = cardLocation[0] + card.width / 4f
-                startY = cardLocation[1] + card.height / 4f
+                val cardVisible = Rect()
+                val waveVisible = Rect()
+                assertTrue(card.getGlobalVisibleRect(cardVisible))
+                assertTrue(waveform.getGlobalVisibleRect(waveVisible))
+                startX = cardVisible.left + cardVisible.width() / 4f
+                startY = cardVisible.top + minOf(cardVisible.height() / 2f, 20f)
                 endX = waveLocation[0] + waveform.width * 5f / 6f
-                endY = waveLocation[1] + waveform.height / 2f
+                endY = waveVisible.centerY().toFloat()
             }
             val downTime = SystemClock.uptimeMillis()
             fun touch(action: Int, x: Float, y: Float) {
                 val event = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, x, y, 0)
-                instrumentation.sendPointerSync(event)
+                assertTrue(instrumentation.uiAutomation.injectInputEvent(event, true))
                 event.recycle()
             }
             touch(MotionEvent.ACTION_DOWN, startX, startY)
