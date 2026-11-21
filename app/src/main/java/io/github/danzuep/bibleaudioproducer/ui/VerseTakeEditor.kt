@@ -167,6 +167,7 @@ internal class VerseTakeEditor(
                 }
             }
             setOnDragListener { _, event ->
+                android.util.Log.i("VerseDragDebug", "event=${event.action} x=${event.x} y=${event.y} local=${event.localState}")
                 when (event.action) {
                     DragEvent.ACTION_DRAG_STARTED -> event.localState is WordDrag && !working && !recording && boundaries != null
                     DragEvent.ACTION_DRAG_LOCATION -> {
@@ -451,14 +452,17 @@ internal class VerseTakeEditor(
                 if (current != RecyclerView.NO_POSITION) selectCard(current)
             }
             holder.card.setOnLongClickListener {
+                android.util.Log.i("VerseDragDebug", "longpress ready=$ready word=${word.originalIndex}")
                 if (!ready || !rememberSelection()) return@setOnLongClickListener false
                 val drag = WordDrag(word.originalIndex)
-                if (android.os.Build.VERSION.SDK_INT >= 24) {
+                val started = if (android.os.Build.VERSION.SDK_INT >= 24) {
                     holder.card.startDragAndDrop(null, View.DragShadowBuilder(holder.card), drag, 0)
                 } else {
                     @Suppress("DEPRECATION")
                     holder.card.startDrag(null, View.DragShadowBuilder(holder.card), drag, 0)
                 }
+                android.util.Log.i("VerseDragDebug", "start=$started")
+                started
             }
             holder.assign.isEnabled = ready && spoken != audioIndex(words[index])
             holder.assign.contentDescription = "Assign ${targetLabel(word)} to selected audio segment"
