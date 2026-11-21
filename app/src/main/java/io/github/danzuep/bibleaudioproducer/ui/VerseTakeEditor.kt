@@ -2,6 +2,7 @@ package io.github.danzuep.bibleaudioproducer.ui
 
 import android.content.res.ColorStateList
 import android.view.ContextThemeWrapper
+import android.view.DragEvent
 import android.view.LayoutInflater
 import android.view.MenuItem
 import android.view.MotionEvent
@@ -56,6 +57,8 @@ internal class VerseTakeEditor(
     private val io = Executors.newSingleThreadExecutor()
     private val words = words.toMutableList()
     private var audioOrder = words.map { it.originalIndex }
+    private var recordingGuideOrder = audioOrder
+    private data class WordDrag(val originalIndex: Int)
     private val recorder = AndroidAudioRecorder(activity)
     private val player = AndroidAudioPlayer {
         playingTake = false
@@ -163,6 +166,26 @@ internal class VerseTakeEditor(
                     refresh()
                 }
             }
+            setOnDragListener { _, event ->
+                when (event.action) {
+                    DragEvent.ACTION_DRAG_STARTED -> event.localState is WordDrag && !working && !recording && boundaries != null
+                    DragEvent.ACTION_DRAG_LOCATION -> {
+                        showDropTarget(segmentAt(event.x))
+                        true
+                    }
+                    DragEvent.ACTION_DRAG_EXITED, DragEvent.ACTION_DRAG_ENDED -> {
+                        showDropTarget(null)
+                        true
+                    }
+                    DragEvent.ACTION_DROP -> {
+                        val target = segmentAt(event.x)
+                        showDropTarget(null)
+                        val drag = event.localState as? WordDrag
+                        if (target != null && drag != null) assignWord(drag.originalIndex, target) else false
+                    }
+                    else -> true
+                }
+            }
         }
         content.findViewById<View>(R.id.clip_zoom_in).setOnClickListener { waveform.zoomBy(2) }
         content.findViewById<View>(R.id.clip_zoom_out).setOnClickListener { waveform.zoomOut() }
@@ -237,7 +260,7 @@ internal class VerseTakeEditor(
     internal fun loadDemoTake(demoSamples: FloatArray) {
         samples = demoSamples
         boundaries = VerseBoundaries(VerseAudio.suggestBoundaries(samples, words.size))
-        audioOrder = words.map { it.originalIndex }
+        freezeAudioOrder()
         reviewed.clear()
         index = 0
         showSelection()
@@ -310,7 +333,7 @@ internal class VerseTakeEditor(
         record.isEnabled = !working
         waveform.isEnabled = ready
         val spoken = audioIndex(words[index])
-        start.isEnabled = ready && spoken > 0
+        start.isEnabled = ready
         end.isEnabled = ready && spoken < words.lastIndex
         startSeek.isEnabled = start.isEnabled
         endSeek.isEnabled = end.isEnabled
@@ -367,6 +390,27 @@ internal class VerseTakeEditor(
         return true
     }
 
+    private fun assignWord(originalIndex: Int, target: Int): Boolean {
+        if (working || recording || boundaries == null || target !in audioOrder.indices) return false
+        if (!rememberSelection()) return false
+        val source = audioOrder.indexOf(originalIndex)
+        if (source < 0) return false
+        if (source == target) return true
+        val updated = audioOrder.toMutableList()
+        val displaced = updated[target]
+        updated[target] = originalIndex
+        updated[source] = displaced
+        audioOrder = updated
+        reviewed.remove(source)
+        reviewed.remove(target)
+        index = words.indexOfFirst { it.originalIndex == originalIndex }
+        showSelection()
+        refresh()
+        scrollToSelection()
+        toast("Audio segments swapped. Review both clips again.")
+        return true
+    }
+
     private inner class WordAdapter : RecyclerView.Adapter<WordAdapter.Holder>() {
         inner class Holder(view: View) : RecyclerView.ViewHolder(view) {
             val card = view as MaterialCardView
@@ -376,6 +420,7 @@ internal class VerseTakeEditor(
             val metadata = view.findViewById<Chip>(R.id.word_metadata)
             val play = view.findViewById<Button>(R.id.word_play)
             val drag = view.findViewById<View>(R.id.word_drag)
+            val assign = view.findViewById<Button>(R.id.word_assign)
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
@@ -405,6 +450,19 @@ internal class VerseTakeEditor(
                 val current = holder.bindingAdapterPosition
                 if (current != RecyclerView.NO_POSITION) selectCard(current)
             }
+            holder.card.setOnLongClickListener {
+                if (!ready || !rememberSelection()) return@setOnLongClickListener false
+                val drag = WordDrag(word.originalIndex)
+                if (android.os.Build.VERSION.SDK_INT >= 24) {
+                    holder.card.startDragAndDrop(null, View.DragShadowBuilder(holder.card), drag, 0)
+                } else {
+                    @Suppress("DEPRECATION")
+                    holder.card.startDrag(null, View.DragShadowBuilder(holder.card), drag, 0)
+                }
+            }
+            holder.assign.isEnabled = ready && spoken != audioIndex(words[index])
+            holder.assign.contentDescription = "Assign ${targetLabel(word)} to selected audio segment"
+            holder.assign.setOnClickListener { assignWord(word.originalIndex, audioIndex(words[index])) }
             holder.play.setOnClickListener {
                 val current = holder.bindingAdapterPosition
                 if (current != RecyclerView.NO_POSITION && (current == index || selectCardForPreview(current))) previewSelection()
@@ -496,7 +554,8 @@ internal class VerseTakeEditor(
                 preview?.delete()
                 val file = repository.newVersePreview()
                 preview = file
-                file.writeBytes(VerseAudio.encodeWav(samples))
+                val first = checkNotNull(boundaries).start(0)
+                file.writeBytes(VerseAudio.encodeWav(samples.copyOfRange(first, samples.size)))
                 playingTake = true
                 player.play(listOf(file)) {
                     if (!closed) {
@@ -637,6 +696,7 @@ internal class VerseTakeEditor(
     private fun seconds(sample: Int) = String.format(Locale.US, "%.6f", sample.toDouble() / VerseAudio.SAMPLE_RATE)
     private fun freezeAudioOrder() {
         audioOrder = words.map { it.originalIndex }
+        recordingGuideOrder = audioOrder
     }
 
     private fun audioIndex(word: VerseRecordingWord) =
@@ -656,7 +716,7 @@ internal class VerseTakeEditor(
         customGuide.visibility = if (guideMode == 4) View.VISIBLE else View.GONE
         if (guideMode == 4) return
         val guideWords = if (recording || samples.isNotEmpty()) {
-            audioOrder.map { original -> words.first { it.originalIndex == original } }
+            recordingGuideOrder.map { original -> words.first { it.originalIndex == original } }
         } else words
         tokens.removeAllViews()
         guideWords.forEach { word ->

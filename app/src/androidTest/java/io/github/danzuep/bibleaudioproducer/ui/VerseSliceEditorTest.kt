@@ -2,6 +2,7 @@ package io.github.danzuep.bibleaudioproducer.ui
 
 import android.content.Context
 import android.view.MotionEvent
+import android.view.DragEvent
 import android.view.View
 import android.widget.EditText
 import android.widget.Button
@@ -31,6 +32,59 @@ import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class VerseSliceEditorTest {
+    @Test
+    fun droppingWordOnWaveformSwapsAssignmentsAndInvalidatesBothReviews() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val words = context.assets.open("books/JHN.json").bufferedReader().use {
+            MaculaVerseJson.parse(it.readText()).first().words.filter { !it.disabled(emptySet()) }.take(3)
+        }.mapIndexed { index, word -> VerseRecordingWord(word, index) }
+        ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val editor = VerseTakeEditor(
+                    activity, AudioProjectRepository(File(context.cacheDir, "slice-swap-test")),
+                    words, { true }, {}, {}, {}
+                )
+                val root = editor.view()
+                activity.setContentView(root)
+                fun field(name: String) = VerseTakeEditor::class.java.getDeclaredField(name).apply { isAccessible = true }
+                fun invoke(name: String) = VerseTakeEditor::class.java.getDeclaredMethod(name)
+                    .apply { isAccessible = true }.invoke(editor)
+                val samples = FloatArray(2400) { 0.1f }
+                val points = VerseBoundaries(listOf(0, 800, 1600, 2400))
+                field("samples").set(editor, samples)
+                field("boundaries").set(editor, points)
+                invoke("showSelection")
+                invoke("refresh")
+                @Suppress("UNCHECKED_CAST")
+                val reviewed = field("reviewed").get(editor) as MutableSet<Int>
+                reviewed.addAll(listOf(0, 1, 2))
+                val waveform = root.findViewById<VerseSliceWaveform>(R.id.clip_waveform)
+                waveform.layout(0, 0, 300, 120)
+                val dragClass = VerseTakeEditor::class.java.declaredClasses.first { it.simpleName == "WordDrag" }
+                val drag = dragClass.getDeclaredConstructor(Int::class.javaPrimitiveType)
+                    .apply { isAccessible = true }.newInstance(words[0].originalIndex)
+                fun dragEvent(action: Int, x: Float): Boolean {
+                    val event = DragEvent.obtain(action, x, 60f, drag, null, null, false)
+                    return waveform.dispatchDragEvent(event).also { event.recycle() }
+                }
+                assertTrue(dragEvent(DragEvent.ACTION_DRAG_STARTED, 0f))
+                assertTrue(dragEvent(DragEvent.ACTION_DROP, 250f))
+                dragEvent(DragEvent.ACTION_DRAG_ENDED, 250f)
+                assertEquals(listOf(2, 1, 0), field("audioOrder").get(editor))
+                assertEquals(listOf(0, 800, 1600, 2400), points.snapshot())
+                assertEquals(setOf(1), reviewed)
+                assertEquals("0.100000", (field("start").get(editor) as EditText).text.toString())
+                val assign = VerseTakeEditor::class.java.getDeclaredMethod(
+                    "assignWord", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType
+                ).apply { isAccessible = true }
+                assertEquals(true, assign.invoke(editor, words[1].originalIndex, 2))
+                assertEquals(listOf(2, 0, 1), field("audioOrder").get(editor))
+                assertTrue(reviewed.isEmpty())
+                editor.dispose()
+            }
+        }
+    }
+
     @Test
     fun waveformAndTypedBoundariesStaySharedWhenCardsReorder() {
         val context = ApplicationProvider.getApplicationContext<Context>()

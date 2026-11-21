@@ -18,8 +18,20 @@ class VerseSliceWaveform @JvmOverloads constructor(context: Context, attrs: Attr
     private var dragging = -1
     private var zoom = 1
     private var windowStart = 0
+    private var dropTarget = -1
     var onSelect: (Int) -> Unit = {}
     var onBoundary: (Int, Int) -> Unit = { _, _ -> }
+
+    fun segmentAt(x: Float): Int? {
+        if (samples.isEmpty() || boundaries.size < 2 || width <= 0 || x < 0 || x > width) return null
+        val sample = windowStart + (x / width * windowSize()).toInt().coerceAtMost(windowSize() - 1)
+        return (0 until boundaries.lastIndex).firstOrNull { sample >= boundaries[it] && sample < boundaries[it + 1] }
+    }
+
+    fun showDropTarget(segment: Int?) {
+        dropTarget = segment ?: -1
+        invalidate()
+    }
 
     fun show(samples: FloatArray, boundaries: List<Int>, selected: Int) {
         val newSamples = this.samples !== samples
@@ -75,6 +87,10 @@ class VerseSliceWaveform @JvmOverloads constructor(context: Context, attrs: Attr
             paint.color = color(i, if (i == selected) 170 else 75)
             canvas.drawRect(position(boundaries[i]), 0f, position(boundaries[i + 1]), height.toFloat(), paint)
         }
+        if (dropTarget in 0 until boundaries.lastIndex) {
+            paint.color = Color.argb(110, 255, 255, 255)
+            canvas.drawRect(position(boundaries[dropTarget]), 0f, position(boundaries[dropTarget + 1]), height.toFloat(), paint)
+        }
         paint.color = Color.rgb(215, 230, 244)
         paint.strokeWidth = 1f
         for (x in 0 until width) {
@@ -87,7 +103,8 @@ class VerseSliceWaveform @JvmOverloads constructor(context: Context, attrs: Attr
             val half = (peak.coerceAtMost(1f) * height * 0.43f).coerceAtLeast(1f)
             canvas.drawLine(x.toFloat(), height / 2f - half, x.toFloat(), height / 2f + half, paint)
         }
-        for (i in 1 until boundaries.lastIndex) {
+        for (i in 0 until boundaries.lastIndex) {
+            if (i == 0 && selected != 0) continue
             val x = position(boundaries[i])
             if (x < 0 || x > width) continue
             val active = i == selected || i == selected + 1
@@ -111,22 +128,21 @@ class VerseSliceWaveform @JvmOverloads constructor(context: Context, attrs: Attr
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 val radius = 24 * resources.displayMetrics.density
-                dragging = (1 until boundaries.lastIndex).minByOrNull {
+                dragging = (0 until boundaries.lastIndex).filter { it > 0 || selected == 0 }.minByOrNull {
                     abs((boundaries[it] - windowStart).toFloat() / windowSize() * width - event.x)
                 }?.takeIf { abs((boundaries[it] - windowStart).toFloat() / windowSize() * width - event.x) <= radius } ?: -1
                 parent.requestDisallowInterceptTouchEvent(true)
                 if (dragging < 0) {
-                    val segment = (0 until boundaries.lastIndex).firstOrNull {
-                        sample >= boundaries[it] && sample < boundaries[it + 1]
-                    } ?: boundaries.lastIndex - 1
-                    onSelect(segment)
-                    performClick()
+                    segmentAt(event.x)?.let {
+                        onSelect(it)
+                        performClick()
+                    }
                 }
                 return true
             }
             MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP -> {
-                if (dragging > 0) {
-                    val low = boundaries[dragging - 1] + 1
+                if (dragging >= 0) {
+                    val low = if (dragging == 0) 0 else boundaries[dragging - 1] + 1
                     val high = boundaries[dragging + 1] - 1
                     val target = sample.coerceIn(low, high)
                     val radius = 80

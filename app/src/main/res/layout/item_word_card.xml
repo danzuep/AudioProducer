@@ -63,7 +63,15 @@
             android:layout_height="48dp"
             android:text="▶"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/word_metadata"
+            app:layout_constraintTop_toBottomOf="@id/word_metadata" />
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/word_assign"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:text="Use selected"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/word_play"
             app:layout_constraintBottom_toBottomOf="parent" />
     </androidx.constraintlayout.widget.ConstraintLayout>
 </com.google.android.material.card.MaterialCardView>
