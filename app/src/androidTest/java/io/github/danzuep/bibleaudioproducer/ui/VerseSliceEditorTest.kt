@@ -83,6 +83,8 @@ class VerseSliceEditorTest {
                 val recycler = root.findViewById<RecyclerView>(R.id.clip_cards)
                 val card = checkNotNull(recycler.findViewHolderForAdapterPosition(0)).itemView
                 val waveLocation = IntArray(2)
+                val cardLocation = IntArray(2)
+                card.getLocationOnScreen(cardLocation)
                 waveform.getLocationOnScreen(waveLocation)
                 val cardVisible = Rect()
                 val waveVisible = Rect()
@@ -92,6 +94,7 @@ class VerseSliceEditorTest {
                 startY = cardVisible.top + minOf(cardVisible.height() / 2f, 20f)
                 endX = waveLocation[0] + waveform.width * 5f / 6f
                 endY = waveVisible.centerY().toFloat()
+                android.util.Log.i("VerseDragDebug", "card=${cardLocation.toList()} visible=$cardVisible wave=${waveLocation.toList()} visible=$waveVisible start=$startX,$startY end=$endX,$endY")
             }
             val downTime = SystemClock.uptimeMillis()
             fun touch(action: Int, x: Float, y: Float) {
