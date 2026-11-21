@@ -167,4 +167,43 @@ class MaculaXmlTest {
         assertEquals(listOf(1, 0, 2, 3, 4, 5, 7, 6, 8, 10, 9),
             VerseWorkflow.modeOrder(verse, WordOrderMode.GERMAN_V2))
     }
+
+    @Test
+    fun asianAndSemiticPresetsKeepExtraposedClausesAndPreverbalAdverbsInPlace() {
+        val verse = MaculaXml.parse("""
+            <book><wg class="cl">
+              <w ref="JHN 1:1!1" role="adv">thus</w>
+              <w ref="JHN 1:1!2" role="v">gave</w>
+              <w ref="JHN 1:1!3" role="s">subject</w>
+              <wg class="np" role="o"><w ref="JHN 1:1!4">object</w></wg>
+              <wg class="cl" role="adv" rule="sub-CL">
+                <w ref="JHN 1:1!5">so that</w>
+                <wg class="cl"><w ref="JHN 1:1!6" role="adv">not</w>
+                  <w ref="JHN 1:1!7" role="v">perish</w>
+                  <w ref="JHN 1:1!8" role="s">subject</w></wg>
+              </wg>
+            </wg></book>
+        """.trimIndent()).single()
+        assertEquals(listOf(2, 0, 1, 3, 4, 7, 5, 6),
+            VerseWorkflow.modeOrder(verse, WordOrderMode.MANDARIN_SADVVO))
+        assertEquals(listOf(2, 0, 3, 1, 4, 7, 5, 6),
+            VerseWorkflow.modeOrder(verse, WordOrderMode.JAPANESE_SOV))
+        assertEquals(listOf(0, 1, 2, 3, 4, 5, 6, 7),
+            VerseWorkflow.modeOrder(verse, WordOrderMode.ARABIC_VSO))
+    }
+
+    @Test
+    fun japaneseMovesAnObjectClauseAsAWholeBeforeTheVerb() {
+        val verse = MaculaXml.parse("""
+            <book><wg class="cl"><w ref="JHN 1:1!1" role="v">said</w>
+              <w ref="JHN 1:1!2" role="s">subject</w>
+              <wg class="cl" role="o"><w ref="JHN 1:1!3" role="s">inner subject</w>
+                <w ref="JHN 1:1!4" role="v">came</w></wg>
+            </wg></book>
+        """.trimIndent()).single()
+        assertEquals(listOf(1, 2, 3, 0),
+            VerseWorkflow.modeOrder(verse, WordOrderMode.JAPANESE_SOV))
+        assertEquals(listOf(1, 0, 2, 3),
+            VerseWorkflow.modeOrder(verse, WordOrderMode.MANDARIN_SADVVO))
+    }
 }

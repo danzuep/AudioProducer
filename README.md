@@ -72,6 +72,17 @@ German uses a fronted constituent followed by the finite verb in main clauses,
 and approximates verb-final order in subordinate clauses; it cannot add auxiliaries.
 The [Freie Lutherbibel's John 3:16](https://github.com/bibliadelpueblo/BibliaLibre/blob/bed6a5c56de7db4895304553c6d7c3e763480f10/Bibles/German.FreieLuther/43-Johannes.md)
 is an ordering reference, not a word-for-word target.
+The other presets were compared with John 3:16 in the eBible-derived
+[Chinese Union Version](https://github.com/BibleNLP/ebible/blob/2bde52b4c2cfd7056cf4ed07c48969647df79744/corpus/cmn-cmn_cu89s.txt),
+[Japanese New Japanese NT](https://github.com/BibleNLP/ebible/blob/2bde52b4c2cfd7056cf4ed07c48969647df79744/corpus/jpn-jpn1965.txt),
+[Arabic Van Dyck](https://github.com/BibleNLP/ebible/blob/2bde52b4c2cfd7056cf4ed07c48969647df79744/corpus/arb-arb_vd.txt)
+and [Modern Hebrew Bible](https://github.com/BibleNLP/ebible/blob/2bde52b4c2cfd7056cf4ed07c48969647df79744/corpus/heb-heb.txt),
+and the separately mirrored [Korean Bible (1910)](https://github.com/Waeil55/bible/blob/efe16c5cba21a919732d2784062de295c8628df5/data/bible/langs/index.json).
+The first four are in the pinned [eBible catalog snapshot](https://github.com/BibleNLP/ebible/blob/2bde52b4c2cfd7056cf4ed07c48969647df79744/metadata/translations.csv);
+the Korean reference is not in that snapshot. Japanese/Korean and Arabic/Hebrew
+each share a rough preset, not a language-specific grammar. Adverbial clauses retain
+their position relative to surrounding constituents, while whole object clauses can
+move; a translation may instead restructure or split those clauses.
 Japanese postpositions are approximated only for intact prepositional phrases.
 English, Mandarin and Japanese move post-head modifiers in explicitly headed noun
 phrases; German also moves these modifiers before nouns. For the bundled data, which

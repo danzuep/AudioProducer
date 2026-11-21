@@ -100,7 +100,10 @@ internal object MaculaWordOrder {
             }
             if (group.category != "cl" || (mode.verbSecond && nominal)) return
             val orderedChildren = group.children.sortedBy { positions(members(it)).firstOrNull() ?: Int.MAX_VALUE }
-            fun slot(node: SyntaxNode): String = if (mode.verbSecond && node is SyntaxGroup && node.category == "cl") {
+            fun slot(node: SyntaxNode): String = if (
+                node is SyntaxGroup && node.category == "cl" &&
+                (mode.verbSecond || (mode != WordOrderMode.ENGLISH_SVO && role(node) == "adv"))
+            ) {
                 ""
             } else if (
                 node is SyntaxWord && words[node.index].lemma in setOf("γάρ", "δέ")
@@ -119,7 +122,7 @@ internal object MaculaWordOrder {
                 data class Part(val nodes: List<SyntaxNode>, val slot: String)
                 val parts = mutableListOf<Part>()
                 for (node in segment) {
-                    if (mode == WordOrderMode.ENGLISH_SVO && slot(node) == "V" &&
+                    if (mode in setOf(WordOrderMode.ENGLISH_SVO, WordOrderMode.ARABIC_VSO) && slot(node) == "V" &&
                         parts.lastOrNull()?.slot == "ADV"
                     ) {
                         val adverb = parts.removeAt(parts.lastIndex)

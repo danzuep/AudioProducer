@@ -98,6 +98,25 @@ class WorkbenchLaunchTest {
     }
 
     @Test
+    fun john316OtherPresetsKeepPurposeAndNegationInTheirClauses() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val verse = context.assets.open("books/JHN.xml").bufferedReader().use {
+            MaculaXml.parse(it.readText()).first { item -> item.reference == "JHN 3:16" }
+        }
+        fun numbers(mode: WordOrderMode) = VerseWorkflow.modeOrder(verse, mode).map { it + 1 }
+        val mandarin = numbers(WordOrderMode.MANDARIN_SADVVO)
+        assertEquals(listOf(13, 11, 12, 9, 10, 14), mandarin.filter { it in 9..14 })
+        val japanese = numbers(WordOrderMode.JAPANESE_SOV)
+        assertEquals(listOf(11, 12, 9, 10, 13, 14, 3), japanese.filter { it in 9..14 || it == 3 })
+        val arabic = numbers(WordOrderMode.ARABIC_VSO)
+        assertEquals(listOf(2, 1, 3, 4, 5, 6, 7), arabic.filter { it in 1..7 })
+        assertEquals(listOf(20, 21), arabic.filter { it in 20..21 })
+        for (order in listOf(mandarin, japanese, arabic)) {
+            assertEquals((1..verse.words.size).toList(), order.sorted())
+        }
+    }
+
+    @Test
     fun johnPresetSelectionPersistsWithoutRecordingAndRespectsSavedOrders() {
             val context = ApplicationProvider.getApplicationContext<Context>()
             val verses = context.assets.open("books/JHN.xml").bufferedReader().use {
