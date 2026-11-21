@@ -178,8 +178,7 @@ internal class VerseTakeEditor(
                 val from = holder.bindingAdapterPosition
                 val to = target.bindingAdapterPosition
                 if (from == RecyclerView.NO_POSITION || to == RecyclerView.NO_POSITION || working || recording) return false
-                moveCard(from, to)
-                return true
+                return moveCard(from, to)
             }
             override fun onSwiped(holder: RecyclerView.ViewHolder, direction: Int) = Unit
             override fun clearView(recyclerView: RecyclerView, holder: RecyclerView.ViewHolder) {
@@ -348,9 +347,9 @@ internal class VerseTakeEditor(
         scrollToSelection()
     }
 
-    private fun moveCard(from: Int, to: Int) {
-        if (working || recording || from == to || from !in words.indices || to !in words.indices) return
-        if (boundaries != null && !rememberSelection()) return
+    private fun moveCard(from: Int, to: Int): Boolean {
+        if (working || recording || from == to || from !in words.indices || to !in words.indices) return false
+        if (boundaries != null && !rememberSelection()) return false
         val selected = words[index].originalIndex
         words.add(to, words.removeAt(from))
         index = words.indexOfFirst { it.originalIndex == selected }
@@ -360,6 +359,7 @@ internal class VerseTakeEditor(
         reordering = true
         refresh()
         reordering = false
+        return true
     }
 
     private inner class WordAdapter : RecyclerView.Adapter<WordAdapter.Holder>() {

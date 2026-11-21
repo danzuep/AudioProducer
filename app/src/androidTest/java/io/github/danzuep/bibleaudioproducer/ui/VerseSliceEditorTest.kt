@@ -82,6 +82,12 @@ class VerseSliceEditorTest {
                     .apply { isAccessible = true }.invoke(editor, 0, 1)
                 assertEquals(listOf(1, 0, 2), reordered)
                 assertEquals(620, boundaries.start(1))
+                (field("end").get(editor) as EditText).setText("0")
+                val rejected = VerseTakeEditor::class.java.getDeclaredMethod(
+                    "moveCard", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType
+                ).apply { isAccessible = true }.invoke(editor, 1, 0)
+                assertEquals(false, rejected)
+                assertEquals(listOf(1, 0, 2), reordered)
                 editor.dispose()
             }
         }
