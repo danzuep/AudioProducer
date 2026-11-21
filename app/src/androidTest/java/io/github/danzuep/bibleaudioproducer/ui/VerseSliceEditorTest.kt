@@ -118,11 +118,19 @@ class VerseSliceEditorTest {
                 assertEquals(listOf(0, 800, 1600, 2400), points.snapshot())
                 assertEquals(setOf(1), reviewed)
                 assertEquals("0.100000", (field("start").get(editor) as EditText).text.toString())
-                val assign = VerseTakeEditor::class.java.getDeclaredMethod(
-                    "assignWord", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType
-                ).apply { isAccessible = true }
-                assertEquals(true, assign.invoke(editor, words[1].originalIndex, 2))
+                root.findViewById<RecyclerView>(R.id.clip_cards).scrollToPosition(1)
+            }
+            instrumentation.waitForIdleSync()
+            scenario.onActivity {
+                fun field(name: String) = VerseTakeEditor::class.java.getDeclaredField(name).apply { isAccessible = true }
+                val recycler = root.findViewById<RecyclerView>(R.id.clip_cards)
+                val card = checkNotNull(recycler.findViewHolderForAdapterPosition(1)).itemView
+                val assign = card.findViewById<Button>(R.id.word_assign)
+                assertTrue(assign.isEnabled)
+                assertTrue(assign.performClick())
                 assertEquals(listOf(2, 0, 1), field("audioOrder").get(editor))
+                @Suppress("UNCHECKED_CAST")
+                val reviewed = field("reviewed").get(editor) as MutableSet<Int>
                 assertTrue(reviewed.isEmpty())
                 editor.dispose()
             }

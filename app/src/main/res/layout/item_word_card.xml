@@ -59,18 +59,20 @@
         <com.google.android.material.button.MaterialButton
             android:id="@+id/word_play"
             style="@style/Widget.Material3.Button.OutlinedButton"
-            android:layout_width="wrap_content"
+            android:layout_width="48dp"
             android:layout_height="48dp"
+            android:minWidth="0dp"
             android:text="▶"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/word_metadata" />
         <com.google.android.material.button.MaterialButton
             android:id="@+id/word_assign"
             style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="48dp"
             android:text="Use selected"
             app:layout_constraintStart_toEndOf="@id/word_play"
+            app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toTopOf="@id/word_play"
             app:layout_constraintBottom_toBottomOf="@id/word_play" />
     </androidx.constraintlayout.widget.ConstraintLayout>
