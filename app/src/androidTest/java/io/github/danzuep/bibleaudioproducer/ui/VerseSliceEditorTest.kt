@@ -1,11 +1,13 @@
 package io.github.danzuep.bibleaudioproducer.ui
 
 import android.content.Context
+import android.Manifest
 import android.graphics.Rect
 import android.view.MotionEvent
 import android.view.InputDevice
 import android.view.View
 import android.os.SystemClock
+import android.os.ParcelFileDescriptor
 import android.widget.EditText
 import android.widget.Button
 import android.widget.TextView
@@ -37,7 +39,81 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class VerseSliceEditorTest {
     @Test
-    fun droppingWordOnWaveformSwapsAssignmentsAndInvalidatesBothReviews() {
+    fun waveformStartsAtOneSecondAndOnlySelectedBoundariesDrag() {
+        ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val waveform = VerseSliceWaveform(activity)
+                val parent = android.widget.FrameLayout(activity)
+                parent.addView(waveform)
+                waveform.layout(0, 0, 400, 120)
+                val samples = FloatArray(80000) { 0.1f }
+                val boundaries = listOf(0, 8000, 16000, 32000, 80000)
+                waveform.show(samples, boundaries, 0)
+                assertEquals(1, waveform.segmentAt(360f))
+                waveform.zoomOut()
+                assertEquals(2, waveform.segmentAt(360f))
+                var selected = -1
+                var moved = -1
+                waveform.onSelect = { selected = it }
+                waveform.onBoundary = { boundary, _ -> moved = boundary }
+                fun touch(action: Int, x: Float) {
+                    val event = MotionEvent.obtain(0, 0, action, x, 60f, 0)
+                    waveform.dispatchTouchEvent(event)
+                    event.recycle()
+                }
+                touch(MotionEvent.ACTION_DOWN, 200f)
+                touch(MotionEvent.ACTION_MOVE, 220f)
+                touch(MotionEvent.ACTION_UP, 220f)
+                assertEquals(2, selected)
+                assertEquals(-1, moved)
+                touch(MotionEvent.ACTION_DOWN, 100f)
+                touch(MotionEvent.ACTION_MOVE, 110f)
+                touch(MotionEvent.ACTION_UP, 110f)
+                assertEquals(1, moved)
+                waveform.show(samples, boundaries, 3)
+                assertEquals(3, waveform.segmentAt(200f))
+            }
+        }
+    }
+
+    @Test
+    fun recordingShowsLiveWaveformAndStopsSamplingInBackground() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val grant = instrumentation.uiAutomation.executeShellCommand(
+            "pm grant ${context.packageName} ${Manifest.permission.RECORD_AUDIO}"
+        )
+        ParcelFileDescriptor.AutoCloseInputStream(grant).bufferedReader().use { it.readText() }
+        val words = context.assets.open("books/JHN.json").bufferedReader().use {
+            MaculaVerseJson.parse(it.readText()).first().words.filter { !it.disabled(emptySet()) }.take(3)
+        }.mapIndexed { index, word -> VerseRecordingWord(word, index) }
+        ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
+            lateinit var editor: VerseTakeEditor
+            lateinit var root: View
+            scenario.onActivity { activity ->
+                editor = VerseTakeEditor(
+                    activity, AudioProjectRepository(File(context.cacheDir, "slice-live-test")),
+                    words, { true }, {}, {}, {}
+                )
+                root = editor.view()
+                activity.setContentView(root)
+                root.findViewById<Button>(R.id.clip_record).performClick()
+                assertEquals(View.VISIBLE, root.findViewById<View>(R.id.clip_live_waveform).visibility)
+            }
+            SystemClock.sleep(500)
+            scenario.onActivity {
+                val field = VerseTakeEditor::class.java.getDeclaredField("levels").apply { isAccessible = true }
+                val levels = field.get(editor) as List<*>
+                assertTrue("Microphone levels were not sampled", levels.size >= 2)
+                editor.stopForBackground()
+                assertEquals(View.GONE, root.findViewById<View>(R.id.clip_live_waveform).visibility)
+                editor.dispose()
+            }
+        }
+    }
+
+    @Test
+    fun droppingWordMovesCardsAndInvalidatesAffectedReviews() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val words = context.assets.open("books/JHN.json").bufferedReader().use {
             MaculaVerseJson.parse(it.readText()).first().words.filter { !it.disabled(emptySet()) }.take(3)
@@ -114,9 +190,11 @@ class VerseSliceEditorTest {
                 fun field(name: String) = VerseTakeEditor::class.java.getDeclaredField(name).apply { isAccessible = true }
                 @Suppress("UNCHECKED_CAST")
                 val reviewed = field("reviewed").get(editor) as MutableSet<Int>
-                assertEquals(listOf(2, 1, 0), field("audioOrder").get(editor))
+                @Suppress("UNCHECKED_CAST")
+                val order = field("words").get(editor) as List<VerseRecordingWord>
+                assertEquals(listOf(1, 2, 0), order.map { it.originalIndex })
                 assertEquals(listOf(0, 800, 1600, 2400), points.snapshot())
-                assertEquals(setOf(1), reviewed)
+                assertTrue(reviewed.isEmpty())
                 assertEquals("0.100000", (field("start").get(editor) as EditText).text.toString())
                 root.findViewById<RecyclerView>(R.id.clip_cards).scrollToPosition(1)
             }
@@ -128,7 +206,9 @@ class VerseSliceEditorTest {
                 val assign = card.findViewById<Button>(R.id.word_assign)
                 assertTrue(assign.isEnabled)
                 assertTrue(assign.performClick())
-                assertEquals(listOf(2, 0, 1), field("audioOrder").get(editor))
+                @Suppress("UNCHECKED_CAST")
+                val order = field("words").get(editor) as List<VerseRecordingWord>
+                assertEquals(listOf(1, 0, 2), order.map { it.originalIndex })
                 @Suppress("UNCHECKED_CAST")
                 val reviewed = field("reviewed").get(editor) as MutableSet<Int>
                 assertTrue(reviewed.isEmpty())
@@ -201,7 +281,7 @@ class VerseSliceEditorTest {
     }
 
     @Test
-    fun recordingOrderIsFrozenWhileNavigationAndGuideFollowTheirOwnOrders() {
+    fun cardOrderMatchesAudioAndGuideAfterReordering() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val verseWords = context.assets.open("books/JHN.json").bufferedReader().use {
             MaculaVerseJson.parse(it.readText()).first().words.filter { !it.disabled(emptySet()) }.take(3)
@@ -232,7 +312,6 @@ class VerseSliceEditorTest {
                 assertEquals("english1 · english2 · english0", guideText())
                 VerseTakeEditor::class.java.getDeclaredMethod("selectCard", Int::class.javaPrimitiveType)
                     .apply { isAccessible = true }.invoke(editor, 0)
-                invoke("freezeAudioOrder")
                 val boundaries = VerseBoundaries(listOf(0, 400, 900, 1600))
                 field("samples").set(editor, FloatArray(1600))
                 field("boundaries").set(editor, boundaries)
@@ -241,12 +320,12 @@ class VerseSliceEditorTest {
                 move(0, 2)
                 assertEquals(listOf(4, 0, 2), reordered)
                 assertEquals(listOf(0, 400, 900, 1600), boundaries.snapshot())
-                assertEquals("english1 · english2 · english0", guideText())
-                assertEquals("0.000000", (field("start").get(editor) as EditText).text.toString())
-                assertEquals("0.025000", (field("end").get(editor) as EditText).text.toString())
+                assertEquals("english2 · english0 · english1", guideText())
+                assertEquals("0.056250", (field("start").get(editor) as EditText).text.toString())
+                assertEquals("0.100000", (field("end").get(editor) as EditText).text.toString())
                 field("guideMode").setInt(editor, 1)
                 invoke("updateGuide")
-                assertEquals("[translation needed] · chinese2 · chinese0", guideText())
+                assertEquals("chinese2 · chinese0 · [translation needed]", guideText())
                 val custom = field("customGuide").get(editor) as EditText
                 field("guideMode").setInt(editor, 4)
                 invoke("updateGuide")
@@ -346,15 +425,15 @@ class VerseSliceEditorTest {
                 scenario.onActivity {
                     VerseTakeEditor::class.java.getDeclaredMethod("moveCard", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
                         .apply { isAccessible = true }.invoke(editor, 1, 0)
-                    assertEquals("0.050000", (field("start").get(editor) as EditText).text.toString())
+                    assertEquals("0.000000", (field("start").get(editor) as EditText).text.toString())
                     VerseTakeEditor::class.java.getDeclaredMethod("selectCard", Int::class.javaPrimitiveType)
                         .apply { isAccessible = true }.invoke(editor, 1)
-                    assertEquals(1, reviewedCount())
+                    assertEquals(0, reviewedCount())
                     (field("next").get(editor) as Button).performClick()
                 }
                 onView(withText("Replace")).inRoot(isDialog()).perform(click())
-                waitForReviewed(2)
-                assertArrayEquals(VerseAudio.encodeWav(VerseAudio.slice(samples, 0, 800)), clip.readBytes())
+                waitForReviewed(1)
+                assertArrayEquals(VerseAudio.encodeWav(VerseAudio.slice(samples, 800, 1600)), clip.readBytes())
                 scenario.onActivity { editor.dispose() }
             }
         } finally {

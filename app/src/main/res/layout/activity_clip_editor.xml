@@ -44,7 +44,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:padding="12dp"
-                    android:text="Record the enabled words in card order. Suggested boundaries are not speech recognition: drag the handles and review each clip. Moving a boundary changes both neighboring clips. Hold a word card and drag it onto a waveform segment to swap their audio; or select a segment and use Use selected on a card. Drag the handle to reorder cards without changing their audio. Repeated Greek forms share a saved clip."
+                    android:text="Record the enabled words in card order. Suggested boundaries are not speech recognition: select a card, drag its handles, and review each clip. Moving a boundary changes both neighboring clips. Reordering cards changes which audio segment belongs to each card. Repeated Greek forms share a saved clip."
                     android:textAppearance="?attr/textAppearanceBodyMedium" />
             </com.google.android.material.card.MaterialCardView>
 
@@ -133,11 +133,21 @@
                             android:text="+"
                             android:textColor="#FFFFFF" />
                     </LinearLayout>
-                    <io.github.danzuep.bibleaudioproducer.ui.VerseSliceWaveform
-                        android:id="@+id/clip_waveform"
+                    <FrameLayout
                         android:layout_width="match_parent"
-                        android:layout_height="128dp"
-                        android:contentDescription="Spoken waveform. Tap a slice or drag a boundary." />
+                        android:layout_height="128dp">
+                        <io.github.danzuep.bibleaudioproducer.ui.VerseSliceWaveform
+                            android:id="@+id/clip_waveform"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:contentDescription="Spoken waveform. Tap a slice or drag a boundary." />
+                        <io.github.danzuep.bibleaudioproducer.ui.RecordingWaveform
+                            android:id="@+id/clip_live_waveform"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:visibility="gone"
+                            android:contentDescription="Live microphone waveform" />
+                    </FrameLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -151,7 +161,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Hold a card and drop it on the waveform to swap audio. Drag its handle to reorder."
+                android:text="Drag a card to a waveform segment, or drag its handle to change the audio order."
                 android:textAppearance="?attr/textAppearanceBodySmall" />
 
             <LinearLayout

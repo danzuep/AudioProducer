@@ -7,6 +7,7 @@ import android.graphics.Paint
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
+import io.github.danzuep.bibleaudioproducer.audio.VerseAudio
 import kotlin.math.abs
 
 class VerseSliceWaveform @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) : View(context, attrs) {
@@ -16,7 +17,7 @@ class VerseSliceWaveform @JvmOverloads constructor(context: Context, attrs: Attr
     private var boundaries = emptyList<Int>()
     private var selected = 0
     private var dragging = -1
-    private var zoom = 1
+    private var visibleSamples = 1
     private var windowStart = 0
     private var dropTarget = -1
     var onSelect: (Int) -> Unit = {}
@@ -48,24 +49,24 @@ class VerseSliceWaveform @JvmOverloads constructor(context: Context, attrs: Attr
         this.samples = samples
         this.boundaries = boundaries
         this.selected = selected
-        if (newSamples) zoom = 1
+        if (newSamples) visibleSamples = minOf(samples.size, VerseAudio.SAMPLE_RATE).coerceAtLeast(1)
         if (newSamples || newSelection) centerSelection()
         invalidate()
     }
 
     fun zoomBy(factor: Int) {
-        zoom = (zoom * factor).coerceIn(1, 16)
+        visibleSamples = (windowSize() / factor).coerceAtLeast(1)
         centerSelection()
         invalidate()
     }
 
     fun zoomOut() {
-        zoom = (zoom / 2).coerceAtLeast(1)
+        visibleSamples = (windowSize().toLong() * 2).coerceAtMost(samples.size.toLong()).toInt().coerceAtLeast(1)
         centerSelection()
         invalidate()
     }
 
-    private fun windowSize() = (samples.size / zoom).coerceAtLeast(1)
+    private fun windowSize() = visibleSamples.coerceAtLeast(1)
 
     private fun centerSelection() {
         if (samples.isEmpty() || selected !in 0 until boundaries.lastIndex) {
@@ -128,9 +129,13 @@ class VerseSliceWaveform @JvmOverloads constructor(context: Context, attrs: Attr
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 val radius = 24 * resources.displayMetrics.density
-                dragging = (0 until boundaries.lastIndex).filter { it > 0 || selected == 0 }.minByOrNull {
+                val closest = (0 until boundaries.lastIndex).minByOrNull {
                     abs((boundaries[it] - windowStart).toFloat() / windowSize() * width - event.x)
-                }?.takeIf { abs((boundaries[it] - windowStart).toFloat() / windowSize() * width - event.x) <= radius } ?: -1
+                }
+                dragging = closest?.takeIf {
+                    it in selected..selected + 1 &&
+                        abs((boundaries[it] - windowStart).toFloat() / windowSize() * width - event.x) <= radius
+                } ?: -1
                 parent.requestDisallowInterceptTouchEvent(true)
                 if (dragging < 0) {
                     segmentAt(event.x)?.let {

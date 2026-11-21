@@ -1,6 +1,8 @@
 package io.github.danzuep.bibleaudioproducer.ui
 
 import android.content.res.ColorStateList
+import android.os.Handler
+import android.os.Looper
 import android.view.ContextThemeWrapper
 import android.view.DragEvent
 import android.view.LayoutInflater
@@ -56,8 +58,6 @@ internal class VerseTakeEditor(
 ) {
     private val io = Executors.newSingleThreadExecutor()
     private val words = words.toMutableList()
-    private var audioOrder = words.map { it.originalIndex }
-    private var recordingGuideOrder = audioOrder
     private data class WordDrag(val originalIndex: Int)
     private val recorder = AndroidAudioRecorder(activity)
     private val player = AndroidAudioPlayer {
@@ -98,6 +98,22 @@ internal class VerseTakeEditor(
     private var pausedTake = false
     private var reordering = false
     private lateinit var waveform: VerseSliceWaveform
+    private lateinit var liveWaveform: RecordingWaveform
+    private val levels = mutableListOf<Float>()
+    private val waveformHandler = Handler(Looper.getMainLooper())
+    private val waveformSampler = object : Runnable {
+        override fun run() {
+            if (!recording || closed) return
+            try {
+                levels.add(recorder.amplitude())
+                if (levels.size > RecordingWaveform.MAX_LEVELS) levels.removeAt(0)
+                liveWaveform.showLevels(levels)
+                waveformHandler.postDelayed(this, 100)
+            } catch (exception: RuntimeException) {
+                cancelRecording("Unable to display the recording waveform. Recording cancelled.")
+            }
+        }
+    }
     private lateinit var keep: Button
     private lateinit var finish: Button
     private lateinit var previewExisting: Button
@@ -153,13 +169,13 @@ internal class VerseTakeEditor(
         record = content.findViewById<Button>(R.id.clip_record).apply {
             setOnClickListener { toggleRecord() }
         }
+        liveWaveform = content.findViewById(R.id.clip_live_waveform)
         waveform = content.findViewById<VerseSliceWaveform>(R.id.clip_waveform).apply {
             onSelect = { spoken ->
-                val next = words.indexOfFirst { audioIndex(it) == spoken }
-                if (next >= 0) selectCard(next)
+                selectCard(spoken)
             }
             onBoundary = { boundary, sample ->
-                if (rememberSelection()) {
+                if (boundary in index..index + 1 && rememberSelection()) {
                     val changed = boundaries?.move(boundary, sample).orEmpty()
                     reviewed.removeAll(changed)
                     showSelection()
@@ -260,7 +276,6 @@ internal class VerseTakeEditor(
     internal fun loadDemoTake(demoSamples: FloatArray) {
         samples = demoSamples
         boundaries = VerseBoundaries(VerseAudio.suggestBoundaries(samples, words.size))
-        freezeAudioOrder()
         reviewed.clear()
         index = 0
         showSelection()
@@ -278,6 +293,7 @@ internal class VerseTakeEditor(
             } else beginRecording()
         } else {
             recording = false
+            waveformHandler.removeCallbacks(waveformSampler)
             try {
                 val file = recorder.stop()
                 working = true
@@ -315,8 +331,10 @@ internal class VerseTakeEditor(
             val file = repository.newVerseDraft()
             draft = file
             recorder.start(file)
-            freezeAudioOrder()
             recording = true
+            levels.clear()
+            liveWaveform.showLevels(levels)
+            waveformHandler.post(waveformSampler)
             samples = FloatArray(0)
             boundaries = null
             reviewed.clear()
@@ -332,6 +350,8 @@ internal class VerseTakeEditor(
         record.text = if (recording) "Stop recording" else if (samples.isEmpty()) "Record verse" else "Record again"
         record.isEnabled = !working
         waveform.isEnabled = ready
+        waveform.visibility = if (recording) View.INVISIBLE else View.VISIBLE
+        liveWaveform.visibility = if (recording) View.VISIBLE else View.GONE
         val spoken = audioIndex(words[index])
         start.isEnabled = ready
         end.isEnabled = ready && spoken < words.lastIndex
@@ -380,6 +400,9 @@ internal class VerseTakeEditor(
         if (boundaries != null && !rememberSelection()) return false
         val selected = words[index].originalIndex
         words.add(to, words.removeAt(from))
+        if (boundaries != null) {
+            for (position in minOf(from, to)..maxOf(from, to)) reviewed.remove(position)
+        }
         index = words.indexOfFirst { it.originalIndex == selected }
         onReorder(words.map { it.originalIndex })
         cards.notifyItemMoved(from, to)
@@ -391,23 +414,16 @@ internal class VerseTakeEditor(
     }
 
     private fun assignWord(originalIndex: Int, target: Int): Boolean {
-        if (working || recording || boundaries == null || target !in audioOrder.indices) return false
-        if (!rememberSelection()) return false
-        val source = audioOrder.indexOf(originalIndex)
+        if (working || recording || boundaries == null || target !in words.indices) return false
+        val source = words.indexOfFirst { it.originalIndex == originalIndex }
         if (source < 0) return false
         if (source == target) return true
-        val updated = audioOrder.toMutableList()
-        val displaced = updated[target]
-        updated[target] = originalIndex
-        updated[source] = displaced
-        audioOrder = updated
-        reviewed.remove(source)
-        reviewed.remove(target)
-        index = words.indexOfFirst { it.originalIndex == originalIndex }
+        if (!moveCard(source, target)) return false
+        index = target
         showSelection()
         refresh()
         scrollToSelection()
-        toast("Audio segments swapped. Review both clips again.")
+        toast("Card moved. Review the affected clips again.")
         return true
     }
 
@@ -436,14 +452,14 @@ internal class VerseTakeEditor(
             holder.card.strokeWidth = dp(if (position == index) 3 else 1)
             holder.card.strokeColor = if (position == index)
                 MaterialColors.getColor(holder.card, com.google.android.material.R.attr.colorPrimary) else color
-            holder.card.contentDescription = "${targetLabel(word)}, ${word.word.surface}, spoken ${spoken + 1}"
+            holder.card.contentDescription = "${targetLabel(word)}, ${word.word.surface}, card ${position + 1}"
             holder.label.text = targetLabel(word)
             holder.greek.text = word.word.surface
             holder.position.text = "Card ${position + 1} • Greek ${word.originalIndex + 1}"
             holder.metadata.chipBackgroundColor = ColorStateList.valueOf(VerseSliceWaveform.color(spoken, 55))
             val points = boundaries
             holder.metadata.text = if (points == null) "No take" else
-                "${(points.end(spoken) - points.start(spoken)) * 1000L / VerseAudio.SAMPLE_RATE} ms • spoken ${spoken + 1}"
+                "${(points.end(spoken) - points.start(spoken)) * 1000L / VerseAudio.SAMPLE_RATE} ms"
             holder.play.isEnabled = ready
             holder.play.contentDescription = "Play ${targetLabel(word)} slice"
             holder.card.setOnClickListener {
@@ -461,7 +477,7 @@ internal class VerseTakeEditor(
                 }
             }
             holder.assign.isEnabled = ready && spoken != audioIndex(words[index])
-            holder.assign.contentDescription = "Assign ${targetLabel(word)} to selected audio segment"
+            holder.assign.contentDescription = "Move ${targetLabel(word)} to selected audio segment"
             holder.assign.setOnClickListener { assignWord(word.originalIndex, audioIndex(words[index])) }
             holder.play.setOnClickListener {
                 val current = holder.bindingAdapterPosition
@@ -666,6 +682,7 @@ internal class VerseTakeEditor(
     fun dispose() {
         if (closed) return
         closed = true
+        waveformHandler.removeCallbacks(waveformSampler)
         if (recording) {
             recording = false
             runCatching { recorder.stop() }
@@ -685,23 +702,22 @@ internal class VerseTakeEditor(
             if (wasPlayingTake && !closed) refresh()
             return
         }
+        cancelRecording("Recording cancelled because the app left the foreground.")
+    }
+
+    private fun cancelRecording(message: String) {
         recording = false
+        waveformHandler.removeCallbacks(waveformSampler)
         runCatching { recorder.stop() }
         draft?.delete()
         draft = null
-        toast("Recording cancelled because the app left the foreground.")
+        toast(message)
         refresh()
     }
 
     private fun seconds(sample: Int) = String.format(Locale.US, "%.6f", sample.toDouble() / VerseAudio.SAMPLE_RATE)
-    private fun freezeAudioOrder() {
-        audioOrder = words.map { it.originalIndex }
-        recordingGuideOrder = audioOrder
-    }
-
     private fun audioIndex(word: VerseRecordingWord) =
-        if (recording || samples.isNotEmpty()) audioOrder.indexOf(word.originalIndex)
-        else words.indexOfFirst { it.originalIndex == word.originalIndex }
+        words.indexOfFirst { it.originalIndex == word.originalIndex }
     private fun selectCardForPreview(position: Int): Boolean {
         selectCard(position)
         return index == position
@@ -715,11 +731,8 @@ internal class VerseTakeEditor(
         tokens.visibility = if (guideMode == 4) View.GONE else View.VISIBLE
         customGuide.visibility = if (guideMode == 4) View.VISIBLE else View.GONE
         if (guideMode == 4) return
-        val guideWords = if (recording || samples.isNotEmpty()) {
-            recordingGuideOrder.map { original -> words.first { it.originalIndex == original } }
-        } else words
         tokens.removeAllViews()
-        guideWords.forEach { word ->
+        words.forEach { word ->
             val spoken = audioIndex(word)
             val isActive = word.originalIndex == words[index].originalIndex
             val label = when (guideMode) {
