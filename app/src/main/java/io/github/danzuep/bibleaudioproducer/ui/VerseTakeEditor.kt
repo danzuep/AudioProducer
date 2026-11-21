@@ -12,7 +12,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
-import android.widget.SeekBar
 import android.widget.Spinner
 import android.widget.ArrayAdapter
 import android.widget.AdapterView
@@ -86,8 +85,6 @@ internal class VerseTakeEditor(
     private var guideMode = 0
     private lateinit var start: EditText
     private lateinit var end: EditText
-    private lateinit var startSeek: SeekBar
-    private lateinit var endSeek: SeekBar
     private lateinit var status: TextView
     private lateinit var timing: TextView
     private lateinit var help: View
@@ -233,20 +230,6 @@ internal class VerseTakeEditor(
         nudgeForward = content.findViewById<Button>(R.id.clip_nudge_forward).apply { setOnClickListener { nudge(1) } }
         start = content.findViewById(R.id.clip_start)
         end = content.findViewById(R.id.clip_end)
-        startSeek = content.findViewById(R.id.clip_start_seek)
-        endSeek = content.findViewById(R.id.clip_end_seek)
-        fun configureSeek(seek: SeekBar, field: EditText) {
-            seek.max = 10000
-            seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(bar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    if (fromUser) field.setText(seconds((samples.size.toLong() * progress / 10000).toInt()))
-                }
-                override fun onStartTrackingTouch(bar: SeekBar?) = Unit
-                override fun onStopTrackingTouch(bar: SeekBar?) = Unit
-            })
-        }
-        configureSeek(startSeek, start)
-        configureSeek(endSeek, end)
         previewExisting = content.findViewById<Button>(R.id.clip_preview_existing).apply {
             setOnClickListener {
                 stopPlayback()
@@ -355,8 +338,6 @@ internal class VerseTakeEditor(
         val spoken = audioIndex(words[index])
         start.isEnabled = ready
         end.isEnabled = ready && spoken < words.lastIndex
-        startSeek.isEnabled = start.isEnabled
-        endSeek.isEnabled = end.isEnabled
         next.isEnabled = ready
         previewExisting.isEnabled = ready && repository.clipFile(words[index].word.surface).isFile
         keep.isEnabled = ready && repository.clipFile(words[index].word.surface).isFile
@@ -497,8 +478,6 @@ internal class VerseTakeEditor(
         val points = boundaries ?: return
         start.setText(seconds(points.start(spokenIndex)))
         end.setText(seconds(points.end(spokenIndex)))
-        startSeek.progress = (points.start(spokenIndex).toLong() * 10000 / samples.size).toInt()
-        endSeek.progress = (points.end(spokenIndex).toLong() * 10000 / samples.size).toInt()
         waveform.show(samples, points.snapshot(), spokenIndex)
         keep.isEnabled = repository.clipFile(words[index].word.surface).isFile
         previewExisting.isEnabled = keep.isEnabled

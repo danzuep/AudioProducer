@@ -51,7 +51,7 @@ import io.github.danzuep.bibleaudioproducer.audio.VerseAudio
 import io.github.danzuep.bibleaudioproducer.audio.AndroidAudioDecoder
 import io.github.danzuep.bibleaudioproducer.data.RecordingPlanJson
 import io.github.danzuep.bibleaudioproducer.data.AudioProjectRepository
-import io.github.danzuep.bibleaudioproducer.data.MaculaVerseJson
+import io.github.danzuep.bibleaudioproducer.workbench.MaculaXml
 import io.github.danzuep.bibleaudioproducer.workbench.AudioVerse
 import io.github.danzuep.bibleaudioproducer.workbench.VerseWorkflow
 import io.github.danzuep.bibleaudioproducer.workbench.WordOrderMode
@@ -80,10 +80,47 @@ class WorkbenchLaunchTest {
     }
 
     @Test
+    fun john316PresetsKeepArticlesWithTheirWordsAndGermanClausesInOrder() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val verse = context.assets.open("books/JHN.xml").bufferedReader().use {
+            MaculaXml.parse(it.readText()).first { item -> item.reference == "JHN 3:16" }
+        }
+        fun numbers(mode: WordOrderMode) = VerseWorkflow.modeOrder(verse, mode).map { it + 1 }
+        val english = numbers(WordOrderMode.ENGLISH_SVO)
+        assertEquals(listOf(13, 11, 12, 9, 10), english.filter { it in 9..13 })
+        val german = numbers(WordOrderMode.GERMAN_V2)
+        // Freie Lutherbibel, John 3:16: fronted adverb, verb, subject and object;
+        // the embedded object precedes its verb, followed by the purpose clause.
+        // https://github.com/bibliadelpueblo/BibliaLibre/blob/bed6a5c56de7db4895304553c6d7c3e763480f10/Bibles/German.FreieLuther/43-Johannes.md
+        assertEquals(listOf(2, 1, 3, 4, 5, 6, 7), german.filter { it in 1..7 })
+        assertEquals(listOf(11, 12, 9, 10, 13, 14), german.filter { it in 9..14 })
+        assertEquals(listOf(25, 24, 23), german.filter { it in 23..25 })
+    }
+
+    @Test
+    fun john316OtherPresetsKeepPurposeAndNegationInTheirClauses() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val verse = context.assets.open("books/JHN.xml").bufferedReader().use {
+            MaculaXml.parse(it.readText()).first { item -> item.reference == "JHN 3:16" }
+        }
+        fun numbers(mode: WordOrderMode) = VerseWorkflow.modeOrder(verse, mode).map { it + 1 }
+        val mandarin = numbers(WordOrderMode.MANDARIN_SADVVO)
+        assertEquals(listOf(13, 11, 12, 9, 10, 14), mandarin.filter { it in 9..14 })
+        val japanese = numbers(WordOrderMode.JAPANESE_SOV)
+        assertEquals(listOf(11, 12, 9, 10, 13, 14, 3), japanese.filter { it in 9..14 || it == 3 })
+        val arabic = numbers(WordOrderMode.ARABIC_VSO)
+        assertEquals(listOf(2, 1, 3, 4, 5, 6, 7), arabic.filter { it in 1..7 })
+        assertEquals(listOf(20, 21), arabic.filter { it in 20..21 })
+        for (order in listOf(mandarin, japanese, arabic)) {
+            assertEquals((1..verse.words.size).toList(), order.sorted())
+        }
+    }
+
+    @Test
     fun johnPresetSelectionPersistsWithoutRecordingAndRespectsSavedOrders() {
             val context = ApplicationProvider.getApplicationContext<Context>()
-            val verses = context.assets.open("books/JHN.json").bufferedReader().use {
-                MaculaVerseJson.parse(it.readText())
+            val verses = context.assets.open("books/JHN.xml").bufferedReader().use {
+                MaculaXml.parse(it.readText())
             }
             val first = verses.first { it.reference == "JHN 1:1" }
             val repository = AudioProjectRepository(directory)
@@ -143,7 +180,7 @@ class WorkbenchLaunchTest {
                 scenario.recreate()
                 awaitBooks(scenario, 27)
                 assertEquals("ENGLISH_SVO", repository.loadState().defaultWordOrder)
-                assertEquals(VerseWorkflow.modeOrder(first.words, WordOrderMode.JAPANESE_SOV),
+                assertEquals(VerseWorkflow.modeOrder(first, WordOrderMode.JAPANESE_SOV),
                     repository.loadState().wordOrders[first.reference])
                 val other = File(context.filesDir, "projects/project-002").apply { mkdirs() }
                 File(other, "project-name.txt").writeText("Project002")
@@ -168,8 +205,8 @@ class WorkbenchLaunchTest {
         assertEquals(4917, cards.size)
         assertEquals(27, cards.map { it.book }.distinct().size)
         assertEquals("JHN", cards.first().book)
-        val chapterReferences = context.assets.open("books/JHN.json").bufferedReader().use {
-            MaculaVerseJson.parse(it.readText()).filter { it.chapter == 1 }
+        val chapterReferences = context.assets.open("books/JHN.xml").bufferedReader().use {
+            MaculaXml.parse(it.readText()).filter { it.chapter == 1 }
         }
         val forms = chapterReferences.flatMap { it.words }.filterNot { it.proper }
             .flatMap { listOf(it.lemma, it.surface).distinct() }.groupingBy { it }.eachCount()
@@ -268,8 +305,8 @@ class WorkbenchLaunchTest {
     fun savesAnOrderForABundledVerse() {
         createLegacyProject()
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val verse = context.assets.open("books/JHN.json").bufferedReader().use {
-            MaculaVerseJson.parse(it.readText()).first { item -> item.reference == "JHN 1:1" }
+        val verse = context.assets.open("books/JHN.xml").bufferedReader().use {
+            MaculaXml.parse(it.readText()).first { item -> item.reference == "JHN 1:1" }
         }
         val skipped = verse.words.filterNot { it.proper }.first { candidate ->
             verse.words.count { it.surface == candidate.surface } == 1
@@ -421,8 +458,8 @@ class WorkbenchLaunchTest {
     @Test
     fun downloadWarnsAboutMissingSpeechAndCanStripIt() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val verse = context.assets.open("books/JHN.json").bufferedReader().use {
-            MaculaVerseJson.parse(it.readText()).first()
+        val verse = context.assets.open("books/JHN.xml").bufferedReader().use {
+            MaculaXml.parse(it.readText()).first()
         }
         val words = verse.words.filter { !it.disabled(emptySet()) }.distinctBy { it.surface }.take(2)
         assertEquals(2, words.size)
@@ -463,8 +500,8 @@ class WorkbenchLaunchTest {
             InstrumentationRegistry.getArguments().getString("testGreekTts") == "true"
         )
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val verse = context.assets.open("books/JHN.json").bufferedReader().use {
-            MaculaVerseJson.parse(it.readText()).first()
+        val verse = context.assets.open("books/JHN.xml").bufferedReader().use {
+            MaculaXml.parse(it.readText()).first()
         }
         val shortVerse = AudioVerse(verse.reference, listOf(verse.words.first { !it.disabled(emptySet()) }))
         ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
@@ -499,8 +536,8 @@ class WorkbenchLaunchTest {
                 InstrumentationRegistry.getArguments().getString("testGreekTts") == "true"
         )
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val verse = context.assets.open("books/JHN.json").bufferedReader().use {
-            MaculaVerseJson.parse(it.readText()).first()
+        val verse = context.assets.open("books/JHN.xml").bufferedReader().use {
+            MaculaXml.parse(it.readText()).first()
         }
         val words = verse.words.filter { !it.disabled(emptySet()) }.distinctBy { it.surface }.take(2)
         assertEquals(2, words.size)
@@ -562,8 +599,8 @@ class WorkbenchLaunchTest {
     @Test
     fun chapterPlaybackStopsDuringPreparationAndResetsAfterCompletion() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val verse = context.assets.open("books/JHN.json").bufferedReader().use {
-            MaculaVerseJson.parse(it.readText()).first()
+        val verse = context.assets.open("books/JHN.xml").bufferedReader().use {
+            MaculaXml.parse(it.readText()).first()
         }
         val word = verse.words.first { !it.disabled(emptySet()) }
         val shortVerse = AudioVerse(verse.reference, listOf(word))
@@ -607,8 +644,8 @@ class WorkbenchLaunchTest {
     @Test
     fun closingChapterStopsPlayback() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val verse = context.assets.open("books/JHN.json").bufferedReader().use {
-            MaculaVerseJson.parse(it.readText()).first()
+        val verse = context.assets.open("books/JHN.xml").bufferedReader().use {
+            MaculaXml.parse(it.readText()).first()
         }
         val word = verse.words.first { !it.disabled(emptySet()) }
         val shortVerse = AudioVerse(verse.reference, listOf(word))
@@ -646,8 +683,8 @@ class WorkbenchLaunchTest {
         createLegacyProject()
         val context = grantRecordingPermission()
         val repository = AudioProjectRepository(directory)
-        val surface = context.assets.open("books/JHN.json").bufferedReader().use {
-            val words = MaculaVerseJson.parse(it.readText()).first { verse -> verse.reference == "JHN 1:1" }.words
+        val surface = context.assets.open("books/JHN.xml").bufferedReader().use {
+            val words = MaculaXml.parse(it.readText()).first { verse -> verse.reference == "JHN 1:1" }.words
             words.first { word -> words.count { it.surface == word.surface } == 1 }.surface
         }
         ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
@@ -672,8 +709,8 @@ class WorkbenchLaunchTest {
     @Test
     fun verseTakeRequiresConfirmationBeforeReplacingExistingClip() {
         val context = grantRecordingPermission()
-        val verse = context.assets.open("books/JHN.json").bufferedReader().use {
-            MaculaVerseJson.parse(it.readText()).first { it.reference == "JHN 3:16" }
+        val verse = context.assets.open("books/JHN.xml").bufferedReader().use {
+            MaculaXml.parse(it.readText()).first { it.reference == "JHN 3:16" }
         }
         val words = verse.words.filter { !it.disabled(emptySet()) }
         val first = words.first()

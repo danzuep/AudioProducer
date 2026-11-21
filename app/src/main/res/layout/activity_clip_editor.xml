@@ -185,7 +185,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Fine tuning (seconds)"
+                android:text="Boundary times (seconds)"
                 android:textAppearance="?attr/textAppearanceLabelLarge" />
             <EditText
                 android:id="@+id/clip_start"
@@ -194,7 +194,6 @@
                 android:hint="Start"
                 android:inputType="numberDecimal"
                 android:singleLine="true" />
-            <SeekBar android:id="@+id/clip_start_seek" android:layout_width="match_parent" android:layout_height="wrap_content" />
             <EditText
                 android:id="@+id/clip_end"
                 android:layout_width="match_parent"
@@ -202,7 +201,6 @@
                 android:hint="End"
                 android:inputType="numberDecimal"
                 android:singleLine="true" />
-            <SeekBar android:id="@+id/clip_end_seek" android:layout_width="match_parent" android:layout_height="wrap_content" />
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 
