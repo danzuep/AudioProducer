@@ -2,8 +2,8 @@ package io.github.danzuep.bibleaudioproducer.ui
 
 import android.content.Context
 import android.view.MotionEvent
-import android.view.DragEvent
 import android.view.View
+import android.os.SystemClock
 import android.widget.EditText
 import android.widget.Button
 import android.widget.TextView
@@ -13,6 +13,8 @@ import com.google.android.material.chip.ChipGroup
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.recyclerview.widget.RecyclerView
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.matcher.ViewMatchers.withText
@@ -39,18 +41,22 @@ class VerseSliceEditorTest {
             MaculaVerseJson.parse(it.readText()).first().words.filter { !it.disabled(emptySet()) }.take(3)
         }.mapIndexed { index, word -> VerseRecordingWord(word, index) }
         ActivityScenario.launch(WorkbenchActivity::class.java).use { scenario ->
+            lateinit var editor: VerseTakeEditor
+            lateinit var points: VerseBoundaries
+            lateinit var waveform: VerseSliceWaveform
+            lateinit var root: View
             scenario.onActivity { activity ->
-                val editor = VerseTakeEditor(
+                editor = VerseTakeEditor(
                     activity, AudioProjectRepository(File(context.cacheDir, "slice-swap-test")),
                     words, { true }, {}, {}, {}
                 )
-                val root = editor.view()
+                root = editor.view()
                 activity.setContentView(root)
                 fun field(name: String) = VerseTakeEditor::class.java.getDeclaredField(name).apply { isAccessible = true }
                 fun invoke(name: String) = VerseTakeEditor::class.java.getDeclaredMethod(name)
                     .apply { isAccessible = true }.invoke(editor)
                 val samples = FloatArray(2400) { 0.1f }
-                val points = VerseBoundaries(listOf(0, 800, 1600, 2400))
+                points = VerseBoundaries(listOf(0, 800, 1600, 2400))
                 field("samples").set(editor, samples)
                 field("boundaries").set(editor, points)
                 invoke("showSelection")
@@ -58,18 +64,45 @@ class VerseSliceEditorTest {
                 @Suppress("UNCHECKED_CAST")
                 val reviewed = field("reviewed").get(editor) as MutableSet<Int>
                 reviewed.addAll(listOf(0, 1, 2))
-                val waveform = root.findViewById<VerseSliceWaveform>(R.id.clip_waveform)
-                waveform.layout(0, 0, 300, 120)
-                val dragClass = VerseTakeEditor::class.java.declaredClasses.first { it.simpleName == "WordDrag" }
-                val drag = dragClass.getDeclaredConstructor(Int::class.javaPrimitiveType)
-                    .apply { isAccessible = true }.newInstance(words[0].originalIndex)
-                fun dragEvent(action: Int, x: Float): Boolean {
-                    val event = DragEvent.obtain(action, x, 60f, drag, null, null, false)
-                    return waveform.dispatchDragEvent(event).also { event.recycle() }
-                }
-                assertTrue(dragEvent(DragEvent.ACTION_DRAG_STARTED, 0f))
-                assertTrue(dragEvent(DragEvent.ACTION_DROP, 250f))
-                dragEvent(DragEvent.ACTION_DRAG_ENDED, 250f)
+                waveform = root.findViewById(R.id.clip_waveform)
+            }
+            val instrumentation = InstrumentationRegistry.getInstrumentation()
+            instrumentation.waitForIdleSync()
+            var startX = 0f
+            var startY = 0f
+            var endX = 0f
+            var endY = 0f
+            scenario.onActivity {
+                val recycler = root.findViewById<RecyclerView>(R.id.clip_cards)
+                val card = checkNotNull(recycler.findViewHolderForAdapterPosition(0)).itemView
+                val cardLocation = IntArray(2)
+                val waveLocation = IntArray(2)
+                card.getLocationOnScreen(cardLocation)
+                waveform.getLocationOnScreen(waveLocation)
+                startX = cardLocation[0] + card.width / 4f
+                startY = cardLocation[1] + card.height / 4f
+                endX = waveLocation[0] + waveform.width * 5f / 6f
+                endY = waveLocation[1] + waveform.height / 2f
+            }
+            val downTime = SystemClock.uptimeMillis()
+            fun touch(action: Int, x: Float, y: Float) {
+                val event = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, x, y, 0)
+                instrumentation.sendPointerSync(event)
+                event.recycle()
+            }
+            touch(MotionEvent.ACTION_DOWN, startX, startY)
+            SystemClock.sleep(900)
+            for (step in 1..10) {
+                val fraction = step / 10f
+                touch(MotionEvent.ACTION_MOVE, startX + (endX - startX) * fraction, startY + (endY - startY) * fraction)
+                SystemClock.sleep(30)
+            }
+            touch(MotionEvent.ACTION_UP, endX, endY)
+            instrumentation.waitForIdleSync()
+            scenario.onActivity {
+                fun field(name: String) = VerseTakeEditor::class.java.getDeclaredField(name).apply { isAccessible = true }
+                @Suppress("UNCHECKED_CAST")
+                val reviewed = field("reviewed").get(editor) as MutableSet<Int>
                 assertEquals(listOf(2, 1, 0), field("audioOrder").get(editor))
                 assertEquals(listOf(0, 800, 1600, 2400), points.snapshot())
                 assertEquals(setOf(1), reviewed)
