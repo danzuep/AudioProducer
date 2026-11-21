@@ -12,7 +12,11 @@ data class VerseWord(
     val mandarin: String = "",
     val morphology: String = "",
     val reference: String = "",
-    val syntaxPath: String = ""
+    val syntaxPath: String = "",
+    val id: String = "",
+    val head: Boolean = false,
+    val sourceGloss: String = "",
+    val sourceText: String = ""
 ) {
     val proper: Boolean get() = type == "proper" || pos == "proper_noun"
     val unspokenKey: String get() = surface.ifEmpty { lemma }
@@ -32,7 +36,7 @@ data class VerseWord(
     }
 }
 
-data class AudioVerse(val reference: String, val words: List<VerseWord>) {
+data class AudioVerse(val reference: String, val words: List<VerseWord>, val syntax: SyntaxGroup? = null) {
     val chapter: Int get() = reference.substringAfter(' ').substringBefore(':').toInt()
 }
 
@@ -71,7 +75,7 @@ object VerseWorkflow {
 
     fun effectiveWordOrder(verse: AudioVerse, state: AudioProjectState): List<Int>? =
         state.wordOrders[verse.reference] ?: if (verse.reference in state.seedOrders) null
-        else defaultMode(state.defaultWordOrder)?.let { modeOrder(verse.words, it) }
+        else defaultMode(state.defaultWordOrder)?.let { modeOrder(verse, it) }
 
     private val nominal = setOf("noun", "pron", "det", "adj", "num")
     private val heads = setOf("noun", "pron", "num")
@@ -232,6 +236,9 @@ object VerseWorkflow {
         }
         return order(chunks, rules, chunkOrder).flatMap { chunkWordIndices[it] }
     }
+
+    fun modeOrder(verse: AudioVerse, mode: WordOrderMode): List<Int> =
+        verse.syntax?.let { MaculaWordOrder.order(verse.words, it, mode) } ?: modeOrder(verse.words, mode)
 
     fun modeOrder(words: List<VerseWord>, mode: WordOrderMode): List<Int> {
         val original = words.indices.toList()

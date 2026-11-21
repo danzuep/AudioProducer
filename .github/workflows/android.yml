@@ -30,6 +30,7 @@ jobs:
       - run: |
           bash scripts/test-next-version.sh
           python3 scripts/test-macula-syntax.py
+          python3 scripts/test-prepare-macula-books.py
           node --test web/core.test.mjs web/acoustic.test.mjs
           ./gradlew :core:jvmTest :app:testDebugUnitTest :app:assembleDebug
         timeout-minutes: 15
